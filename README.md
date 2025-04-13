@@ -1,1 +1,8 @@
-# Undergrowth Node\n\nSensor and control nodes for the Undergrowth greenhouse monitoring system.\n\n## Components\n- Sensor data collection (AHT10)\n- LED control (PCA9685)\n- Pump control\n- MQTT client for communication\n\n## Deployment\nAutomatically deployed to Balena Cloud using GitHub Actions.
+# Undergrowth Node
+Sensor and control nodes for the Undergrowth greenhouse monitoring system.
+
+## Components
+- Sensor data collection (2x AHT10)
+- LED control (pi pwm)
+- Pump control (pi pwm)
+- MQTT client for communication
