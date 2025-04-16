@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Undergrowth Node</title>
+    <style>
+        :root {
+            --bg-primary: #181a1b;
+            --text-primary: #e8e6e3;
+            --text-secondary: #b2aba1;
+            --border-color: #736b5e;
+            --success-color: #3d8c40;
+            --error-color: #a91409;
+            --active-color: #998100;
+            --inactive-color: #4f5559;
+            --selection-bg: #004daa;
+            --selection-text: #e8e6e3;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 1rem;
+            background-color: var(--bg-primary);
+            color: var(--text-primary);
+            line-height: 1.5;
+            font-size: 1rem;
+            min-height: 100vh;
+        }
+
+        ::selection {
+            background-color: var(--selection-bg);
+            color: var(--selection-text);
+        }
+
+        h2, h3 {
+            color: var(--text-primary);
+            margin-bottom: 1rem;
+        }
+
+        .container {
+            background-color: var(--bg-primary);
+            padding: 1rem;
+            border-radius: 0.5rem;
+            margin-bottom: 1rem;
+            width: 100%;
+        }
+
+        .info-section {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+            margin-bottom: 1rem;
+        }
+
+        .info-item {
+            flex: 1;
+            min-width: 200px;
+            padding: 10px;
+            background-color: #333;
+            border: 1px solid var(--border-color);
+            border-radius: 0.25rem;
+        }
+
+        .info-label {
+            font-weight: bold;
+            color: var(--text-secondary);
+            margin-bottom: 0.25rem;
+        }
+
+        .info-value {
+            color: var(--text-primary);
+            font-family: monospace;
+            font-size: 1.1rem;
+        }
+
+        @media (max-width: 600px) {
+            body {
+                padding: 0.5rem;
+            }
+
+            .container {
+                padding: 0.5rem;
+            }
+
+            .info-item {
+                min-width: 100%;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>System Information</h2>
+        <div class="info-section">
+            <div class="info-item">
+                <div class="info-label">Pi Uptime:</div>
+                <div class="info-value" id="piUptime">Loading...</div>
+            </div>
+            <div class="info-item">
+                <div class="info-label">Server Uptime:</div>
+                <div class="info-value" id="serverUptime">Loading...</div>
+            </div>
+            <div class="info-item">
+                <div class="info-label">IP Address:</div>
+                <div class="info-value" id="ipAddress">Loading...</div>
+            </div>
+            <div class="info-item">
+                <div class="info-label">MAC Address:</div>
+                <div class="info-value" id="macAddress">Loading...</div>
+            </div>
+            <div class="info-item">
+                <div class="info-label">Hostname:</div>
+                <div class="info-value" id="hostname">Loading...</div>
+            </div>
+            <div class="info-item">
+                <div class="info-label">CPU Temperature:</div>
+                <div class="info-value" id="cpuTemp">Loading...</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="container">
+        <h2>AHT10 Sensor 1</h2>
+        <div class="info-section">
+            <div class="info-item">
+                <div class="info-label">I2C Address:</div>
+                <div class="info-value" id="sensor1Address">Loading...</div>
+            </div>
+            <div class="info-item">
+                <div class="info-label">Temperature:</div>
+                <div class="info-value" id="sensor1Temp">Loading...</div>
+            </div>
+            <div class="info-item">
+                <div class="info-label">Humidity:</div>
+                <div class="info-value" id="sensor1Humidity">Loading...</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="container">
+        <h2>AHT10 Sensor 2</h2>
+        <div class="info-section">
+            <div class="info-item">
+                <div class="info-label">I2C Address:</div>
+                <div class="info-value" id="sensor2Address">Loading...</div>
+            </div>
+            <div class="info-item">
+                <div class="info-label">Temperature:</div>
+                <div class="info-value" id="sensor2Temp">Loading...</div>
+            </div>
+            <div class="info-item">
+                <div class="info-label">Humidity:</div>
+                <div class="info-value" id="sensor2Humidity">Loading...</div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        const socket = io();
+        
+        socket.on('sensorData', (data) => {
+            // Update system information
+            document.getElementById('piUptime').textContent = data.system.piUptime;
+            document.getElementById('serverUptime').textContent = data.system.serverUptime;
+            document.getElementById('ipAddress').textContent = data.system.ipAddress;
+            document.getElementById('macAddress').textContent = data.system.macAddress;
+            document.getElementById('hostname').textContent = data.system.hostname;
+            document.getElementById('cpuTemp').textContent = data.system.cpuTemp;
+
+            // Update sensor 1 information
+            document.getElementById('sensor1Address').textContent = data.sensor1.address;
+            document.getElementById('sensor1Temp').textContent = data.sensor1.temperature;
+            document.getElementById('sensor1Humidity').textContent = `${data.sensor1.humidity.toFixed(1)}%`;
+
+            // Update sensor 2 information
+            document.getElementById('sensor2Address').textContent = data.sensor2.address;
+            document.getElementById('sensor2Temp').textContent = data.sensor2.temperature;
+            document.getElementById('sensor2Humidity').textContent = `${data.sensor2.humidity.toFixed(1)}%`;
+        });
+    </script>
+</body>
+</html> 

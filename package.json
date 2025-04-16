@@ -1,0 +1,16 @@
+{
+  "name": "undergrowth-node",
+  "version": "1.0.0",
+  "description": "Node component for Undergrowth greenhouse automation system",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "pigpio": "^3.3.1",
+    "raspi": "^6.0.1",
+    "raspi-i2c": "^6.2.4",
+    "socket.io": "^4.7.4"
+  }
+}
