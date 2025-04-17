@@ -7,6 +7,7 @@ const AHT10 = require('./aht10');
 const SystemInfo = require('./systemInfo');
 const Gpio = require('pigpio').Gpio;
 const path = require('path');
+const sqlite3 = require('sqlite3').verbose();
 
 const app = express();
 const server = http.createServer(app);
@@ -56,10 +57,35 @@ app.get('/pwm', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'pwm.html'));
 });
 
-// Helper function to convert Celsius to Fahrenheit
-function celsiusToFahrenheit(celsius) {
-    return (celsius * 9/5) + 32;
-}
+// Route for graph interface
+app.get('/graph', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'graph.html'));
+});
+
+// Initialize SQLite database
+const db = new sqlite3.Database('./ug-node.db', (err) => {
+    if (err) {
+        console.error('Error connecting to SQLite:', err);
+    } else {
+        console.log('Connected to SQLite database');
+        // Create sensor readings table if it doesn't exist
+        db.run(`
+            CREATE TABLE IF NOT EXISTS sensor_readings (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp TEXT NOT NULL,
+                device_id TEXT NOT NULL,
+                type TEXT NOT NULL,
+                value REAL NOT NULL
+            )
+        `, (err) => {
+            if (err) {
+                console.error('Error creating table:', err);
+            } else {
+                console.log('Sensor readings table initialized');
+            }
+        });
+    }
+});
 
 // Initialize sensors and start reading
 async function initAndRead() {
@@ -85,21 +111,40 @@ async function initAndRead() {
                 ]);
 
                 if (data1 && data2) {
-                    // Convert temperatures to Fahrenheit
-                    const temp1F = celsiusToFahrenheit(data1.temperature);
-                    const temp2F = celsiusToFahrenheit(data2.temperature);
+                    // Store readings in database
+                    const timestamp = new Date().toISOString();
+                    
+                    // Store temperature readings
+                    db.run(
+                        'INSERT INTO sensor_readings (timestamp, device_id, type, value) VALUES (?, ?, ?, ?)',
+                        [timestamp, 'sensor1', 'temperature', data1.temperature]
+                    );
+                    db.run(
+                        'INSERT INTO sensor_readings (timestamp, device_id, type, value) VALUES (?, ?, ?, ?)',
+                        [timestamp, 'sensor2', 'temperature', data2.temperature]
+                    );
+                    
+                    // Store humidity readings
+                    db.run(
+                        'INSERT INTO sensor_readings (timestamp, device_id, type, value) VALUES (?, ?, ?, ?)',
+                        [timestamp, 'sensor1', 'humidity', data1.humidity]
+                    );
+                    db.run(
+                        'INSERT INTO sensor_readings (timestamp, device_id, type, value) VALUES (?, ?, ?, ?)',
+                        [timestamp, 'sensor2', 'humidity', data2.humidity]
+                    );
 
                     io.emit('sensorData', {
                         system: systemInfo.system,
                         sensor1: {
                             ...data1,
                             address: '0x38',
-                            temperature: `${temp1F.toFixed(1)}°F (${data1.temperature.toFixed(1)}°C)`
+                            temperature: `${data1.temperature.toFixed(1)}°F (${((data1.temperature - 32) * 5/9).toFixed(1)}°C)`
                         },
                         sensor2: {
                             ...data2,
                             address: '0x39',
-                            temperature: `${temp2F.toFixed(1)}°F (${data2.temperature.toFixed(1)}°C)`
+                            temperature: `${data2.temperature.toFixed(1)}°F (${((data2.temperature - 32) * 5/9).toFixed(1)}°C)`
                         }
                     });
                 }
@@ -170,12 +215,41 @@ io.on('connection', (socket) => {
     });
 });
 
+// Add new endpoint for binned data
+app.get('/api/readings/binned', (req, res) => {
+    const { startDate, hours, points, type } = req.query;
+    
+    if (!startDate || !hours || !points || !type) {
+        return res.status(400).json({ error: 'Missing required parameters' });
+    }
+
+    const endDate = new Date(new Date(startDate).getTime() + (parseInt(hours) * 3600 * 1000)).toISOString();
+    
+    db.all(`
+        SELECT 
+            strftime('%Y-%m-%d %H:%M:%S', timestamp) as timestamp,
+            AVG(value) as value
+        FROM sensor_readings
+        WHERE timestamp BETWEEN ? AND ?
+            AND type = ?
+        GROUP BY strftime('%Y-%m-%d %H:%M:%S', timestamp)
+        ORDER BY timestamp ASC
+        LIMIT ?
+    `, [startDate, endDate, type, parseInt(points)], (err, rows) => {
+        if (err) {
+            console.error('Error fetching binned data:', err);
+            return res.status(500).json({ error: 'Failed to fetch data' });
+        }
+        res.json(rows);
+    });
+});
+
 // Initialize Raspberry Pi and then start the application
 raspi.init(() => {
     initPwmPins(); // Initialize PWM pins
     initAndRead();
     
-    server.listen(3000, () => {
-        console.log('Undergrowth Node server running on port 3000');
+    server.listen(80, () => {
+        console.log('Server is running on port 80');
     });
 }); 

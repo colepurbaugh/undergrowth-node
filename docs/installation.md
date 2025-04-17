@@ -1,10 +1,83 @@
 # Installation Instructions
 
+## Auto Start with systemctl
 
+### setup service
 
+Create the systemd service file:
+```bash
+sudo nano /etc/systemd/system/ug-node.service
+```
+
+Add the following content:
+```ini
+[Unit]
+Description=Undergrowth Node.js Server
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/home/willa/git/undergrowth-node
+ExecStart=/home/willa/.nvm/versions/node/v22.14.0/bin/node server.js
+Environment=NODE_ENV=production
+Environment=PATH=/home/willa/.nvm/versions/node/v22.14.0/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+Environment=PIGPIO_ADDR=localhost
+Restart=always
+RestartSec=10
+StandardOutput=syslog
+StandardError=syslog
+SyslogIdentifier=ug-node
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Note: The service must run as root because the pigpio library requires root permissions to access `/dev/mem` for hardware PWM functionality. This is a limitation of the pigpio C library implementation. Currently the only way to use hardware PWM on the Raspberry Pi.
+
+### setcap
+
+Allow Node.js to bind to port 80:
+```bash
+sudo setcap 'cap_net_bind_service=+ep' /home/willa/.nvm/versions/node/v22.14.0/bin/node
+```
+
+### start, stop, status
+
+Reload systemd and start the service:
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable ug-node
+sudo systemctl start ug-node
+```
+
+Check service status:
+```bash
+sudo systemctl status ug-node
+```
+
+Common service management commands:
+- Start service: `sudo systemctl start ug-node`
+- Stop service: `sudo systemctl stop ug-node`
+- Restart service: `sudo systemctl restart ug-node`
+- View logs: `sudo journalctl -u ug-node -f`
+
+### changing node version
+
+If you change Node.js versions using nvm:
+1. Update the path in the service file
+2. Run the setcap command on the new Node.js binary
+3. Reload and restart the service
+
+### changing directory and file name
+
+The service name `ug-node` is used throughout the system. If you need to change it:
+1. Update the service file name
+2. Update all systemctl commands
+3. Update the SyslogIdentifier in the service file
 
 ## Pigpio Setup
-
+- [Raspberry Pi Hardware Page] (https://www.raspberrypi.com/documentation/computers/raspberry-pi.html)
 - [Pigpio Download Page](https://abyz.me.uk/rpi/pigpio/download.html)
 - [Pigpio C Library Repository](https://github.com/joan2937/pigpio)
 - [Pigpio Node.js Package Repository](https://github.com/fivdi/pigpio)

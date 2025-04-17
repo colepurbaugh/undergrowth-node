@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sensor Data Graphs</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body class="bg-gray-100 p-4">
+    <div class="max-w-4xl mx-auto">
+        <h1 class="text-2xl font-bold mb-4">Sensor Data Graphs</h1>
+        
+        <!-- Controls -->
+        <div class="bg-white p-4 rounded shadow mb-4">
+            <div class="flex gap-4">
+                <div>
+                    <label for="timeRange" class="block text-sm font-medium text-gray-700">Time Range:</label>
+                    <select id="timeRange" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm">
+                        <option value="1">Last Hour</option>
+                        <option value="24">Last 24 Hours</option>
+                        <option value="168">Last Week</option>
+                    </select>
+                </div>
+                <div>
+                    <label for="points" class="block text-sm font-medium text-gray-700">Points:</label>
+                    <select id="points" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm">
+                        <option value="100">100 points</option>
+                        <option value="1000" selected>1000 points</option>
+                        <option value="10000">10000 points</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        <!-- Temperature Chart -->
+        <div class="bg-white p-4 rounded shadow mb-4">
+            <h2 class="text-xl font-semibold mb-2">Temperature (°F)</h2>
+            <div class="chart-container" style="height: 300px;">
+                <canvas id="tempChart"></canvas>
+            </div>
+        </div>
+
+        <!-- Humidity Chart -->
+        <div class="bg-white p-4 rounded shadow">
+            <h2 class="text-xl font-semibold mb-2">Humidity (%)</h2>
+            <div class="chart-container" style="height: 300px;">
+                <canvas id="humidityChart"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let tempChart = null;
+        let humidityChart = null;
+        let autoUpdateInterval = null;
+
+        function updateCharts() {
+            const timeRange = document.getElementById('timeRange').value;
+            const points = document.getElementById('points').value;
+            const now = new Date();
+            const startDate = new Date(now.getTime() - (timeRange * 3600 * 1000)).toISOString();
+
+            // Update temperature chart
+            fetch(`/api/readings/binned?startDate=${startDate}&hours=${timeRange}&points=${points}&type=temperature`)
+                .then(response => response.json())
+                .then(data => {
+                    updateChart(tempChart, data, 'Temperature (°F)');
+                })
+                .catch(error => console.error('Error fetching temperature data:', error));
+
+            // Update humidity chart
+            fetch(`/api/readings/binned?startDate=${startDate}&hours=${timeRange}&points=${points}&type=humidity`)
+                .then(response => response.json())
+                .then(data => {
+                    updateChart(humidityChart, data, 'Humidity (%)');
+                })
+                .catch(error => console.error('Error fetching humidity data:', error));
+        }
+
+        function updateChart(chart, data, label) {
+            const labels = data.map(row => new Date(row.timestamp).toLocaleString());
+            const values = data.map(row => row.value);
+
+            if (!chart) {
+                const ctx = document.getElementById(label.includes('Temperature') ? 'tempChart' : 'humidityChart').getContext('2d');
+                chart = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: labels,
+                        datasets: [{
+                            label: label,
+                            data: values,
+                            borderColor: label.includes('Temperature') ? 'rgb(255, 99, 132)' : 'rgb(54, 162, 235)',
+                            tension: 0.1
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        scales: {
+                            x: {
+                                display: true,
+                                title: {
+                                    display: true,
+                                    text: 'Time'
+                                }
+                            },
+                            y: {
+                                display: true,
+                                title: {
+                                    display: true,
+                                    text: label
+                                }
+                            }
+                        }
+                    }
+                });
+            } else {
+                chart.data.labels = labels;
+                chart.data.datasets[0].data = values;
+                chart.update();
+            }
+
+            return chart;
+        }
+
+        // Initialize charts
+        document.addEventListener('DOMContentLoaded', () => {
+            updateCharts();
+            
+            // Update charts when controls change
+            document.getElementById('timeRange').addEventListener('change', () => {
+                clearInterval(autoUpdateInterval);
+                updateCharts();
+                if (document.getElementById('timeRange').value === '1') {
+                    autoUpdateInterval = setInterval(updateCharts, 5000);
+                }
+            });
+
+            document.getElementById('points').addEventListener('change', updateCharts);
+        });
+    </script>
+</body>
+</html> 
