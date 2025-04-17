@@ -97,109 +97,107 @@
             document.getElementById('currentTime').textContent = `${timeString} ${timezoneAbbr}`;
         }
 
+        function fetchAndUpdateChart(url, type) {
+            fetch(url)
+                .then(response => response.json())
+                .then(data => {
+                    console.log(`${type} data received:`, data.length, 'points');
+                    const formattedData = data.map(row => ({
+                        ...row,
+                        timestamp: new Date(row.timestamp).toLocaleString('en-US', { timeZone: document.getElementById('timezone').value })
+                    }));
+                    
+                    // Destroy existing chart if it exists
+                    if (type === 'temperature' && tempChart) {
+                        tempChart.destroy();
+                    } else if (type === 'humidity' && humidityChart) {
+                        humidityChart.destroy();
+                    }
+
+                    // Create new chart
+                    const ctx = document.getElementById(type === 'temperature' ? 'tempChart' : 'humidityChart').getContext('2d');
+                    const chart = new Chart(ctx, {
+                        type: 'line',
+                        data: {
+                            labels: formattedData.map(row => row.timestamp),
+                            datasets: [{
+                                label: type === 'temperature' ? 'Temperature (°F)' : 'Humidity (%)',
+                                data: formattedData.map(row => row.value),
+                                borderColor: type === 'temperature' ? 'rgb(255, 99, 132)' : 'rgb(54, 162, 235)',
+                                backgroundColor: type === 'temperature' ? 'rgba(255, 99, 132, 0.1)' : 'rgba(54, 162, 235, 0.1)',
+                                tension: 0.1,
+                                fill: true
+                            }]
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            plugins: {
+                                legend: {
+                                    labels: {
+                                        color: '#e8e6e3'
+                                    }
+                                }
+                            },
+                            scales: {
+                                x: {
+                                    grid: {
+                                        color: 'rgba(255, 255, 255, 0.1)'
+                                    },
+                                    ticks: {
+                                        color: '#e8e6e3'
+                                    }
+                                },
+                                y: {
+                                    grid: {
+                                        color: 'rgba(255, 255, 255, 0.1)'
+                                    },
+                                    ticks: {
+                                        color: '#e8e6e3'
+                                    },
+                                    title: {
+                                        display: true,
+                                        text: type === 'temperature' ? 'Temperature (°F)' : 'Humidity (%)',
+                                        color: '#e8e6e3'
+                                    }
+                                }
+                            }
+                        }
+                    });
+
+                    // Store reference to the new chart
+                    if (type === 'temperature') {
+                        tempChart = chart;
+                    } else {
+                        humidityChart = chart;
+                    }
+                })
+                .catch(error => console.error(`Error fetching ${type} data:`, error));
+        }
+
         function updateCharts() {
-            console.log('Updating charts...');
             const timeRange = document.getElementById('timeRange').value;
             const points = document.getElementById('points').value;
             const timezone = document.getElementById('timezone').value;
             const now = new Date();
             const startDate = new Date(now.getTime() - (timeRange * 3600 * 1000)).toISOString();
 
-            console.log('Fetching data with params:', {
-                startDate,
-                hours: timeRange,
-                points,
-                timezone
-            });
+            // Build URLs for both charts
+            const tempUrl = new URL('/api/readings/binned', window.location.origin);
+            tempUrl.searchParams.set('startDate', startDate);
+            tempUrl.searchParams.set('hours', timeRange);
+            tempUrl.searchParams.set('points', points);
+            tempUrl.searchParams.set('type', 'temperature');
 
-            // Update temperature chart
-            fetch(`/api/readings/binned?startDate=${startDate}&hours=${timeRange}&points=${points}&type=temperature`)
-                .then(response => response.json())
-                .then(data => {
-                    console.log('Temperature data received:', data.length, 'points');
-                    const formattedData = data.map(row => ({
-                        ...row,
-                        timestamp: new Date(row.timestamp).toLocaleString('en-US', { timeZone: timezone })
-                    }));
-                    updateChart(tempChart, formattedData, 'Temperature (°F)', 'rgb(255, 99, 132)');
-                })
-                .catch(error => console.error('Error fetching temperature data:', error));
+            const humidityUrl = new URL('/api/readings/binned', window.location.origin);
+            humidityUrl.searchParams.set('startDate', startDate);
+            humidityUrl.searchParams.set('hours', timeRange);
+            humidityUrl.searchParams.set('points', points);
+            humidityUrl.searchParams.set('type', 'humidity');
 
-            // Update humidity chart
-            fetch(`/api/readings/binned?startDate=${startDate}&hours=${timeRange}&points=${points}&type=humidity`)
-                .then(response => response.json())
-                .then(data => {
-                    console.log('Humidity data received:', data.length, 'points');
-                    const formattedData = data.map(row => ({
-                        ...row,
-                        timestamp: new Date(row.timestamp).toLocaleString('en-US', { timeZone: timezone })
-                    }));
-                    updateChart(humidityChart, formattedData, 'Humidity (%)', 'rgb(54, 162, 235)');
-                })
-                .catch(error => console.error('Error fetching humidity data:', error));
-        }
-
-        function updateChart(chart, data, label, color) {
-            const labels = data.map(row => row.timestamp);
-            const values = data.map(row => row.value);
-
-            if (!chart) {
-                const ctx = document.getElementById(label.includes('Temperature') ? 'tempChart' : 'humidityChart').getContext('2d');
-                chart = new Chart(ctx, {
-                    type: 'line',
-                    data: {
-                        labels: labels,
-                        datasets: [{
-                            label: label,
-                            data: values,
-                            borderColor: color,
-                            backgroundColor: color.replace('rgb', 'rgba').replace(')', ', 0.1)'),
-                            tension: 0.1,
-                            fill: true
-                        }]
-                    },
-                    options: {
-                        responsive: true,
-                        maintainAspectRatio: false,
-                        plugins: {
-                            legend: {
-                                labels: {
-                                    color: '#e8e6e3'
-                                }
-                            }
-                        },
-                        scales: {
-                            x: {
-                                grid: {
-                                    color: 'rgba(255, 255, 255, 0.1)'
-                                },
-                                ticks: {
-                                    color: '#e8e6e3'
-                                }
-                            },
-                            y: {
-                                grid: {
-                                    color: 'rgba(255, 255, 255, 0.1)'
-                                },
-                                ticks: {
-                                    color: '#e8e6e3'
-                                },
-                                title: {
-                                    display: true,
-                                    text: label,
-                                    color: '#e8e6e3'
-                                }
-                            }
-                        }
-                    }
-                });
-            } else {
-                chart.data.labels = labels;
-                chart.data.datasets[0].data = values;
-                chart.update();
-            }
-
-            return chart;
+            // Update both charts
+            fetchAndUpdateChart(tempUrl.toString(), 'temperature');
+            fetchAndUpdateChart(humidityUrl.toString(), 'humidity');
         }
 
         // Initialize charts and time display
@@ -212,28 +210,16 @@
             document.getElementById('timezone').addEventListener('change', (e) => {
                 localStorage.setItem('selectedTimezone', e.target.value);
                 updateTime();
-                updateCharts();
             });
-            
-            // Initial chart update
-            updateCharts();
-            
-            // Update charts when controls change
-            document.getElementById('timeRange').addEventListener('change', () => {
-                clearInterval(autoUpdateInterval);
-                updateCharts();
-                if (document.getElementById('timeRange').value === '1') {
-                    autoUpdateInterval = setInterval(updateCharts, 5000);
-                }
-            });
-
-            document.getElementById('points').addEventListener('change', updateCharts);
             
             // Add click handler for Update button
             document.getElementById('updateButton').addEventListener('click', () => {
                 console.log('Update button clicked');
                 updateCharts();
             });
+
+            // Initial chart update
+            updateCharts();
         });
     </script>
 </body>
