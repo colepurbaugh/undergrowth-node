@@ -134,7 +134,7 @@
                         ...row,
                         timestamp: new Date(row.timestamp).toLocaleString('en-US', { timeZone: timezone })
                     }));
-                    updateChart(humidityChart, data, 'Humidity (%)', 'rgb(54, 162, 235)');
+                    updateChart(humidityChart, formattedData, 'Humidity (%)', 'rgb(54, 162, 235)');
                 })
                 .catch(error => console.error('Error fetching humidity data:', error));
         }

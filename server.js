@@ -215,33 +215,82 @@ io.on('connection', (socket) => {
     });
 });
 
-// Add new endpoint for binned data
-app.get('/api/readings/binned', (req, res) => {
-    const { startDate, hours, points, type } = req.query;
-    
-    if (!startDate || !hours || !points || !type) {
-        return res.status(400).json({ error: 'Missing required parameters' });
+// Binned Readings Endpoint
+app.get('/api/readings/binned', async (req, res) => {
+  try {
+    const startDateParam = req.query.startDate;
+    const hours = parseInt(req.query.hours, 10);
+    const binCount = parseInt(req.query.points, 10);
+    const type = req.query.type;
+
+    // Validate
+    if (!startDateParam || !hours || !binCount || !type) {
+      return res.status(400).json({
+        error: 'Missing startDate, hours, points, or type'
+      });
     }
 
-    const endDate = new Date(new Date(startDate).getTime() + (parseInt(hours) * 3600 * 1000)).toISOString();
-    
-    db.all(`
-        SELECT 
-            strftime('%Y-%m-%d %H:%M:%S', timestamp) as timestamp,
-            AVG(value) as value
+    // Convert startDate to numeric epoch
+    const startMs = Date.parse(startDateParam);
+    if (isNaN(startMs)) {
+      return res.status(400).json({ error: 'Invalid startDate format' });
+    }
+    const endMs = startMs + (hours * 3600 * 1000); // add X hours in ms
+
+    // Convert to ISO for DB query
+    const startIso = new Date(startMs).toISOString();
+    const endIso = new Date(endMs).toISOString();
+
+    // 1) Fetch raw rows from DB
+    const rawRows = await new Promise((resolve, reject) => {
+      const sql = `
+        SELECT timestamp, value
         FROM sensor_readings
-        WHERE timestamp BETWEEN ? AND ?
-            AND type = ?
-        GROUP BY strftime('%Y-%m-%d %H:%M:%S', timestamp)
+        WHERE type = ?
+          AND timestamp >= ?
+          AND timestamp < ?
         ORDER BY timestamp ASC
-        LIMIT ?
-    `, [startDate, endDate, type, parseInt(points)], (err, rows) => {
-        if (err) {
-            console.error('Error fetching binned data:', err);
-            return res.status(500).json({ error: 'Failed to fetch data' });
-        }
-        res.json(rows);
+      `;
+      db.all(sql, [type, startIso, endIso], (err, rows) => {
+        if (err) return reject(err);
+        resolve(rows);
+      });
     });
+
+    if (!rawRows || rawRows.length === 0) {
+      return res.json([]); // no data in that range => return empty
+    }
+
+    // 2) Create bins
+    const bins = new Array(binCount).fill(null).map(() => ({ sum: 0, count: 0 }));
+    const totalMs = endMs - startMs;
+    const binSizeMs = totalMs / binCount; // ms per bin
+
+    // 3) Distribute each raw row into the correct bin
+    for (const row of rawRows) {
+      const tMs = Date.parse(row.timestamp);
+      const offset = tMs - startMs; // ms since start
+      const index = Math.floor(offset / binSizeMs);
+      if (index >= 0 && index < binCount) {
+        bins[index].sum += row.value;
+        bins[index].count += 1;
+      }
+    }
+
+    // 4) Build final output array
+    const result = bins.map((b, i) => {
+      const binStartMs = startMs + (i * binSizeMs);
+      return {
+        timestamp: new Date(binStartMs).toISOString(),
+        value: (b.count === 0) ? null : (b.sum / b.count)
+      };
+    });
+
+    res.json(result);
+  } catch (error) {
+    console.error('Error in binned readings:', error);
+    res.status(500).json({ error: 'Failed to fetch binned readings' });
+  }
 });
 
 // Initialize Raspberry Pi and then start the application
