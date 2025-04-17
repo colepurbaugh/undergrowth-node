@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Schedule Events</title>
+    <style>
+        :root {
+            --bg-primary: #181a1b;
+            --text-primary: #e8e6e3;
+            --text-secondary: #b2aba1;
+            --border-color: #736b5e;
+            --success-color: #3d8c40;
+            --error-color: #a91409;
+            --active-color: #998100;
+            --inactive-color: #4f5559;
+            --selection-bg: #004daa;
+            --selection-text: #e8e6e3;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 1rem;
+            background-color: var(--bg-primary);
+            color: var(--text-primary);
+            line-height: 1.5;
+            font-size: 1rem;
+            min-height: 100vh;
+        }
+
+        .container {
+            background-color: var(--bg-primary);
+            padding: 1rem;
+            border-radius: 0.5rem;
+            margin-bottom: 1rem;
+            width: 100%;
+        }
+
+        .event-control {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 0.5rem;
+            margin-bottom: 1rem;
+            padding: 0.5rem;
+            background-color: #333;
+            border: 1px solid var(--border-color);
+            border-radius: 0.25rem;
+        }
+
+        .gpio-title {
+            font-size: 1.2rem;
+            color: var(--text-primary);
+            font-weight: bold;
+            min-width: 50px;
+        }
+
+        input[type="text"],
+        input[type="number"],
+        select {
+            width: 80px;
+            padding: 0.25rem;
+            background-color: var(--bg-primary);
+            color: var(--text-primary);
+            border: 1px solid var(--border-color);
+            border-radius: 0.25rem;
+        }
+
+        .pwm-value {
+            color: var(--text-secondary);
+            min-width: 40px;
+        }
+
+        button {
+            padding: 0.25rem 0.5rem;
+            background-color: var(--inactive-color);
+            color: var(--text-primary);
+            border: 1px solid var(--border-color);
+            border-radius: 0.25rem;
+            cursor: pointer;
+        }
+
+        button:hover {
+            background-color: var(--active-color);
+        }
+
+        button.delete {
+            margin-left: auto;
+            background-color: var(--error-color);
+            padding: 0.4rem 0.75rem;
+        }
+
+        button.add-event {
+            margin-left: auto;
+            background-color: var(--success-color);
+            padding: 0.4rem 0.75rem;
+        }
+
+        .toggle {
+            position: relative;
+            display: inline-block;
+            width: 60px;
+            height: 24px;
+        }
+
+        .toggle input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: var(--inactive-color);
+            transition: .4s;
+            border-radius: 24px;
+        }
+
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 16px;
+            width: 16px;
+            left: 4px;
+            bottom: 4px;
+            background-color: var(--text-primary);
+            transition: .4s;
+            border-radius: 50%;
+        }
+
+        input:checked + .slider {
+            background-color: var(--success-color);
+        }
+
+        input:checked + .slider:before {
+            transform: translateX(36px);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Add New Event Form -->
+        <h2 class="text-xl font-semibold mb-4 text-[#e8e6e3]">Add Event</h2>
+        <div class="event-control">
+            <span class="gpio-title">GPIO:</span>
+            <select id="gpio">
+                <option value="12">12</option>
+                <option value="13">13</option>
+                <option value="18">18</option>
+                <option value="19">19</option>
+            </select>
+            <span class="gpio-title">Time:</span>
+            <input type="text" id="triggerTime" pattern="[0-9]{2}:[0-9]{2}:[0-9]{2}" placeholder="HH:MM:SS">
+            <span class="gpio-title">PWM:</span>
+            <input type="number" id="pwmValue" min="0" max="1024" value="0">
+            <span class="pwm-value">/1024</span>
+            <button class="add-event" onclick="addEvent()">Add Event</button>
+        </div>
+
+        <!-- Active Events List -->
+        <h2 class="text-xl font-semibold mb-4 text-[#e8e6e3]">Active Events</h2>
+        <div id="eventList">
+            <div class="event-control">
+                <span class="gpio-title">GPIO12:</span>
+                <span class="pwm-value">09:00:00</span>
+                <span class="pwm-value">512/1024</span>
+                <span class="pwm-value">50%</span>
+                <span class="pwm-value">2h 15m</span>
+                <label class="toggle">
+                    <input type="checkbox" checked>
+                    <span class="slider"></span>
+                </label>
+                <button class="delete">Delete</button>
+            </div>
+            <div class="event-control">
+                <span class="gpio-title">GPIO18:</span>
+                <span class="pwm-value">21:30:00</span>
+                <span class="pwm-value">1024/1024</span>
+                <span class="pwm-value">100%</span>
+                <span class="pwm-value">14h 45m</span>
+                <label class="toggle">
+                    <input type="checkbox" checked>
+                    <span class="slider"></span>
+                </label>
+                <button class="delete">Delete</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        const socket = io();
+
+        function addEvent() {
+            const gpio = document.getElementById('gpio').value;
+            const time = document.getElementById('triggerTime').value;
+            const pwm = document.getElementById('pwmValue').value;
+            
+            if (time && pwm) {
+                socket.emit('addEvent', { gpio, time, pwm });
+            }
+        }
+
+        socket.on('eventAdded', (data) => {
+            // Handle successful event addition
+            console.log('Event added:', data);
+        });
+
+        socket.on('eventError', (data) => {
+            console.error('Event error:', data.message);
+        });
+    </script>
+</body>
+</html>

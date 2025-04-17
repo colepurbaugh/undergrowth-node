@@ -1,0 +1,674 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Grow Operation Dashboard</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body class="bg-gray-100 p-4">
+  <h1 class="text-center text-2xl mb-6">Grow Operation Dashboard</h1>
+
+  <!-- ALERT BANNER SECTION -->
+  <div id="alertSection" class="bg-red-500 text-white p-4 mb-4 hidden">
+    <p class="font-bold">ALERT ACTIVE!</p>
+    <p>This indicates a sensor reading is out of range or a test alert was triggered.</p>
+    <button id="clearAlertBtn" class="mt-2 bg-white text-red-500 px-4 py-2 rounded">
+      Clear Alert
+    </button>
+  </div>
+
+  <!-- MANUAL/TEST ALERT SECTION -->
+  <div id="manualAlertSection" class="bg-white p-4 rounded shadow-md mb-4">
+    <h2 class="text-lg font-bold mb-2">Test the Alert System</h2>
+    <div id="testAlertContainer" class="flex items-center space-x-2">
+      <!-- Initial yellow button -->
+      <button id="initialAlertBtn" class="bg-yellow-500 hover:bg-yellow-600 text-white px-4 py-2 rounded">
+        Trigger Test Alert
+      </button>
+      <!-- Additional confirmation buttons appear here -->
+    </div>
+  </div>
+
+  <!-- QR Code Controls -->
+  <div class="bg-white p-4 rounded shadow-md mb-4 flex">
+    <!-- Left side: QR Code Controls (1/3 width) -->
+    <div class="w-1/3 pr-2">
+      <button id="openScanApp" class="bg-indigo-500 hover:bg-indigo-700 text-white py-2 px-4 rounded w-full">
+        Scan QR Code
+      </button>
+      <div class="mt-2">
+        <input type="text" id="qrInput" class="border rounded p-1 w-full" placeholder="Paste QR Code here">
+        <button id="processQrButton" class="bg-green-500 hover:bg-green-700 text-white py-2 px-4 rounded w-full mt-2">
+          Process QR Code
+        </button>
+      </div>
+      <div id="scannedValueDisplay" class="mt-2 text-lg font-semibold"></div>
+    </div>
+    <!-- Right side: Device/Plant Info display -->
+    <div id="qrInfoDisplay" class="w-2/3 pl-2 border-l border-gray-300">
+      <h3 class="text-lg font-bold mb-2">Device/Plant Info</h3>
+      <div id="deviceInfo"></div>
+    </div>
+  </div>
+
+  <!-- Backup & Relay Controls -->
+  <div class="flex justify-between mt-4">
+    <!-- Backup -->
+    <div class="text-center">
+      <h3 class="text-lg mb-2">Database Backup</h3>
+      <button id="backupButton" class="bg-blue-500 hover:bg-blue-700 text-white py-2 px-4 rounded">Backup Now</button>
+      <p id="backupStatus" class="mt-2 text-sm text-gray-500">Status: Waiting</p>
+    </div>
+    <!-- Relay -->
+    <div class="text-center">
+      <h3 class="text-lg mb-2">Relay Control</h3>
+      <button id="relayButton" class="bg-green-500 hover:bg-green-700 text-white py-2 px-4 rounded">Turn On</button>
+      <p id="relayStatus" class="mt-2 text-sm text-gray-500">Relay is OFF</p>
+    </div>
+    <!-- Graph Button -->
+    <div class="text-center">
+      <h3 class="text-lg mb-2">Graph Data</h3>
+      <button id="graphButton" class="bg-purple-500 hover:bg-purple-700 text-white py-2 px-4 rounded">Generate Graph</button>
+    </div>
+  </div>
+
+  <!-- Chart Section -->
+  <div class="bg-white p-6 rounded shadow-md mb-4">
+    <div class="flex flex-wrap gap-4">
+
+      <!-- Building -->
+      <div>
+        <label for="buildingSelector" class="mr-2 font-semibold">Building:</label>
+        <select id="buildingSelector" class="text-sm p-1 border rounded"></select>
+      </div>
+
+      <!-- Room -->
+      <div>
+        <label for="roomSelector" class="mr-2 font-semibold">Room:</label>
+        <select id="roomSelector" class="text-sm p-1 border rounded"></select>
+      </div>
+
+      <!-- Zone -->
+      <div>
+        <label for="zoneSelector" class="mr-2 font-semibold">Zone:</label>
+        <select id="zoneSelector" class="text-sm p-1 border rounded"></select>
+      </div>
+
+      <!-- Device -->
+      <div>
+        <label for="deviceSelector" class="mr-2 font-semibold">Device:</label>
+        <select id="deviceSelector" class="text-sm p-1 border rounded"></select>
+      </div>
+
+      <!-- Time Range Selector -->
+      <div>
+        <label for="timeRangeSelector" class="mr-2 font-semibold">Time Range:</label>
+        <select id="timeRangeSelector" class="text-sm p-1 border rounded">
+          <option value="60">Last Minute</option>
+          <option value="3600">Last Hour</option>
+          <option value="86400">Last 24 Hours</option>
+          <option value="604800">Last Week</option>
+          <option value="customStart">Custom Start</option>
+        </select>
+      </div>
+
+      <!-- Points (resolution) -->
+      <div>
+        <label for="pointsSelector" class="mr-2 font-semibold">Points:</label>
+        <select id="pointsSelector" class="text-sm p-1 border rounded">
+          <option value="100" selected>100</option>
+          <option value="200">200</option>
+          <option value="500">500</option>
+          <option value="1000">1000</option>
+          <option value="2000">2000</option>
+          <option value="4000">4000</option>
+          <option value="8000">8000</option>
+          <option value="16000">16000</option>
+          <option value="32000">32000</option>
+          <option value="64000">64000</option>
+          <option value="128000">128000</option>
+        </select>
+      </div>
+
+      <!-- Metric -->
+      <div>
+        <label for="metricSelector" class="mr-2 font-semibold">Metric:</label>
+        <select id="metricSelector" class="text-sm p-1 border rounded">
+          <option value="temperature">Temperature</option>
+          <option value="humidity">Humidity</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- Custom Start Section: year/month/day + "From" + "To" -->
+    <div id="customStartSelectors" class="hidden mt-4 p-2 border border-gray-200 rounded">
+      <h3 class="font-bold mb-2 text-sm">Custom Start</h3>
+      <div class="flex flex-wrap gap-4">
+
+        <!-- Year -->
+        <div>
+          <label for="customYear" class="mr-2 font-semibold text-xs">Year:</label>
+          <select id="customYear" class="text-xs p-1 border rounded">
+            <option value="2025">2025</option>
+            <option value="2026">2026</option>
+          </select>
+        </div>
+
+        <!-- Month -->
+        <div>
+          <label for="customMonth" class="mr-2 font-semibold text-xs">Month:</label>
+          <select id="customMonth" class="text-xs p-1 border rounded">
+            <option value="Jan">Jan</option>
+            <option value="Feb">Feb</option>
+            <option value="Mar">Mar</option>
+            <option value="Apr">Apr</option>
+            <option value="May">May</option>
+            <option value="Jun">Jun</option>
+            <option value="July">July</option>
+            <option value="Aug">Aug</option>
+            <option value="Sep">Sep</option>
+            <option value="Oct">Oct</option>
+            <option value="Nov">Nov</option>
+            <option value="Dec">Dec</option>
+          </select>
+        </div>
+
+        <!-- Day -->
+        <div>
+          <label for="customDay" class="mr-2 font-semibold text-xs">Day:</label>
+          <select id="customDay" class="text-xs p-1 border rounded">
+            <option value="1">1</option>
+            <option value="2">2</option>
+            <option value="3">3</option>
+            <option value="4">4</option>
+            <option value="5">5</option>
+            <option value="6">6</option>
+            <option value="7">7</option>
+            <option value="8">8</option>
+            <option value="9">9</option>
+            <option value="10">10</option>
+            <option value="11">11</option>
+            <option value="12">12</option>
+            <option value="13">13</option>
+            <option value="14">14</option>
+            <option value="15">15</option>
+            <option value="16">16</option>
+            <option value="17">17</option>
+            <option value="18">18</option>
+            <option value="19">19</option>
+            <option value="20">20</option>
+            <option value="21">21</option>
+            <option value="22">22</option>
+            <option value="23">23</option>
+            <option value="24">24</option>
+            <option value="25">25</option>
+            <option value="26">26</option>
+            <option value="27">27</option>
+            <option value="28">28</option>
+            <option value="29">29</option>
+            <option value="30">30</option>
+            <option value="31">31</option>
+          </select>
+        </div>
+
+        <!-- From Hour -->
+        <div>
+          <label for="fromHourSelector" class="mr-2 font-semibold text-xs">From:</label>
+          <select id="fromHourSelector" class="text-xs p-1 border rounded">
+            <option value="0">midnight</option>
+            <option value="1" selected>1AM</option>
+            <option value="2">2AM</option>
+            <option value="3">3AM</option>
+            <option value="4">4AM</option>
+            <option value="5">5AM</option>
+            <option value="6">6AM</option>
+            <option value="7">7AM</option>
+            <option value="8">8AM</option>
+            <option value="9">9AM</option>
+            <option value="10">10AM</option>
+            <option value="11">11AM</option>
+            <option value="12">12AM</option>
+            <option value="13">1PM</option>
+            <option value="14">2PM</option>
+            <option value="15">3PM</option>
+            <option value="16">4PM</option>
+            <option value="17">5PM</option>
+            <option value="18">6PM</option>
+            <option value="19">7PM</option>
+            <option value="20">8PM</option>
+            <option value="21">9PM</option>
+            <option value="22">10PM</option>
+            <option value="23">11PM</option>
+          </select>          
+        </div>
+
+        <!-- To Hours -->
+        <div>
+          <label for="toHourSelector" class="mr-2 font-semibold text-xs">To:</label>
+          <select id="toHourSelector" class="text-xs p-1 border rounded">
+            <option value="1">1 hour</option>
+            <option value="2">2 hours</option>
+            <option value="4">4 hours</option>
+            <option value="8" selected>8 hours</option>
+            <option value="24">24 hours</option>
+            <option value="168">168 hours (7 days)</option>
+          </select>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- The chart canvas -->
+    <div class="chart-container mt-4" style="height:300px;">
+      <canvas id="combinedChart"></canvas>
+    </div>
+  </div>
+
+  <script>
+    // ----------------------------------------------------------------
+    // ALERT LOGIC
+    // ----------------------------------------------------------------
+    async function fetchAlertState() {
+      try {
+        const res = await fetch('/api/alert-state');
+        const data = await res.json();
+        return data.alertActive;
+      } catch (err) {
+        console.error('Error fetching alert state:', err);
+        return false;
+      }
+    }
+
+    function resetAlertButtons() {
+      const container = document.getElementById('testAlertContainer');
+      while (container.children.length > 1) {
+        container.removeChild(container.lastChild);
+      }
+    }
+
+    document.getElementById('initialAlertBtn').addEventListener('click', () => {
+      const container = document.getElementById('testAlertContainer');
+      if (!document.getElementById('confirmStep1Btn')) {
+        const btn1 = document.createElement('button');
+        btn1.id = 'confirmStep1Btn';
+        btn1.textContent = 'Are you sure?';
+        btn1.className = 'bg-orange-500 hover:bg-orange-600 text-white px-4 py-2 rounded';
+        container.appendChild(btn1);
+
+        btn1.addEventListener('click', () => {
+          if (!document.getElementById('confirmStep2Btn')) {
+            const btn2 = document.createElement('button');
+            btn2.id = 'confirmStep2Btn';
+            btn2.textContent = 'Confirm Alert';
+            btn2.className = 'bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded';
+            container.appendChild(btn2);
+
+            btn2.addEventListener('click', () => {
+              triggerTestAlert();
+              resetAlertButtons();
+            });
+          }
+        });
+      }
+    });
+
+    async function updateAlertDisplay() {
+      const alertSection = document.getElementById('alertSection');
+      const active = await fetchAlertState();
+      if (active) alertSection.classList.remove('hidden');
+      else alertSection.classList.add('hidden');
+    }
+
+    async function clearAlert() {
+      try {
+        const res = await fetch('/api/clear-alert', { method: 'POST' });
+        const data = await res.json();
+        alert(data.message || 'Alert cleared!');
+        updateAlertDisplay();
+      } catch (err) {
+        console.error('Error clearing alert:', err);
+      }
+    }
+
+    async function triggerTestAlert() {
+      try {
+        const res = await fetch('/api/test-alert', { method: 'POST' });
+        const data = await res.json();
+        alert(data.message || 'Test alert triggered!');
+        updateAlertDisplay();
+      } catch (err) {
+        console.error('Error triggering test alert:', err);
+      }
+    }
+
+    // ----------------------------------------------------------------
+    // CHARTING LOGIC
+    // ----------------------------------------------------------------
+    let combinedChart = null;
+    let autoUpdateInterval = null;
+
+    async function fetchAndUpdateChart(url) {
+      try {
+        const response = await fetch(url);
+        const data = await response.json();
+        console.log('Fetched data:', data);
+
+        if (!data || data.length === 0) {
+          updateChart(['No Data'], [0], 'No Data Available');
+          return;
+        }
+
+        const labels = data.map(row => new Date(row.timestamp).toLocaleString());
+        const values = data.map(row => row.value);
+
+        updateChart(labels, values, document.getElementById('metricSelector').value);
+      } catch (error) {
+        console.error('Error fetching data:', error);
+        updateChart(['Error'], [0], 'Error Fetching Data');
+      }
+    }
+
+    function updateChart(labels, values, metricTitle) {
+      if (!combinedChart) {
+        const ctx = document.getElementById('combinedChart').getContext('2d');
+        combinedChart = new Chart(ctx, {
+          type: 'line',
+          data: {
+            labels,
+            datasets: [
+              {
+                label: metricTitle,
+                data: values,
+                borderWidth: 1
+              }
+            ]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+              x: { display: true },
+              y: { display: true }
+            }
+          }
+        });
+      } else {
+        combinedChart.data.labels = labels;
+        combinedChart.data.datasets[0].data = values;
+        combinedChart.data.datasets[0].label = metricTitle;
+        combinedChart.update();
+      }
+    }
+
+    // The main "Generate Graph" button logic
+    document.getElementById('graphButton').addEventListener('click', () => {
+      const device = document.getElementById('deviceSelector').value;
+      const timeRange = document.getElementById('timeRangeSelector').value;
+      const points = document.getElementById('pointsSelector').value;
+      const metric = document.getElementById('metricSelector').value;
+
+      if (!device) {
+        alert('Please select a device before generating the graph.');
+        return;
+      }
+
+      // We'll call /api/readings/binned
+      // Build a URL object so it's easy to add query params
+      const url = new URL('/api/readings/binned', window.location.origin);
+      url.searchParams.set('device', device);
+      url.searchParams.set('metric', metric);
+      url.searchParams.set('points', points);
+
+      // If not customStart, interpret timeRange as "hours since now"
+      if (timeRange !== 'customStart') {
+        // For example, if timeRange === "3600", that's last hour => 1 hour
+        // If timeRange === "86400", that's last 24 hours => 24 hours
+        // We'll compute a startDate = (now - X hours)
+        const now = new Date();
+        const rangeSeconds = parseInt(timeRange, 10);
+        const hoursFloat = rangeSeconds / 3600.0; // e.g. 1 hour, 24 hours, etc.
+
+        // The "startDate" is (now - hoursFloat)
+        const startDateObj = new Date(now.getTime() - (rangeSeconds * 1000));
+        const startIso = startDateObj.toISOString();
+
+        url.searchParams.set('startDate', startIso);
+        url.searchParams.set('hours', hoursFloat.toString());
+      } else {
+        // customStart scenario
+        const year = parseInt(document.getElementById('customYear').value, 10);
+        const monthMap = {
+          Jan: 0, Feb: 1, Mar: 2, Apr: 3,
+          May: 4, Jun: 5, July: 6, Aug: 7,
+          Sep: 8, Oct: 9, Nov: 10, Dec: 11
+        };
+        const monthIndex = monthMap[document.getElementById('customMonth').value];
+        const day = parseInt(document.getElementById('customDay').value, 10);
+        const fromHour = parseInt(document.getElementById('fromHourSelector').value, 10);
+        const toHour = parseInt(document.getElementById('toHourSelector').value, 10);
+
+        // Build a local start date/time
+        const startDateObj = new Date(year, monthIndex, day, fromHour, 0, 0);
+        const startIso = startDateObj.toISOString();
+
+        // "hours" is how many hours to go after that start time
+        url.searchParams.set('startDate', startIso);
+        url.searchParams.set('hours', toHour.toString());
+      }
+
+      // Clear old intervals
+      if (autoUpdateInterval) {
+        clearInterval(autoUpdateInterval);
+        autoUpdateInterval = null;
+      }
+
+      // Fetch & update chart
+      fetchAndUpdateChart(url.toString());
+
+      // If "Last Minute" or "Last Hour", do auto-refresh
+      if (timeRange === '60' || timeRange === '3600') {
+        autoUpdateInterval = setInterval(() => {
+          fetchAndUpdateChart(url.toString());
+        }, 5000);
+      }
+    });
+
+
+    // ----------------------------------------------------------------
+    // SCAN / QR LOGIC
+    // ----------------------------------------------------------------
+    document.getElementById('openScanApp').addEventListener('click', () => {
+      window.open("https://scanapp.org", "ScanApp", "width=400,height=600");
+    });
+
+    document.getElementById('processQrButton').addEventListener('click', () => {
+      const qrValue = document.getElementById('qrInput').value.trim();
+      if (!qrValue) {
+        alert("Please paste the QR Code value first.");
+        return;
+      }
+      document.getElementById('scannedValueDisplay').textContent = qrValue;
+      processScannedValue(qrValue);
+    });
+
+    async function processScannedValue(qrValue) {
+      try {
+        const [deviceResponse, plantResponse] = await Promise.all([
+          fetch('/data/device_list.json'),
+          fetch('/data/plant_list.json')
+        ]);
+        const devices = await deviceResponse.json();
+        const plants = await plantResponse.json();
+        const infoContainer = document.getElementById('deviceInfo');
+        let html = "";
+        let found = false;
+
+        // Check if device
+        if (devices[qrValue]) {
+          found = true;
+          const d = devices[qrValue];
+          html += `
+            <h4 class="font-bold">Device Details</h4>
+            <ul class="list-disc pl-4">
+              <li><strong>ID:</strong> ${qrValue}</li>
+              <li><strong>TYPE:</strong> ${d.TYPE}</li>
+              <li><strong>ENABLE:</strong> ${d.ENABLE}</li>
+              <li><strong>BUILDING:</strong> ${d.BUILDING}</li>
+              <li><strong>ROOM:</strong> ${d.ROOM}</li>
+              <li><strong>ZONE:</strong> ${d.ZONE}</li>
+              <li><strong>MODEL:</strong> ${d.MODEL}</li>
+              <li><strong>COMS:</strong> ${d.COMS}</li>
+            </ul>
+          `;
+        }
+
+        // Check if plant
+        if (plants[qrValue]) {
+          found = true;
+          const p = plants[qrValue];
+          html += `
+            <h4 class="font-bold mt-4">Plant Details</h4>
+            <ul class="list-disc pl-4">
+              <li><strong>ID:</strong> ${qrValue}</li>
+              <li><strong>Plant Name:</strong> ${p.plantName}</li>
+              <li><strong>Variety:</strong> ${p.plantVariety}</li>
+              <li><strong>BUILDING:</strong> ${p.BUILDING}</li>
+              <li><strong>ROOM:</strong> ${p.ROOM}</li>
+              <li><strong>ZONE:</strong> ${p.ZONE}</li>
+              <li><strong>Date Planted:</strong> ${p.datePlanted}</li>
+              <li><strong>Age (days):</strong> ${p.age_days}</li>
+              <li><strong>Fertilizer Consumption (lbs):</strong> ${p.calcFertilizerConsumption_lbs}</li>
+              <li><strong>Water Consumption (gal):</strong> ${p.calcWaterConsumption_gal}</li>
+              <li><strong>Projected Harvest Date:</strong> ${p.projectedHarvestDate}</li>
+              <li><strong>Plant Stage:</strong> ${p.plantStage}</li>
+              <li><strong>Notes:</strong> ${p.notes}</li>
+            </ul>
+          `;
+        }
+
+        if (!found) {
+          html = `<p>No matching device or plant found for QR code value: ${qrValue}</p>`;
+        }
+        infoContainer.innerHTML = html;
+      } catch (err) {
+        console.error("Error processing QR code value: ", err);
+      }
+    }
+
+    // DEVICE LIST LOADING
+    async function loadDeviceList() {
+      try {
+        const response = await fetch('/data/device_list.json');
+        const devices = await response.json();
+        const buildingSelector = document.getElementById('buildingSelector');
+        const roomSelector = document.getElementById('roomSelector');
+        const zoneSelector = document.getElementById('zoneSelector');
+        const deviceSelector = document.getElementById('deviceSelector');
+
+        const buildings = [...new Set(Object.values(devices)
+          .filter(d => d.ENABLE === '1')
+          .map(d => d.BUILDING))];
+
+        buildingSelector.innerHTML = '<option value="">...</option>';
+        buildings.forEach(b => {
+          const opt = document.createElement('option');
+          opt.value = b;
+          opt.textContent = b;
+          buildingSelector.appendChild(opt);
+        });
+
+        function updateRooms() {
+          roomSelector.innerHTML = '<option value="">Select a Room</option>';
+          zoneSelector.innerHTML = '<option value="">Select a Zone</option>';
+          deviceSelector.innerHTML = '<option value="">Select a Device</option>';
+
+          const selBuilding = buildingSelector.value;
+          const rooms = [...new Set(Object.values(devices)
+            .filter(d => d.BUILDING === selBuilding && d.ENABLE === '1')
+            .map(d => d.ROOM))];
+
+          rooms.forEach(r => {
+            const opt = document.createElement('option');
+            opt.value = r;
+            opt.textContent = r;
+            roomSelector.appendChild(opt);
+          });
+
+          roomSelector.addEventListener('change', updateZones);
+        }
+
+        function updateZones() {
+          zoneSelector.innerHTML = '<option value="">Select a Zone</option>';
+          deviceSelector.innerHTML = '<option value="">Select a Device</option>';
+
+          const selBuilding = buildingSelector.value;
+          const selRoom = roomSelector.value;
+          const zones = [...new Set(Object.values(devices)
+            .filter(d => d.BUILDING === selBuilding && d.ROOM === selRoom && d.ENABLE === '1')
+            .map(d => d.ZONE))];
+
+          zones.forEach(z => {
+            const opt = document.createElement('option');
+            opt.value = z;
+            opt.textContent = z;
+            zoneSelector.appendChild(opt);
+          });
+
+          zoneSelector.addEventListener('change', updateDevices);
+        }
+
+        function updateDevices() {
+          deviceSelector.innerHTML = '<option value="">Select a Device</option>';
+          const selBuilding = buildingSelector.value;
+          const selRoom = roomSelector.value;
+          const selZone = zoneSelector.value;
+
+          Object.entries(devices).forEach(([key, d]) => {
+            if (d.ENABLE === '1' &&
+                d.BUILDING === selBuilding &&
+                d.ROOM === selRoom &&
+                d.ZONE === selZone) {
+              const opt = document.createElement('option');
+              opt.value = key;
+              opt.textContent = `${key} - ${d.MODEL}`;
+              deviceSelector.appendChild(opt);
+            }
+          });
+        }
+
+        buildingSelector.addEventListener('change', updateRooms);
+      } catch (err) {
+        console.error('Error loading devices:', err);
+      }
+    }
+
+    // ----------------------------------------------------------------
+    // ON DOM LOAD
+    // ----------------------------------------------------------------
+    document.addEventListener('DOMContentLoaded', () => {
+      // Alert system
+      document.getElementById('clearAlertBtn').addEventListener('click', clearAlert);
+      updateAlertDisplay();
+      setInterval(updateAlertDisplay, 10000);
+
+      // Time Range => customStart toggler
+      const timeRangeSelector = document.getElementById('timeRangeSelector');
+      const customSection = document.getElementById('customStartSelectors');
+      timeRangeSelector.addEventListener('change', e => {
+        if (e.target.value === 'customStart') {
+          customSection.classList.remove('hidden');
+        } else {
+          customSection.classList.add('hidden');
+        }
+      });
+      timeRangeSelector.dispatchEvent(new Event('change')); // Initialize
+
+      // Chart placeholder + device list
+      updateChart(['No Data'], [0], 'No Data Available');
+      loadDeviceList();
+    });
+  </script>
+</body>
+</html>

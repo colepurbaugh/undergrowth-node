@@ -62,6 +62,11 @@ app.get('/graph', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'graph.html'));
 });
 
+// Route for schedule interface
+app.get('/schedule', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'schedule.html'));
+});
+
 // Initialize SQLite database
 const db = new sqlite3.Database('./ug-node.db', (err) => {
     if (err) {
