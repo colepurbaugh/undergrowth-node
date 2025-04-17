@@ -55,6 +55,13 @@
             border-radius: 0.25rem;
         }
 
+        .controls-group {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            margin-left: auto;
+        }
+
         .gpio-title {
             font-size: 1.2rem;
             color: var(--text-primary);
@@ -178,11 +185,13 @@
                 <span class="pwm-value">512/1024</span>
                 <span class="pwm-value">50%</span>
                 <span class="pwm-value">2h 15m</span>
-                <label class="toggle">
-                    <input type="checkbox" checked>
-                    <span class="slider"></span>
-                </label>
+                <div class="controls-group">
+                    <label class="toggle">
+                        <input type="checkbox" checked>
+                        <span class="slider"></span>
+                    </label>
                 <button class="delete">Delete</button>
+                </div>
             </div>
             <div class="event-control">
                 <span class="gpio-title">GPIO18:</span>
@@ -190,11 +199,13 @@
                 <span class="pwm-value">1024/1024</span>
                 <span class="pwm-value">100%</span>
                 <span class="pwm-value">14h 45m</span>
-                <label class="toggle">
-                    <input type="checkbox" checked>
-                    <span class="slider"></span>
-                </label>
-                <button class="delete">Delete</button>
+                <div class="controls-group">
+                    <label class="toggle">
+                        <input type="checkbox" checked>
+                        <span class="slider"></span>
+                    </label>
+                    <button class="delete">Delete</button>
+                </div>
             </div>
         </div>
     </div>
