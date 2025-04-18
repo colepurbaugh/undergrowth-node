@@ -89,6 +89,23 @@ const db = new sqlite3.Database('./ug-node.db', (err) => {
                 console.log('Sensor readings table initialized');
             }
         });
+
+        // Create events table if it doesn't exist
+        db.run(`
+            CREATE TABLE IF NOT EXISTS events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                gpio INTEGER NOT NULL,
+                time TEXT NOT NULL,
+                pwm_value INTEGER NOT NULL,
+                enabled INTEGER DEFAULT 1
+            )
+        `, (err) => {
+            if (err) {
+                console.error('Error creating events table:', err);
+            } else {
+                console.log('Events table initialized');
+            }
+        });
     }
 });
 
@@ -218,7 +235,92 @@ io.on('connection', (socket) => {
     socket.on('disconnect', () => {
         console.log('Client disconnected');
     });
+
+    // Handle event creation
+    socket.on('addEvent', (data) => {
+        const { gpio, time, pwm } = data;
+        
+        // Validate input
+        if (!gpio || !time || pwm === undefined) {
+            socket.emit('eventError', { message: 'Missing required fields' });
+            return;
+        }
+
+        // Insert event into database
+        db.run(
+            'INSERT INTO events (gpio, time, pwm_value) VALUES (?, ?, ?)',
+            [gpio, time, pwm],
+            function(err) {
+                if (err) {
+                    console.error('Error adding event:', err);
+                    socket.emit('eventError', { message: 'Failed to add event' });
+                } else {
+                    // After successful insert, broadcast updated events to all clients
+                    broadcastEvents();
+                    socket.emit('eventAdded', { 
+                        id: this.lastID,
+                        gpio,
+                        time,
+                        pwm
+                    });
+                }
+            }
+        );
+    });
+
+    // Handle get events request
+    socket.on('getEvents', () => {
+        db.all('SELECT * FROM events ORDER BY time', [], (err, rows) => {
+            if (err) {
+                console.error('Error fetching events:', err);
+                socket.emit('eventError', { message: 'Failed to fetch events' });
+            } else {
+                socket.emit('eventsUpdated', rows);
+            }
+        });
+    });
+
+    // Handle event deletion
+    socket.on('deleteEvent', (data) => {
+        const { id } = data;
+        
+        db.run('DELETE FROM events WHERE id = ?', [id], (err) => {
+            if (err) {
+                console.error('Error deleting event:', err);
+                socket.emit('eventError', { message: 'Failed to delete event' });
+            } else {
+                broadcastEvents();
+                socket.emit('eventDeleted', { id });
+            }
+        });
+    });
+
+    // Handle event toggle
+    socket.on('toggleEvent', (data) => {
+        const { id, enabled } = data;
+        
+        db.run('UPDATE events SET enabled = ? WHERE id = ?', [enabled ? 1 : 0, id], (err) => {
+            if (err) {
+                console.error('Error toggling event:', err);
+                socket.emit('eventError', { message: 'Failed to toggle event' });
+            } else {
+                broadcastEvents();
+                socket.emit('eventToggled', { id, enabled });
+            }
+        });
+    });
 });
+
+// Function to broadcast events to all connected clients
+function broadcastEvents() {
+    db.all('SELECT * FROM events ORDER BY time', [], (err, rows) => {
+        if (err) {
+            console.error('Error fetching events for broadcast:', err);
+        } else {
+            io.emit('eventsUpdated', rows);
+        }
+    });
+}
 
 // Binned Readings Endpoint
 app.get('/api/readings/binned', async (req, res) => {

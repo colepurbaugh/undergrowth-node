@@ -4,6 +4,10 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Schedule Events</title>
+    <link rel="apple-touch-icon" sizes="180x180" href="/assets/icons/apple-touch-icon.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="/assets/icons/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="/assets/icons/favicon-16x16.png">
+    <link rel="manifest" href="/assets/icons/site.webmanifest">
     <style>
         :root {
             --bg-primary: #181a1b;
@@ -179,34 +183,7 @@
         <!-- Active Events List -->
         <h2 class="text-xl font-semibold mb-4 text-[#e8e6e3]">Active Events</h2>
         <div id="eventList">
-            <div class="event-control">
-                <span class="gpio-title">GPIO12:</span>
-                <span class="pwm-value">09:00:00</span>
-                <span class="pwm-value">512/1024</span>
-                <span class="pwm-value">50%</span>
-                <span class="pwm-value">2h 15m</span>
-                <div class="controls-group">
-                    <label class="toggle">
-                        <input type="checkbox" checked>
-                        <span class="slider"></span>
-                    </label>
-                <button class="delete">Delete</button>
-                </div>
-            </div>
-            <div class="event-control">
-                <span class="gpio-title">GPIO18:</span>
-                <span class="pwm-value">21:30:00</span>
-                <span class="pwm-value">1024/1024</span>
-                <span class="pwm-value">100%</span>
-                <span class="pwm-value">14h 45m</span>
-                <div class="controls-group">
-                    <label class="toggle">
-                        <input type="checkbox" checked>
-                        <span class="slider"></span>
-                    </label>
-                    <button class="delete">Delete</button>
-                </div>
-            </div>
+            <!-- Events will be dynamically populated here -->
         </div>
     </div>
 
@@ -214,23 +191,127 @@
     <script>
         const socket = io();
 
+        function validateTime(timeStr) {
+            // Check format
+            if (!/^\d{2}:\d{2}:\d{2}$/.test(timeStr)) {
+                alert('Time must be in HH:MM:SS format');
+                return false;
+            }
+
+            const [hours, minutes, seconds] = timeStr.split(':').map(Number);
+
+            // Check ranges
+            if (hours < 0 || hours > 23) {
+                alert('Hours must be between 00 and 23');
+                return false;
+            }
+            if (minutes < 0 || minutes > 59) {
+                alert('Minutes must be between 00 and 59');
+                return false;
+            }
+            if (seconds < 0 || seconds > 59) {
+                alert('Seconds must be between 00 and 59');
+                return false;
+            }
+
+            return true;
+        }
+
+        function validatePwm(pwm) {
+            const pwmNum = Number(pwm);
+            if (isNaN(pwmNum) || pwmNum < 0 || pwmNum > 1024) {
+                alert('PWM value must be between 0 and 1024');
+                return false;
+            }
+            return true;
+        }
+
         function addEvent() {
             const gpio = document.getElementById('gpio').value;
             const time = document.getElementById('triggerTime').value;
             const pwm = document.getElementById('pwmValue').value;
             
-            if (time && pwm) {
-                socket.emit('addEvent', { gpio, time, pwm });
+            if (!time) {
+                alert('Please enter a time');
+                return;
+            }
+            
+            if (!validateTime(time)) {
+                return;
+            }
+
+            if (!validatePwm(pwm)) {
+                return;
+            }
+
+            socket.emit('addEvent', { gpio, time, pwm });
+        }
+
+        function updateEventDisplay(events) {
+            const eventList = document.getElementById('eventList');
+            eventList.innerHTML = '';  // Clear current list
+
+            events.forEach(event => {
+                const pwmPercent = Math.round((event.pwm_value / 1024) * 100);
+                
+                const eventDiv = document.createElement('div');
+                eventDiv.className = 'event-control';
+                eventDiv.innerHTML = `
+                    <span class="gpio-title">GPIO${event.gpio}:</span>
+                    <span class="pwm-value">${event.time}</span>
+                    <span class="pwm-value">${event.pwm_value}/1024</span>
+                    <span class="pwm-value">${pwmPercent}%</span>
+                    <div class="controls-group">
+                        <label class="toggle">
+                            <input type="checkbox" ${event.enabled ? 'checked' : ''} onchange="toggleEvent(${event.id}, this.checked)">
+                            <span class="slider"></span>
+                        </label>
+                        <button class="delete" onclick="deleteEvent(${event.id})">Delete</button>
+                    </div>
+                `;
+                eventList.appendChild(eventDiv);
+            });
+        }
+
+        function deleteEvent(id) {
+            if (confirm('Are you sure you want to delete this event?')) {
+                socket.emit('deleteEvent', { id });
             }
         }
 
+        function toggleEvent(id, enabled) {
+            socket.emit('toggleEvent', { id, enabled });
+        }
+
+        // Request initial events when page loads
+        socket.emit('getEvents');
+
+        // Set up periodic sync
+        setInterval(() => {
+            socket.emit('getEvents');
+        }, 30000);  // Every 30 seconds
+
         socket.on('eventAdded', (data) => {
-            // Handle successful event addition
-            console.log('Event added:', data);
+            alert('Event added successfully');
+            // Clear input fields
+            document.getElementById('triggerTime').value = '';
+            document.getElementById('pwmValue').value = '0';
+        });
+
+        socket.on('eventDeleted', (data) => {
+            // No need to do anything here as broadcastEvents will update all clients
+        });
+
+        socket.on('eventToggled', (data) => {
+            // No need to do anything here as broadcastEvents will update all clients
         });
 
         socket.on('eventError', (data) => {
-            console.error('Event error:', data.message);
+            alert('Error: ' + data.message);
+        });
+
+        socket.on('eventsUpdated', (events) => {
+            updateEventDisplay(events);
         });
     </script>
 </body>
