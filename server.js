@@ -106,6 +106,25 @@ const db = new sqlite3.Database('./ug-node.db', (err) => {
                 console.log('Events table initialized');
             }
         });
+
+        // Create system_state table if it doesn't exist
+        db.run(`
+            CREATE TABLE IF NOT EXISTS system_state (
+                key TEXT PRIMARY KEY,
+                value INTEGER NOT NULL
+            )
+        `, (err) => {
+            if (err) {
+                console.error('Error creating system_state table:', err);
+            } else {
+                console.log('System state table initialized');
+                // Initialize automatic_mode if it doesn't exist
+                db.run(`
+                    INSERT OR IGNORE INTO system_state (key, value)
+                    VALUES ('automatic_mode', 0)
+                `);
+            }
+        });
     }
 });
 
@@ -182,6 +201,27 @@ async function initAndRead() {
 // Socket.io connection handling
 io.on('connection', (socket) => {
     console.log('Client connected');
+
+    // Send initial mode state to client
+    db.get('SELECT value FROM system_state WHERE key = ?', ['automatic_mode'], (err, row) => {
+        if (!err && row) {
+            socket.emit('modeChanged', { automatic: row.value === 1 });
+        }
+    });
+
+    // Handle mode toggle
+    socket.on('toggleMode', (data) => {
+        const automatic = data.automatic ? 1 : 0;
+        db.run('UPDATE system_state SET value = ? WHERE key = ?', [automatic, 'automatic_mode'], (err) => {
+            if (err) {
+                console.error('Error updating mode:', err);
+                socket.emit('modeError', { message: 'Failed to update mode' });
+            } else {
+                // Broadcast mode change to all clients
+                io.emit('modeChanged', { automatic: automatic === 1 });
+            }
+        });
+    });
 
     // Handle PWM set requests
     socket.on('pwmSet', (data) => {

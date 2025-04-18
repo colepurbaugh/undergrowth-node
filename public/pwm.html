@@ -142,10 +142,58 @@
         input:checked + .slider:before {
             transform: translateX(36px);
         }
+
+        /* Mode Toggle Styles */
+        .mode-control {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .header-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+        }
+
+        .header-row h2 {
+            margin-bottom: 0;
+        }
+
+        .mode-label {
+            color: var(--text-primary);
+            font-size: 1rem;
+        }
+
+        .mode-slider {
+            background-color: var(--inactive-color);
+        }
+
+        .mode-toggle input:checked + .slider {
+            background-color: var(--error-color);
+        }
+
+        .mode-slider.manual {
+            background-color: var(--error-color);
+        }
     </style>
 </head>
 <body>
     <div class="container">
+        <!-- Header with title and mode toggle -->
+        <div class="header-row">
+            <h2 class="text-xl font-semibold mb-4 text-[#e8e6e3]">Manual PWM Control</h2>
+            <div class="mode-control">
+                <span class="mode-label">manual</span>
+                <label class="toggle mode-toggle">
+                    <input type="checkbox" id="modeToggle" onchange="toggleMode(this.checked)">
+                    <span class="slider mode-slider"></span>
+                </label>
+                <span class="mode-label">automatic</span>
+            </div>
+        </div>
+
         <div class="pwm-control">
             <span class="gpio-title">GPIO12:</span>
             <input type="number" id="pwm12" min="0" max="1023" value="0">
@@ -198,6 +246,30 @@
     <script src="/socket.io/socket.io.js"></script>
     <script>
         const socket = io();
+
+        function toggleMode(automatic) {
+            socket.emit('toggleMode', { automatic });
+        }
+
+        // Update UI when mode changes
+        socket.on('modeChanged', (data) => {
+            const toggle = document.getElementById('modeToggle');
+            if (toggle) {
+                toggle.checked = data.automatic;
+            }
+            // Update slider color
+            const slider = document.querySelector('.mode-slider');
+            if (slider) {
+                if (data.automatic) {
+                    slider.style.backgroundColor = 'var(--inactive-color)';  // Gray when automatic
+                } else {
+                    slider.style.backgroundColor = 'var(--error-color)';  // Red when manual
+                }
+            }
+        });
+
+        // Request initial mode state
+        socket.emit('getMode');
 
         function setPwm(pin) {
             const value = parseInt(document.getElementById(`pwm${pin}`).value);

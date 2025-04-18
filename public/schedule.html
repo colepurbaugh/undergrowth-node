@@ -158,12 +158,65 @@
         input:checked + .slider:before {
             transform: translateX(36px);
         }
+
+        /* Mode Toggle Styles */
+        .mode-control {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .header-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+        }
+
+        .header-row h2 {
+            margin-bottom: 0;  /* Override the mb-4 from Tailwind */
+        }
+
+        .header-title {
+            font-size: 1.2rem;
+            font-weight: semibold;
+            color: var(--text-primary);
+        }
+
+        .mode-label {
+            color: var(--text-primary);
+            font-size: 1rem;
+        }
+
+        .mode-slider {
+            background-color: var(--inactive-color);
+        }
+
+        .mode-toggle input:checked + .slider {
+            background-color: #004daa;
+        }
+
+        .mode-slider.automatic {
+            background-color: #004daa;
+        }
     </style>
 </head>
 <body>
     <div class="container">
+        <!-- Header with title and mode toggle -->
+        <div class="header-row">
+            <h2 class="text-xl font-semibold mb-4 text-[#e8e6e3]">Add Event</h2>
+            <div class="mode-control">
+                <span class="mode-label">manual</span>
+                <label class="toggle mode-toggle">
+                    <input type="checkbox" id="modeToggle" onchange="toggleMode(this.checked)">
+                    <span class="slider mode-slider"></span>
+                </label>
+                <span class="mode-label">automatic</span>
+            </div>
+        </div>
+
         <!-- Add New Event Form -->
-        <h2 class="text-xl font-semibold mb-4 text-[#e8e6e3]">Add Event</h2>
         <div class="event-control">
             <span class="gpio-title">GPIO:</span>
             <select id="gpio">
@@ -181,7 +234,9 @@
         </div>
 
         <!-- Active Events List -->
-        <h2 class="text-xl font-semibold mb-4 text-[#e8e6e3]">Active Events</h2>
+        <div class="header-row">
+            <h2 class="text-xl font-semibold mb-4 text-[#e8e6e3]">Active Events</h2>
+        </div>
         <div id="eventList">
             <!-- Events will be dynamically populated here -->
         </div>
@@ -282,6 +337,30 @@
         function toggleEvent(id, enabled) {
             socket.emit('toggleEvent', { id, enabled });
         }
+
+        function toggleMode(automatic) {
+            socket.emit('toggleMode', { automatic });
+        }
+
+        // Update UI when mode changes
+        socket.on('modeChanged', (data) => {
+            const toggle = document.getElementById('modeToggle');
+            if (toggle) {
+                toggle.checked = data.automatic;
+            }
+            // Update slider color
+            const slider = document.querySelector('.mode-slider');
+            if (slider) {
+                if (data.automatic) {
+                    slider.style.backgroundColor = '#004daa';  // Blue when automatic
+                } else {
+                    slider.style.backgroundColor = 'var(--inactive-color)';  // Gray when manual
+                }
+            }
+        });
+
+        // Request initial mode state
+        socket.emit('getMode');
 
         // Request initial events when page loads
         socket.emit('getEvents');
