@@ -47,8 +47,15 @@
             width: 100%;
         }
 
+        .pwm-max {
+            font-size: 1rem;
+            font-family: monospace;
+            color: var(--text-primary);
+        }
+
         .pwm-control {
             display: flex;
+            font-family: monospace;
             align-items: center;
             gap: 0.5rem;
             margin-bottom: 1rem;
@@ -63,6 +70,22 @@
             color: var(--text-primary);
             font-weight: bold;
             min-width: 80px;
+        }
+
+        .gpio-title-12 {
+            color: #ffeb3b; /* yellow */
+        }
+
+        .gpio-title-13 {
+            color: #2196f3; /* blue */
+        }
+
+        .gpio-title-18 {
+            color: #f44336; /* red */
+        }
+
+        .gpio-title-19 {
+            color: #4caf50; /* green */
         }
 
         input[type="number"] {
@@ -141,13 +164,6 @@
 
         input:checked + .slider:before {
             transform: translateX(36px);
-        }
-
-        /* Mode Toggle Styles */
-        .mode-control {
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
         }
 
         .header-row {
@@ -266,18 +282,18 @@
         <div class="header-row">
             <h2 class="text-xl font-semibold mb-4 text-[#e8e6e3]">Manual PWM Control</h2>
             <div class="toggle-container">
-                <span class="mode-label">Manual</span>
+                <span class="mode-label">manual</span>
                 <label class="switch mode-toggle">
                     <input type="checkbox" id="modeToggle" onchange="toggleMode()">
                     <span class="slider"></span>
                 </label>
-                <span class="mode-label">Automatic</span>
+                <span class="mode-label">automatic</span>
                 <button id="emergencyButton" class="emergency-button">Emergency Stop</button>
             </div>
         </div>
 
         <div class="pwm-control">
-            <span class="gpio-title">GPIO12:</span>
+            <span class="gpio-title gpio-title-12">GPIO12</span>
             <input type="number" class="pwm-input" data-pin="12" min="0" max="1023" value="0" onchange="setPWM(12, this.value)">
             <span class="pwm-value" data-pin="12">0</span>
             <span class="pwm-max">/1024</span>
@@ -290,7 +306,7 @@
         </div>
 
         <div class="pwm-control">
-            <span class="gpio-title">GPIO13:</span>
+            <span class="gpio-title gpio-title-13">GPIO13</span>
             <input type="number" class="pwm-input" data-pin="13" min="0" max="1023" value="0" onchange="setPWM(13, this.value)">
             <span class="pwm-value" data-pin="13">0</span>
             <span class="pwm-max">/1024</span>
@@ -303,7 +319,7 @@
         </div>
 
         <div class="pwm-control">
-            <span class="gpio-title">GPIO18:</span>
+            <span class="gpio-title gpio-title-18">GPIO18</span>
             <input type="number" class="pwm-input" data-pin="18" min="0" max="1023" value="0" onchange="setPWM(18, this.value)">
             <span class="pwm-value" data-pin="18">0</span>
             <span class="pwm-max">/1024</span>
@@ -316,7 +332,7 @@
         </div>
 
         <div class="pwm-control">
-            <span class="gpio-title">GPIO19:</span>
+            <span class="gpio-title gpio-title-19">GPIO19</span>
             <input type="number" class="pwm-input" data-pin="19" min="0" max="1023" value="0" onchange="setPWM(19, this.value)">
             <span class="pwm-value" data-pin="19">0</span>
             <span class="pwm-max">/1024</span>
