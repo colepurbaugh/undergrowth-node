@@ -9,6 +9,8 @@ const Gpio = require('pigpio').Gpio;
 const path = require('path');
 const sqlite3 = require('sqlite3').verbose();
 
+const PORT = 80; // Define the port constant
+
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
@@ -49,34 +51,22 @@ function initPwmPins() {
     }
 }
 
-// Load PWM states from database and initialize hardware
-function loadPwmStates() {
-    if (!pwmEnabled) return;
-
+// Function to load PWM states from database
+function loadPwmStates(db) {
     db.all('SELECT pin, value, enabled FROM pwm_states', [], (err, rows) => {
         if (err) {
             console.error('Error loading PWM states:', err);
             return;
         }
-
+        
+        // Initialize PWM states from database
         rows.forEach(row => {
             const pin = row.pin;
-            const value = row.value;
-            const enabled = row.enabled;
-
             if (pwmPins[pin]) {
-                // Store the original value
-                pwmPins[pin]._pwmValue = value;
-                
-                // Set the hardware state
-                if (enabled) {
-                    const pwmValue = Math.floor((value / 1023) * 255);
-                    pwmPins[pin].pwmWrite(pwmValue);
-                } else {
-                    pwmPins[pin].pwmWrite(0);
-                }
-                
-                console.log(`Loaded PWM state for pin ${pin}: value=${value}, enabled=${enabled}`);
+                pwmPins[pin].value = row.value;
+                pwmPins[pin].enabled = row.enabled;
+                pwmPins[pin].normal_enable = row.enabled;
+                console.log(`Loaded PWM state for GPIO${pin}: value=${row.value}, enabled=${row.enabled}`);
             }
         });
     });
@@ -100,106 +90,90 @@ app.get('/schedule', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'schedule.html'));
 });
 
-// Initialize SQLite database
-const db = new sqlite3.Database('./ug-node.db', (err) => {
+// Initialize databases
+const configDb = new sqlite3.Database('undergrowth.db', (err) => {
     if (err) {
-        console.error('Error connecting to SQLite:', err);
-    } else {
-        console.log('Connected to SQLite database');
-        // Create tables
-        db.serialize(() => {
-            // Create safety_state table
-            db.run(`CREATE TABLE IF NOT EXISTS safety_state (
-                key TEXT PRIMARY KEY,
-                value INTEGER,
-                last_modified DATETIME DEFAULT CURRENT_TIMESTAMP
-            )`);
-
-            // Create pwm_states table
-            db.run(`CREATE TABLE IF NOT EXISTS pwm_states (
-                pin INTEGER PRIMARY KEY,
-                value INTEGER,
-                enabled INTEGER,
-                last_modified DATETIME DEFAULT CURRENT_TIMESTAMP
-            )`);
-
-            // Create auto_pwm_states table
-            db.run(`CREATE TABLE IF NOT EXISTS auto_pwm_states (
-                pin INTEGER PRIMARY KEY,
-                value INTEGER,
-                enabled INTEGER,
-                last_modified DATETIME DEFAULT CURRENT_TIMESTAMP
-            )`);
-
-            // Create system_state table
-            db.run(`CREATE TABLE IF NOT EXISTS system_state (
-                key TEXT PRIMARY KEY,
-                value INTEGER,
-                last_modified DATETIME DEFAULT CURRENT_TIMESTAMP
-            )`);
-
-            // Create events table
-            db.run(`CREATE TABLE IF NOT EXISTS events (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                gpio INTEGER,
-                time TEXT,
-                pwm_value INTEGER,
-                enabled INTEGER DEFAULT 1
-            )`);
-
-            // Initialize states if not set
-            db.get('SELECT value FROM system_state WHERE key = ?', ['automatic_mode'], (err, row) => {
-                if (!err && !row) {
-                    db.run('INSERT INTO system_state (key, value) VALUES (?, ?)', ['automatic_mode', 0]);
-                }
-            });
-
-            // Initialize safety states
-            db.get('SELECT value FROM safety_state WHERE key = ?', ['emergency_stop'], (err, row) => {
-                if (!err && !row) {
-                    db.run('INSERT INTO safety_state (key, value) VALUES (?, ?)', ['emergency_stop', 0]);
-                }
-            });
-            db.get('SELECT value FROM safety_state WHERE key = ?', ['normal_enable'], (err, row) => {
-                if (!err && !row) {
-                    db.run('INSERT INTO safety_state (key, value) VALUES (?, ?)', ['normal_enable', 1]);
-                }
-            });
-
-            // Initialize state_changes
-            db.run('INSERT OR IGNORE INTO state_changes (key, value) VALUES (?, ?)', ['isChanged', 0]);
-
-            // Initialize safety states if they don't exist
-            db.run(`
-                INSERT OR IGNORE INTO safety_state (key, value)
-                VALUES ('emergency_stop', 0), ('normal_enable', 0)
-            `);
-
-            // Initialize PWM states if they don't exist
-            db.run(`
-                INSERT OR IGNORE INTO pwm_states (pin, value, enabled, last_modified)
-                VALUES (12, 0, 0, CURRENT_TIMESTAMP), 
-                       (13, 0, 0, CURRENT_TIMESTAMP), 
-                       (18, 0, 0, CURRENT_TIMESTAMP), 
-                       (19, 0, 0, CURRENT_TIMESTAMP)
-            `);
-
-            // Initialize system state if it doesn't exist
-            db.run(`
-                INSERT OR IGNORE INTO system_state (key, value)
-                VALUES ('pwm_enabled', 0)
-            `);
-
-            // Initialize system state
-            db.run(`INSERT OR IGNORE INTO system_state (key, value) VALUES ('mode', 1)`); // Default to manual mode
-
-            // Initialize auto_pwm_states
-            db.run(`INSERT OR IGNORE INTO auto_pwm_states (pin, value, enabled) VALUES (12, 0, 0)`);
-            db.run(`INSERT OR IGNORE INTO auto_pwm_states (pin, value, enabled) VALUES (13, 0, 0)`);
-            db.run(`INSERT OR IGNORE INTO auto_pwm_states (pin, value, enabled) VALUES (18, 0, 0)`);
-            db.run(`INSERT OR IGNORE INTO auto_pwm_states (pin, value, enabled) VALUES (19, 0, 0)`);
-        });
+        console.error('Error opening config database:', err);
+        process.exit(1);
     }
+    console.log('Connected to config database');
+    
+    // Create tables if they don't exist
+    configDb.serialize(() => {
+        // Create events table
+        configDb.run(`CREATE TABLE IF NOT EXISTS events (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            gpio INTEGER NOT NULL,
+            time TEXT NOT NULL,
+            pwm_value INTEGER NOT NULL,
+            enabled INTEGER DEFAULT 1
+        )`);
+        
+        // Create pwm_states table
+        configDb.run(`CREATE TABLE IF NOT EXISTS pwm_states (
+            pin INTEGER PRIMARY KEY,
+            value INTEGER DEFAULT 0,
+            enabled INTEGER DEFAULT 0,
+            last_modified DATETIME DEFAULT CURRENT_TIMESTAMP
+        )`);
+        
+        // Create auto_pwm_states table
+        configDb.run(`CREATE TABLE IF NOT EXISTS auto_pwm_states (
+            pin INTEGER PRIMARY KEY,
+            value INTEGER DEFAULT 0,
+            enabled INTEGER DEFAULT 0,
+            last_modified DATETIME DEFAULT CURRENT_TIMESTAMP
+        )`);
+        
+        // Create safety_state table
+        configDb.run(`CREATE TABLE IF NOT EXISTS safety_state (
+            key TEXT PRIMARY KEY,
+            value INTEGER DEFAULT 0
+        )`);
+        
+        // Create system_state table
+        configDb.run(`CREATE TABLE IF NOT EXISTS system_state (
+            key TEXT PRIMARY KEY,
+            value INTEGER DEFAULT 1
+        )`);
+        
+        // Initialize PWM states in database if they don't exist
+        const pins = [12, 13, 18, 19];
+        pins.forEach(pin => {
+            configDb.run('INSERT OR IGNORE INTO pwm_states (pin, value, enabled) VALUES (?, 0, 0)', [pin]);
+            configDb.run('INSERT OR IGNORE INTO auto_pwm_states (pin, value, enabled) VALUES (?, 0, 0)', [pin]);
+        });
+        
+        // Initialize safety states
+        configDb.run('INSERT OR IGNORE INTO safety_state (key, value) VALUES (?, 0)', ['emergency_stop']);
+        configDb.run('INSERT OR IGNORE INTO safety_state (key, value) VALUES (?, 1)', ['normal_enable']);
+        
+        // Initialize system state
+        configDb.run('INSERT OR IGNORE INTO system_state (key, value) VALUES (?, 1)', ['mode']);
+        
+        // Load PWM states from database
+        loadPwmStates(configDb);
+    });
+});
+
+const dataDb = new sqlite3.Database('undergrowth-data.db', (err) => {
+    if (err) {
+        console.error('Error opening data database:', err);
+        process.exit(1);
+    }
+    console.log('Connected to data database');
+    
+    // Create tables if they don't exist
+    dataDb.serialize(() => {
+        // Create sensor_readings table
+        dataDb.run(`CREATE TABLE IF NOT EXISTS sensor_readings (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+            device_id TEXT,
+            type TEXT,
+            value REAL
+        )`);
+    });
 });
 
 // Initialize sensors and start reading
@@ -226,25 +200,25 @@ async function initAndRead() {
                 ]);
 
                 if (data1 && data2) {
-                    // Store readings in database
+                    // Store readings in data database
                     const timestamp = new Date().toISOString();
                     
                     // Store temperature readings
-                    db.run(
+                    dataDb.run(
                         'INSERT INTO sensor_readings (timestamp, device_id, type, value) VALUES (?, ?, ?, ?)',
                         [timestamp, 'sensor1', 'temperature', data1.temperature]
                     );
-                    db.run(
+                    dataDb.run(
                         'INSERT INTO sensor_readings (timestamp, device_id, type, value) VALUES (?, ?, ?, ?)',
                         [timestamp, 'sensor2', 'temperature', data2.temperature]
                     );
                     
                     // Store humidity readings
-                    db.run(
+                    dataDb.run(
                         'INSERT INTO sensor_readings (timestamp, device_id, type, value) VALUES (?, ?, ?, ?)',
                         [timestamp, 'sensor1', 'humidity', data1.humidity]
                     );
-                    db.run(
+                    dataDb.run(
                         'INSERT INTO sensor_readings (timestamp, device_id, type, value) VALUES (?, ?, ?, ?)',
                         [timestamp, 'sensor2', 'humidity', data2.humidity]
                     );
@@ -274,7 +248,7 @@ async function initAndRead() {
 
 // Function to broadcast safety state to all clients
 function broadcastSafetyState() {
-    db.all('SELECT key, value FROM safety_state', [], (err, rows) => {
+    configDb.all('SELECT key, value FROM safety_state', [], (err, rows) => {
         if (err) {
             console.error('Error fetching safety state for broadcast:', err);
             return;
@@ -294,7 +268,7 @@ function broadcastPWMState() {
     console.log('Server: Broadcasting PWM state...');
     
     // Get current mode first
-    db.get('SELECT value FROM system_state WHERE key = ?', ['mode'], (err, row) => {
+    configDb.get('SELECT value FROM system_state WHERE key = ?', ['mode'], (err, row) => {
         if (err) {
             console.error('Server: Error getting mode:', err);
             return;
@@ -303,7 +277,7 @@ function broadcastPWMState() {
         const mode = row ? row.value : 1; // Default to manual mode
         const table = mode === 0 ? 'auto_pwm_states' : 'pwm_states';
         
-        db.all(`SELECT pin, value, enabled FROM ${table}`, [], (err, rows) => {
+        configDb.all(`SELECT pin, value, enabled FROM ${table}`, [], (err, rows) => {
             if (err) {
                 console.error('Server: Error fetching PWM states for broadcast:', err);
                 return;
@@ -326,14 +300,14 @@ function broadcastPWMState() {
 // Update emergency stop function
 async function emergencyStop() {
     return new Promise((resolve) => {
-        db.run('UPDATE safety_state SET value = 1 WHERE key = ?', ['emergency_stop'], resolve);
+        configDb.run('UPDATE safety_state SET value = 1 WHERE key = ?', ['emergency_stop'], resolve);
     });
 }
 
 // Update clear emergency stop function
 async function clearEmergencyStop() {
     return new Promise((resolve) => {
-        db.run('UPDATE safety_state SET value = 0 WHERE key = ?', ['emergency_stop'], resolve);
+        configDb.run('UPDATE safety_state SET value = 0 WHERE key = ?', ['emergency_stop'], resolve);
     });
 }
 
@@ -341,7 +315,7 @@ async function clearEmergencyStop() {
 async function togglePWM(pin, enabled) {
     return new Promise((resolve) => {
         // Get current value
-        db.get('SELECT value FROM pwm_states WHERE pin = ?', [pin], (err, row) => {
+        configDb.get('SELECT value FROM pwm_states WHERE pin = ?', [pin], (err, row) => {
             if (err) {
                 console.error('Error getting PWM value:', err);
                 resolve();
@@ -351,7 +325,7 @@ async function togglePWM(pin, enabled) {
             const value = row ? row.value : 0;
             
             // Update database
-            db.run('UPDATE pwm_states SET enabled = ? WHERE pin = ?', [enabled ? 1 : 0, pin], (err) => {
+            configDb.run('UPDATE pwm_states SET enabled = ? WHERE pin = ?', [enabled ? 1 : 0, pin], (err) => {
                 if (err) {
                     console.error('Error updating PWM state:', err);
                 }
@@ -385,21 +359,21 @@ io.on('connection', (socket) => {
     socket.on('getInitialState', async () => {
         try {
             const mode = await new Promise((resolve, reject) => {
-                db.get('SELECT value FROM system_state WHERE key = ?', ['mode'], (err, row) => {
+                configDb.get('SELECT value FROM system_state WHERE key = ?', ['mode'], (err, row) => {
                     if (err) reject(err);
                     else resolve(row ? row.value : 1);
                 });
             });
 
             const events = await new Promise((resolve, reject) => {
-                db.all('SELECT * FROM events ORDER BY time', [], (err, rows) => {
+                configDb.all('SELECT * FROM events ORDER BY time', [], (err, rows) => {
                     if (err) reject(err);
                     else resolve(rows);
                 });
             });
 
             const safetyStates = await new Promise((resolve, reject) => {
-                db.all('SELECT key, value FROM safety_state', [], (err, rows) => {
+                configDb.all('SELECT key, value FROM safety_state', [], (err, rows) => {
                     if (err) reject(err);
                     else resolve(rows.reduce((acc, row) => {
                         acc[row.key] = row.value;
@@ -433,7 +407,7 @@ io.on('connection', (socket) => {
             // Update auto_pwm_states
             for (const [gpio, activeEvent] of Object.entries(activeEvents)) {
                 await new Promise((resolve, reject) => {
-                    db.run('UPDATE auto_pwm_states SET value = ?, enabled = 1 WHERE pin = ?',
+                    configDb.run('UPDATE auto_pwm_states SET value = ?, enabled = 1 WHERE pin = ?',
                         [activeEvent.event.pwm_value, gpio], (err) => {
                             if (err) reject(err);
                             else resolve();
@@ -471,7 +445,7 @@ io.on('connection', (socket) => {
         const { automatic } = data;
         const mode = automatic ? 0 : 1; // 0 is automatic, 1 is manual
         try {
-            db.run('UPDATE system_state SET value = ? WHERE key = ?',
+            configDb.run('UPDATE system_state SET value = ? WHERE key = ?',
                 [mode, 'mode'], (err) => {
                     if (err) {
                         console.error('Server: Error updating mode:', err);
@@ -492,6 +466,20 @@ io.on('connection', (socket) => {
     socket.on('pwmSet', async (data) => {
         console.log('Server: Received pwmSet event:', data);
         const { pin, value } = data;
+        
+        // Check if we're in manual mode
+        const mode = await new Promise((resolve, reject) => {
+            configDb.get('SELECT value FROM system_state WHERE key = ?', ['mode'], (err, row) => {
+                if (err) reject(err);
+                else resolve(row ? row.value : 1);
+            });
+        });
+
+        if (mode !== 1) {
+            console.log('Server: Ignoring PWM set in automatic mode');
+            return;
+        }
+
         if (pwmEnabled && pwmPins[pin]) {
             try {
                 // Store the original value
@@ -499,7 +487,7 @@ io.on('connection', (socket) => {
                 
                 // Update database
                 console.log('Server: Updating database with value:', { pin, value });
-                db.run('UPDATE pwm_states SET value = ?, last_modified = CURRENT_TIMESTAMP WHERE pin = ?',
+                configDb.run('UPDATE pwm_states SET value = ? WHERE pin = ?',
                     [value, pin], (err) => {
                         if (err) {
                             console.error('Server: Error saving PWM state:', err);
@@ -533,7 +521,7 @@ io.on('connection', (socket) => {
     socket.on('addEvent', async (data) => {
         try {
             await new Promise((resolve, reject) => {
-                db.run('INSERT INTO events (gpio, time, pwm_value, enabled) VALUES (?, ?, ?, ?)',
+                configDb.run('INSERT INTO events (gpio, time, pwm_value, enabled) VALUES (?, ?, ?, ?)',
                     [data.gpio, data.time, data.pwm_value, data.enabled], (err) => {
                         if (err) reject(err);
                         else resolve();
@@ -548,7 +536,7 @@ io.on('connection', (socket) => {
 
     // Handle get events request
     socket.on('getEvents', () => {
-        db.all('SELECT * FROM events ORDER BY time', [], (err, rows) => {
+        configDb.all('SELECT * FROM events ORDER BY time', [], (err, rows) => {
             if (err) {
                 console.error('Error fetching events:', err);
                 socket.emit('eventError', { message: 'Failed to fetch events' });
@@ -562,7 +550,7 @@ io.on('connection', (socket) => {
     socket.on('deleteEvent', async (data) => {
         try {
             await new Promise((resolve, reject) => {
-                db.run('DELETE FROM events WHERE id = ?', [data.id], (err) => {
+                configDb.run('DELETE FROM events WHERE id = ?', [data.id], (err) => {
                     if (err) reject(err);
                     else resolve();
                 });
@@ -579,7 +567,7 @@ io.on('connection', (socket) => {
     socket.on('toggleEvent', (data) => {
         const { id, enabled } = data;
         
-        db.run('UPDATE events SET enabled = ? WHERE id = ?', [enabled ? 1 : 0, id], (err) => {
+        configDb.run('UPDATE events SET enabled = ? WHERE id = ?', [enabled ? 1 : 0, id], (err) => {
             if (err) {
                 console.error('Error toggling event:', err);
                 socket.emit('eventError', { message: 'Failed to toggle event' });
@@ -601,7 +589,7 @@ io.on('connection', (socket) => {
             const { automatic } = data;
             const mode = automatic ? 0 : 1; // 0 is automatic, 1 is manual
             await new Promise((resolve, reject) => {
-                db.run('UPDATE system_state SET value = ? WHERE key = ?', 
+                configDb.run('UPDATE system_state SET value = ? WHERE key = ?', 
                     [mode, 'mode'], (err) => {
                         if (err) reject(err);
                         else resolve();
@@ -617,7 +605,7 @@ io.on('connection', (socket) => {
 
 // Function to broadcast events to all connected clients
 function broadcastEvents() {
-    db.all('SELECT * FROM events ORDER BY time', [], (err, rows) => {
+    configDb.all('SELECT * FROM events ORDER BY time', [], (err, rows) => {
         if (err) {
             console.error('Error fetching events for broadcast:', err);
         } else {
@@ -662,7 +650,7 @@ app.get('/api/readings/binned', async (req, res) => {
           AND timestamp < ?
         ORDER BY timestamp ASC
       `;
-      db.all(sql, [type, startIso, endIso], (err, rows) => {
+      dataDb.all(sql, [type, startIso, endIso], (err, rows) => {
         if (err) return reject(err);
         resolve(rows);
       });
@@ -707,7 +695,7 @@ app.get('/api/readings/binned', async (req, res) => {
 // Safety state management
 function isSystemSafe() {
     return new Promise((resolve) => {
-        db.get('SELECT value FROM safety_state WHERE key = ?', ['emergency_stop'], (err, row) => {
+        configDb.get('SELECT value FROM safety_state WHERE key = ?', ['emergency_stop'], (err, row) => {
             if (err || !row) {
                 console.error('Error checking emergency stop state:', err);
                 resolve(false);
@@ -721,7 +709,7 @@ function isSystemSafe() {
             }
 
             // If not in emergency stop, check normal enable
-            db.get('SELECT value FROM safety_state WHERE key = ?', ['normal_enable'], (err, row) => {
+            configDb.get('SELECT value FROM safety_state WHERE key = ?', ['normal_enable'], (err, row) => {
                 if (err || !row) {
                     console.error('Error checking normal enable state:', err);
                     resolve(false);
@@ -737,7 +725,7 @@ function isSystemSafe() {
 async function toggleNormalEnable(enabled) {
     if (!await isSystemSafe()) return; // Don't allow if in emergency stop
 
-    db.run('UPDATE safety_state SET value = ? WHERE key = ?', [enabled ? 1 : 0, 'normal_enable']);
+    configDb.run('UPDATE safety_state SET value = ? WHERE key = ?', [enabled ? 1 : 0, 'normal_enable']);
     io.emit('safetyStateChanged', { normalEnable: enabled });
 }
 
@@ -746,7 +734,7 @@ async function controlLoop() {
     try {
         // Get current safety states
         const safetyStates = await new Promise((resolve, reject) => {
-            db.all('SELECT key, value FROM safety_state', [], (err, rows) => {
+            configDb.all('SELECT key, value FROM safety_state', [], (err, rows) => {
                 if (err) reject(err);
                 else resolve(rows.reduce((acc, row) => {
                     acc[row.key] = row.value;
@@ -757,48 +745,40 @@ async function controlLoop() {
 
         // Get current mode
         const mode = await new Promise((resolve, reject) => {
-            db.get('SELECT value FROM system_state WHERE key = ?', ['mode'], (err, row) => {
+            configDb.get('SELECT value FROM system_state WHERE key = ?', ['mode'], (err, row) => {
                 if (err) reject(err);
                 else resolve(row ? row.value : 1); // Default to manual mode
             });
         });
 
-        // Get current PWM states based on mode
-        const pwmStates = await new Promise((resolve, reject) => {
-            const table = mode === 0 ? 'auto_pwm_states' : 'pwm_states';
-            db.all(`SELECT pin, value, enabled FROM ${table}`, [], (err, rows) => {
-                if (err) reject(err);
-                else {
-                    const states = rows.reduce((acc, row) => {
-                        acc[row.pin] = { value: row.value, enabled: row.enabled };
-                        return acc;
-                    }, {});
-                    resolve(states);
-                }
-            });
-        });
-
-        // Update hardware first (safety critical)
+        // Update hardware based on mode and safety states
         if (pwmEnabled) {
             const isEmergencyStop = safetyStates.emergency_stop;
             const isNormalEnable = safetyStates.normal_enable;
-            let stateChanged = false;
 
-            // Get active events if in automatic mode
-            let activeEvents = {};
+            if (isEmergencyStop || !isNormalEnable) {
+                // Emergency stop or normal disable - turn off all PWM outputs
+                for (const pin of Object.keys(pwmPins)) {
+                    pwmPins[pin].pwmWrite(0);
+                }
+                return;
+            }
+
             if (mode === 0) { // Automatic mode
+                // Get current time
                 const now = new Date();
                 const currentTime = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds();
                 
                 // Get all enabled events
                 const events = await new Promise((resolve, reject) => {
-                    db.all('SELECT * FROM events WHERE enabled = 1 ORDER BY time', [], (err, rows) => {
+                    configDb.all('SELECT * FROM events WHERE enabled = 1 ORDER BY time', [], (err, rows) => {
                         if (err) reject(err);
                         else resolve(rows);
                     });
                 });
 
                 // Find active events for each GPIO
+                const activeEvents = {};
                 events.forEach(event => {
                     const [hours, minutes, seconds] = event.time.split(':').map(Number);
                     const eventTime = hours * 3600 + minutes * 60 + seconds;
@@ -814,78 +794,62 @@ async function controlLoop() {
 
                 // Update auto_pwm_states based on active events
                 for (const [gpio, activeEvent] of Object.entries(activeEvents)) {
-                    await new Promise((resolve, reject) => {
-                        db.run('UPDATE auto_pwm_states SET value = ?, enabled = 1 WHERE pin = ?',
-                            [activeEvent.event.pwm_value, gpio], (err) => {
-                                if (err) reject(err);
-                                else resolve();
-                            });
-                    });
+                    if (pwmPins[gpio]) {
+                        const pwmValue = Math.floor((activeEvent.event.pwm_value / 1023) * 255);
+                        pwmPins[gpio].pwmWrite(pwmValue);
+                        
+                        // Update auto_pwm_states table
+                        await new Promise((resolve, reject) => {
+                            configDb.run('UPDATE auto_pwm_states SET value = ?, enabled = 1 WHERE pin = ?',
+                                [activeEvent.event.pwm_value, gpio], (err) => {
+                                    if (err) reject(err);
+                                    else resolve();
+                                });
+                        });
+                    }
                 }
-            }
 
-            Object.keys(pwmPins).forEach(pin => {
-                if (pwmPins[pin]) {
-                    const state = pwmStates[pin];
-                    const currentValue = pwmPins[pin]._pwmValue || 0;
-                    const currentEnabled = pwmPins[pin]._pwmEnabled || false;
-                    
-                    if (isEmergencyStop) {
-                        // Emergency stop override - disable PWM regardless of mode
-                        if (currentValue !== 0 || currentEnabled) {
-                            pwmPins[pin].pwmWrite(0);
-                            pwmPins[pin]._pwmValue = 0;
-                            pwmPins[pin]._pwmEnabled = false;
-                            stateChanged = true;
-                            console.log(`Server: Emergency stop - disabling PWM for pin ${pin}`);
+                // Turn off any GPIOs that don't have active events
+                for (const pin of Object.keys(pwmPins)) {
+                    if (!activeEvents[pin]) {
+                        pwmPins[pin].pwmWrite(0);
+                        await new Promise((resolve, reject) => {
+                            configDb.run('UPDATE auto_pwm_states SET value = 0, enabled = 0 WHERE pin = ?',
+                                [pin], (err) => {
+                                    if (err) reject(err);
+                                    else resolve();
+                                });
+                        });
+                    }
+                }
+            } else { // Manual mode
+                // Get current manual PWM states
+                const manualStates = await new Promise((resolve, reject) => {
+                    configDb.all('SELECT pin, value, enabled FROM pwm_states', [], (err, rows) => {
+                        if (err) reject(err);
+                        else {
+                            const states = rows.reduce((acc, row) => {
+                                acc[row.pin] = { value: row.value, enabled: row.enabled };
+                                return acc;
+                            }, {});
+                            resolve(states);
                         }
-                    } else if (mode === 0) { // Automatic mode
-                        // Check if we have an active event for this GPIO
-                        const activeEvent = activeEvents[pin];
-                        if (activeEvent && isNormalEnable) {
-                            const pwmValue = Math.floor((activeEvent.event.pwm_value / 1023) * 255);
-                            if (currentValue !== activeEvent.event.pwm_value || currentEnabled !== true) {
-                                pwmPins[pin].pwmWrite(pwmValue);
-                                pwmPins[pin]._pwmValue = activeEvent.event.pwm_value;
-                                pwmPins[pin]._pwmEnabled = true;
-                                stateChanged = true;
-                                console.log(`Server: Automatic mode - setting PWM for pin ${pin} to ${pwmValue} (${activeEvent.event.pwm_value}/1023)`);
-                            }
-                        } else if (currentValue !== 0 || currentEnabled) {
-                            // No active event or normal enable is off
-                            pwmPins[pin].pwmWrite(0);
-                            pwmPins[pin]._pwmValue = 0;
-                            pwmPins[pin]._pwmEnabled = false;
-                            stateChanged = true;
-                            console.log(`Server: Automatic mode - no active event for pin ${pin}, disabling PWM`);
-                        }
-                    } else { // Manual mode
-                        if (state && state.enabled) {
+                    });
+                });
+
+                // Update hardware based on manual states
+                for (const [pin, state] of Object.entries(manualStates)) {
+                    if (pwmPins[pin]) {
+                        if (state.enabled) {
                             const pwmValue = Math.floor((state.value / 1023) * 255);
-                            if (currentValue !== state.value || currentEnabled !== state.enabled) {
-                                pwmPins[pin].pwmWrite(pwmValue);
-                                pwmPins[pin]._pwmValue = state.value;
-                                pwmPins[pin]._pwmEnabled = state.enabled;
-                                stateChanged = true;
-                                console.log(`Server: Manual mode - setting PWM for pin ${pin} to ${pwmValue} (${state.value}/1023)`);
-                            }
-                        } else if (currentValue !== 0 || currentEnabled) {
+                            pwmPins[pin].pwmWrite(pwmValue);
+                        } else {
                             pwmPins[pin].pwmWrite(0);
-                            pwmPins[pin]._pwmValue = 0;
-                            pwmPins[pin]._pwmEnabled = false;
-                            stateChanged = true;
-                            console.log(`Server: Manual mode - disabling PWM for pin ${pin}`);
                         }
                     }
                 }
-            });
-
-            // Only broadcast if state changed
-            if (stateChanged) {
-                broadcastPWMState();
             }
         }
-
     } catch (error) {
         console.error('Error in control loop:', error);
     }
@@ -897,7 +861,6 @@ setInterval(controlLoop, 1000);
 // Initialize Raspberry Pi and then start the application
 raspi.init(() => {
     initPwmPins(); // Initialize PWM pins
-    loadPwmStates(); // Load PWM states from database
     initAndRead();
     
     server.listen(80, () => {

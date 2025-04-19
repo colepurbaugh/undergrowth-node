@@ -107,6 +107,41 @@
             font-size: 1.1rem;
         }
 
+        .nav-buttons {
+            display: flex;
+            gap: 1rem;
+            margin: 1rem 0;
+            padding: 1rem;
+            background-color: #333;
+            border: 1px solid var(--border-color);
+            border-radius: 0.25rem;
+        }
+
+        .nav-button {
+            padding: 0.5rem 1rem;
+            color: var(--text-primary);
+            text-decoration: none;
+            border-radius: 0.25rem;
+            font-weight: bold;
+            transition: background-color 0.3s;
+        }
+
+        .nav-button:hover {
+            opacity: 0.9;
+        }
+
+        .nav-button.schedule {
+            background-color: #2196f3; /* blue */
+        }
+
+        .nav-button.pwm {
+            background-color: #f44336; /* red */
+        }
+
+        .nav-button.graph {
+            background-color: #9c27b0; /* purple */
+        }
+
         @media (max-width: 600px) {
             body {
                 padding: 0.5rem;
@@ -127,6 +162,11 @@
         <div class="header-row">
             <h2 class="text-xl font-semibold mb-4 text-[#e8e6e3]">System Information</h2>
             <button id="emergencyButton" class="emergency-button" onclick="toggleEmergencyStop()">Emergency Stop</button>
+        </div>
+        <div class="nav-buttons">
+            <a href="/schedule" class="nav-button schedule">Schedule</a>
+            <a href="/pwm" class="nav-button pwm">PWM</a>
+            <a href="/graph" class="nav-button graph">Graph</a>
         </div>
         <div class="info-section">
             <div class="info-item">

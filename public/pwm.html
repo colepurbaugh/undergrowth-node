@@ -202,9 +202,10 @@
 
         .emergency-button {
             padding: 0.5rem 1rem;
+            font-size: 0.9rem;
             background-color: var(--error-color);
             color: var(--text-primary);
-            border: 1px solid var(--border-color);
+            border: none;
             border-radius: 0.25rem;
             cursor: pointer;
             font-weight: bold;
@@ -295,7 +296,7 @@
         <div class="pwm-control">
             <span class="gpio-title gpio-title-12">GPIO12</span>
             <input type="number" class="pwm-input" data-pin="12" min="0" max="1023" value="0" onchange="setPWM(12, this.value)">
-            <span class="pwm-value" data-pin="12">0</span>
+            <span class="pwm-value" data-pin="12"></span>
             <span class="pwm-max">/1024</span>
             <span class="pwm-percentage" data-pin="12">0%</span>
             <button class="pwm-set" onclick="setPWM(12, document.querySelector('.pwm-input[data-pin=\'12\']').value)">Set</button>
@@ -308,7 +309,7 @@
         <div class="pwm-control">
             <span class="gpio-title gpio-title-13">GPIO13</span>
             <input type="number" class="pwm-input" data-pin="13" min="0" max="1023" value="0" onchange="setPWM(13, this.value)">
-            <span class="pwm-value" data-pin="13">0</span>
+            <span class="pwm-value" data-pin="13"></span>
             <span class="pwm-max">/1024</span>
             <span class="pwm-percentage" data-pin="13">0%</span>
             <button class="pwm-set" onclick="setPWM(13, document.querySelector('.pwm-input[data-pin=\'13\']').value)">Set</button>
@@ -321,7 +322,7 @@
         <div class="pwm-control">
             <span class="gpio-title gpio-title-18">GPIO18</span>
             <input type="number" class="pwm-input" data-pin="18" min="0" max="1023" value="0" onchange="setPWM(18, this.value)">
-            <span class="pwm-value" data-pin="18">0</span>
+            <span class="pwm-value" data-pin="18"></span>
             <span class="pwm-max">/1024</span>
             <span class="pwm-percentage" data-pin="18">0%</span>
             <button class="pwm-set" onclick="setPWM(18, document.querySelector('.pwm-input[data-pin=\'18\']').value)">Set</button>
@@ -334,7 +335,7 @@
         <div class="pwm-control">
             <span class="gpio-title gpio-title-19">GPIO19</span>
             <input type="number" class="pwm-input" data-pin="19" min="0" max="1023" value="0" onchange="setPWM(19, this.value)">
-            <span class="pwm-value" data-pin="19">0</span>
+            <span class="pwm-value" data-pin="19"></span>
             <span class="pwm-max">/1024</span>
             <span class="pwm-percentage" data-pin="19">0%</span>
             <button class="pwm-set" onclick="setPWM(19, document.querySelector('.pwm-input[data-pin=\'19\']').value)">Set</button>
@@ -360,9 +361,12 @@
         // Handle state updates
         socket.on('pwmStateUpdate', (data) => {
             console.log('Received PWM state update:', data);
+            // Update the current state
+            currentPWMState = { ...currentPWMState, ...data };
+            
+            // Update UI elements
             Object.keys(data).forEach(pin => {
                 const state = data[pin];
-                currentPWMState[pin] = state;
                 
                 // Update UI elements
                 const input = document.querySelector(`.pwm-input[data-pin="${pin}"]`);
@@ -383,8 +387,10 @@
         // Handle initial state
         socket.on('initialState', (data) => {
             console.log('Received initial state:', data);
-            currentPWMState = data.pwm;
-            updatePWMUI();
+            if (data && data.pwm) {
+                currentPWMState = data.pwm;
+                updatePWMUI();
+            }
         });
 
         // Handle safety state updates
