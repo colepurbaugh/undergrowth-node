@@ -739,8 +739,16 @@ async function controlLoop() {
                     const currentValue = pwmPins[pin]._pwmValue || 0;
                     const currentEnabled = pwmPins[pin]._pwmEnabled || false;
                     
-                    if (isEmergencyStop || !isNormalEnable) {
-                        // Safety override - disable PWM
+                    if (isEmergencyStop) {
+                        // Emergency stop override - disable PWM regardless of mode
+                        if (currentValue !== 0 || currentEnabled) {
+                            pwmPins[pin].pwmWrite(0);
+                            pwmPins[pin]._pwmValue = 0;
+                            pwmPins[pin]._pwmEnabled = false;
+                            stateChanged = true;
+                        }
+                    } else if (mode === 0 && !isNormalEnable) {
+                        // Automatic mode requires normal enable
                         if (currentValue !== 0 || currentEnabled) {
                             pwmPins[pin].pwmWrite(0);
                             pwmPins[pin]._pwmValue = 0;
@@ -748,7 +756,7 @@ async function controlLoop() {
                             stateChanged = true;
                         }
                     } else {
-                        // Normal operation
+                        // Manual mode or automatic mode with normal enable
                         if (state && state.enabled) {
                             const pwmValue = Math.floor((state.value / 1023) * 255);
                             if (currentValue !== state.value || currentEnabled !== state.enabled) {
