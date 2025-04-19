@@ -417,6 +417,12 @@
             emergencyStopActive = false;
         });
 
+        // Handle events update
+        socket.on('eventsUpdated', (events) => {
+            console.log('Received events update:', events);
+            updateEventDisplay(events);
+        });
+
         // Handle mode toggle
         function toggleMode() {
             const modeToggle = document.getElementById('modeToggle');

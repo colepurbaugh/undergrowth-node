@@ -292,22 +292,34 @@ function broadcastSafetyState() {
 // Function to broadcast PWM states to all clients
 function broadcastPWMState() {
     console.log('Server: Broadcasting PWM state...');
-    db.all('SELECT pin, value, enabled FROM pwm_states', [], (err, rows) => {
+    
+    // Get current mode first
+    db.get('SELECT value FROM system_state WHERE key = ?', ['mode'], (err, row) => {
         if (err) {
-            console.error('Server: Error fetching PWM states for broadcast:', err);
+            console.error('Server: Error getting mode:', err);
             return;
         }
         
-        const pwmStates = {};
-        rows.forEach(row => {
-            pwmStates[row.pin] = {
-                value: row.value,
-                enabled: row.enabled === 1
-            };
-        });
+        const mode = row ? row.value : 1; // Default to manual mode
+        const table = mode === 0 ? 'auto_pwm_states' : 'pwm_states';
         
-        console.log('Server: Broadcasting PWM states:', pwmStates);
-        io.emit('pwmStateUpdate', pwmStates);
+        db.all(`SELECT pin, value, enabled FROM ${table}`, [], (err, rows) => {
+            if (err) {
+                console.error('Server: Error fetching PWM states for broadcast:', err);
+                return;
+            }
+            
+            const pwmStates = {};
+            rows.forEach(row => {
+                pwmStates[row.pin] = {
+                    value: row.value,
+                    enabled: row.enabled === 1
+                };
+            });
+            
+            console.log('Server: Broadcasting PWM states:', pwmStates);
+            io.emit('pwmStateUpdate', pwmStates);
+        });
     });
 }
 
@@ -756,10 +768,13 @@ async function controlLoop() {
             const table = mode === 0 ? 'auto_pwm_states' : 'pwm_states';
             db.all(`SELECT pin, value, enabled FROM ${table}`, [], (err, rows) => {
                 if (err) reject(err);
-                else resolve(rows.reduce((acc, row) => {
-                    acc[row.pin] = { value: row.value, enabled: row.enabled };
-                    return acc;
-                }, {}));
+                else {
+                    const states = rows.reduce((acc, row) => {
+                        acc[row.pin] = { value: row.value, enabled: row.enabled };
+                        return acc;
+                    }, {});
+                    resolve(states);
+                }
             });
         });
 
@@ -768,6 +783,46 @@ async function controlLoop() {
             const isEmergencyStop = safetyStates.emergency_stop;
             const isNormalEnable = safetyStates.normal_enable;
             let stateChanged = false;
+
+            // Get active events if in automatic mode
+            let activeEvents = {};
+            if (mode === 0) { // Automatic mode
+                const now = new Date();
+                const currentTime = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds();
+                
+                // Get all enabled events
+                const events = await new Promise((resolve, reject) => {
+                    db.all('SELECT * FROM events WHERE enabled = 1 ORDER BY time', [], (err, rows) => {
+                        if (err) reject(err);
+                        else resolve(rows);
+                    });
+                });
+
+                // Find active events for each GPIO
+                events.forEach(event => {
+                    const [hours, minutes, seconds] = event.time.split(':').map(Number);
+                    const eventTime = hours * 3600 + minutes * 60 + seconds;
+
+                    // For automatic mode, we want to use the most recent event
+                    if (!activeEvents[event.gpio] || eventTime > activeEvents[event.gpio].time) {
+                        activeEvents[event.gpio] = {
+                            time: eventTime,
+                            event: event
+                        };
+                    }
+                });
+
+                // Update auto_pwm_states based on active events
+                for (const [gpio, activeEvent] of Object.entries(activeEvents)) {
+                    await new Promise((resolve, reject) => {
+                        db.run('UPDATE auto_pwm_states SET value = ?, enabled = 1 WHERE pin = ?',
+                            [activeEvent.event.pwm_value, gpio], (err) => {
+                                if (err) reject(err);
+                                else resolve();
+                            });
+                    });
+                }
+            }
 
             Object.keys(pwmPins).forEach(pin => {
                 if (pwmPins[pin]) {
@@ -782,17 +837,29 @@ async function controlLoop() {
                             pwmPins[pin]._pwmValue = 0;
                             pwmPins[pin]._pwmEnabled = false;
                             stateChanged = true;
+                            console.log(`Server: Emergency stop - disabling PWM for pin ${pin}`);
                         }
-                    } else if (mode === 0 && !isNormalEnable) {
-                        // Automatic mode requires normal enable
-                        if (currentValue !== 0 || currentEnabled) {
+                    } else if (mode === 0) { // Automatic mode
+                        // Check if we have an active event for this GPIO
+                        const activeEvent = activeEvents[pin];
+                        if (activeEvent && isNormalEnable) {
+                            const pwmValue = Math.floor((activeEvent.event.pwm_value / 1023) * 255);
+                            if (currentValue !== activeEvent.event.pwm_value || currentEnabled !== true) {
+                                pwmPins[pin].pwmWrite(pwmValue);
+                                pwmPins[pin]._pwmValue = activeEvent.event.pwm_value;
+                                pwmPins[pin]._pwmEnabled = true;
+                                stateChanged = true;
+                                console.log(`Server: Automatic mode - setting PWM for pin ${pin} to ${pwmValue} (${activeEvent.event.pwm_value}/1023)`);
+                            }
+                        } else if (currentValue !== 0 || currentEnabled) {
+                            // No active event or normal enable is off
                             pwmPins[pin].pwmWrite(0);
                             pwmPins[pin]._pwmValue = 0;
                             pwmPins[pin]._pwmEnabled = false;
                             stateChanged = true;
+                            console.log(`Server: Automatic mode - no active event for pin ${pin}, disabling PWM`);
                         }
-                    } else {
-                        // Manual mode or automatic mode with normal enable
+                    } else { // Manual mode
                         if (state && state.enabled) {
                             const pwmValue = Math.floor((state.value / 1023) * 255);
                             if (currentValue !== state.value || currentEnabled !== state.enabled) {
@@ -800,12 +867,14 @@ async function controlLoop() {
                                 pwmPins[pin]._pwmValue = state.value;
                                 pwmPins[pin]._pwmEnabled = state.enabled;
                                 stateChanged = true;
+                                console.log(`Server: Manual mode - setting PWM for pin ${pin} to ${pwmValue} (${state.value}/1023)`);
                             }
                         } else if (currentValue !== 0 || currentEnabled) {
                             pwmPins[pin].pwmWrite(0);
                             pwmPins[pin]._pwmValue = 0;
                             pwmPins[pin]._pwmEnabled = false;
                             stateChanged = true;
+                            console.log(`Server: Manual mode - disabling PWM for pin ${pin}`);
                         }
                     }
                 }
