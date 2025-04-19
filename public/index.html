@@ -16,6 +16,7 @@
             --inactive-color: #4f5559;
             --selection-bg: #004daa;
             --selection-text: #e8e6e3;
+            --emergency-color: #ff8c00;
         }
 
         * {
@@ -51,6 +52,31 @@
             border-radius: 0.5rem;
             margin-bottom: 1rem;
             width: 100%;
+        }
+
+        .header-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+        }
+
+        .header-row h2 {
+            margin-bottom: 0;
+        }
+
+        .emergency-button {
+            padding: 0.5rem 1rem;
+            background-color: var(--error-color);
+            color: var(--text-primary);
+            border: 1px solid var(--border-color);
+            border-radius: 0.25rem;
+            cursor: pointer;
+            font-weight: bold;
+        }
+
+        .emergency-button:hover {
+            background-color: #c0110b;
         }
 
         .info-section {
@@ -98,7 +124,10 @@
 </head>
 <body>
     <div class="container">
-        <h2>System Information</h2>
+        <div class="header-row">
+            <h2 class="text-xl font-semibold mb-4 text-[#e8e6e3]">System Information</h2>
+            <button id="emergencyButton" class="emergency-button" onclick="toggleEmergencyStop()">Emergency Stop</button>
+        </div>
         <div class="info-section">
             <div class="info-item">
                 <div class="info-label">Pi Uptime:</div>
@@ -166,7 +195,47 @@
     <script src="/socket.io/socket.io.js"></script>
     <script>
         const socket = io();
-        
+        let currentSafetyState = {
+            emergency_stop: false,
+            normal_enable: false
+        };
+
+        // Request initial state when page loads
+        socket.emit('getInitialState');
+
+        // Handle initial state
+        socket.on('initialState', (data) => {
+            currentSafetyState = data.safety;
+            updateSafetyUI();
+        });
+
+        // Handle safety state updates
+        socket.on('safetyStateUpdate', (data) => {
+            currentSafetyState = data;
+            updateSafetyUI();
+        });
+
+        function updateSafetyUI() {
+            const emergencyButton = document.getElementById('emergencyButton');
+            
+            if (currentSafetyState.emergency_stop) {
+                emergencyButton.textContent = 'Clear Emergency Stop';
+                document.body.style.backgroundColor = 'var(--error-color)';
+            } else {
+                emergencyButton.textContent = 'Emergency Stop';
+                document.body.style.backgroundColor = 'var(--bg-primary)';
+            }
+        }
+
+        // Event handler for the emergency button
+        document.getElementById('emergencyButton').addEventListener('click', () => {
+            if (currentSafetyState.emergency_stop) {
+                socket.emit('clearEmergencyStop');
+            } else {
+                socket.emit('emergencyStop');
+            }
+        });
+
         socket.on('sensorData', (data) => {
             // Update system information
             document.getElementById('piUptime').textContent = data.system.piUptime;
