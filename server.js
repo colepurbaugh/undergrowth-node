@@ -108,11 +108,11 @@ const db = new sqlite3.Database('./ug-node.db', (err) => {
         console.log('Connected to SQLite database');
         // Create tables
         db.serialize(() => {
-            // Create system_state table
-            db.run(`CREATE TABLE IF NOT EXISTS system_state (
+            // Create safety_state table
+            db.run(`CREATE TABLE IF NOT EXISTS safety_state (
                 key TEXT PRIMARY KEY,
                 value INTEGER,
-                last_modified TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                last_modified DATETIME DEFAULT CURRENT_TIMESTAMP
             )`);
 
             // Create pwm_states table
@@ -120,20 +120,31 @@ const db = new sqlite3.Database('./ug-node.db', (err) => {
                 pin INTEGER PRIMARY KEY,
                 value INTEGER,
                 enabled INTEGER,
-                last_modified TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                last_modified DATETIME DEFAULT CURRENT_TIMESTAMP
             )`);
 
-            // Create safety_state table
-            db.run(`CREATE TABLE IF NOT EXISTS safety_state (
+            // Create auto_pwm_states table
+            db.run(`CREATE TABLE IF NOT EXISTS auto_pwm_states (
+                pin INTEGER PRIMARY KEY,
+                value INTEGER,
+                enabled INTEGER,
+                last_modified DATETIME DEFAULT CURRENT_TIMESTAMP
+            )`);
+
+            // Create system_state table
+            db.run(`CREATE TABLE IF NOT EXISTS system_state (
                 key TEXT PRIMARY KEY,
                 value INTEGER,
-                last_modified TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                last_modified DATETIME DEFAULT CURRENT_TIMESTAMP
             )`);
 
-            // Create state_changes table
-            db.run(`CREATE TABLE IF NOT EXISTS state_changes (
-                key TEXT PRIMARY KEY,
-                value INTEGER DEFAULT 0
+            // Create events table
+            db.run(`CREATE TABLE IF NOT EXISTS events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                gpio INTEGER,
+                time TEXT,
+                pwm_value INTEGER,
+                enabled INTEGER DEFAULT 1
             )`);
 
             // Initialize states if not set
@@ -179,11 +190,14 @@ const db = new sqlite3.Database('./ug-node.db', (err) => {
                 VALUES ('pwm_enabled', 0)
             `);
 
-            // Initialize system state if not exists
-            db.run(`
-                INSERT OR IGNORE INTO system_state (key, value) 
-                VALUES ('mode', 0)
-            `);
+            // Initialize system state
+            db.run(`INSERT OR IGNORE INTO system_state (key, value) VALUES ('mode', 1)`); // Default to manual mode
+
+            // Initialize auto_pwm_states
+            db.run(`INSERT OR IGNORE INTO auto_pwm_states (pin, value, enabled) VALUES (12, 0, 0)`);
+            db.run(`INSERT OR IGNORE INTO auto_pwm_states (pin, value, enabled) VALUES (13, 0, 0)`);
+            db.run(`INSERT OR IGNORE INTO auto_pwm_states (pin, value, enabled) VALUES (18, 0, 0)`);
+            db.run(`INSERT OR IGNORE INTO auto_pwm_states (pin, value, enabled) VALUES (19, 0, 0)`);
         });
     }
 });
@@ -356,59 +370,87 @@ io.on('connection', (socket) => {
     console.log('Client connected');
 
     // Handle initial state request
-    socket.on('getInitialState', () => {
-        console.log('Client requested initial state');
-        // Get all states
-        db.all('SELECT key, value FROM safety_state', [], (err, safetyRows) => {
-            if (err) {
-                console.error('Error fetching safety state:', err);
-                return;
-            }
-            
-            const safetyStates = {};
-            safetyRows.forEach(row => {
-                safetyStates[row.key] = row.value === 1;
+    socket.on('getInitialState', async () => {
+        try {
+            const mode = await new Promise((resolve, reject) => {
+                db.get('SELECT value FROM system_state WHERE key = ?', ['mode'], (err, row) => {
+                    if (err) reject(err);
+                    else resolve(row ? row.value : 1);
+                });
             });
 
-            console.log('Current safety state from database:', safetyStates);
+            const events = await new Promise((resolve, reject) => {
+                db.all('SELECT * FROM events ORDER BY time', [], (err, rows) => {
+                    if (err) reject(err);
+                    else resolve(rows);
+                });
+            });
 
-            db.all('SELECT pin, value, enabled FROM pwm_states', [], (err, pwmRows) => {
-                if (err) {
-                    console.error('Error fetching PWM states:', err);
-                    return;
-                }
+            const safetyStates = await new Promise((resolve, reject) => {
+                db.all('SELECT key, value FROM safety_state', [], (err, rows) => {
+                    if (err) reject(err);
+                    else resolve(rows.reduce((acc, row) => {
+                        acc[row.key] = row.value;
+                        return acc;
+                    }, {}));
+                });
+            });
 
-                const pwmStates = {};
-                pwmRows.forEach(row => {
-                    pwmStates[row.pin] = {
-                        value: row.value,
-                        enabled: row.enabled === 1
+            // Update auto_pwm_states based on current active events
+            const now = new Date();
+            const currentTime = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds();
+
+            // Find active events for each GPIO
+            const activeEvents = {};
+            events.forEach(event => {
+                if (!event.enabled) return;
+
+                const [hours, minutes, seconds] = event.time.split(':').map(Number);
+                const eventTime = hours * 3600 + minutes * 60 + seconds;
+
+                if (!activeEvents[event.gpio] || 
+                    (eventTime <= currentTime && eventTime > (activeEvents[event.gpio].time || -1)) ||
+                    (eventTime > currentTime && eventTime < (activeEvents[event.gpio].time || Infinity))) {
+                    activeEvents[event.gpio] = {
+                        time: eventTime,
+                        event: event
                     };
-                });
-
-                console.log('Sending initial state to client:', {
-                    safety: safetyStates,
-                    pwm: pwmStates
-                });
-                // Send initial state
-                socket.emit('initialState', {
-                    safety: safetyStates,
-                    pwm: pwmStates
-                });
+                }
             });
-        });
+
+            // Update auto_pwm_states
+            for (const [gpio, activeEvent] of Object.entries(activeEvents)) {
+                await new Promise((resolve, reject) => {
+                    db.run('UPDATE auto_pwm_states SET value = ?, enabled = 1 WHERE pin = ?',
+                        [activeEvent.event.pwm_value, gpio], (err) => {
+                            if (err) reject(err);
+                            else resolve();
+                        });
+                });
+            }
+
+            socket.emit('initialState', {
+                mode,
+                events,
+                safetyStates
+            });
+        } catch (error) {
+            console.error('Error getting initial state:', error);
+        }
     });
 
     // Handle emergency stop
     socket.on('emergencyStop', async () => {
         await emergencyStop();
         broadcastSafetyState();
+        io.emit('emergencyStop');
     });
 
     // Handle clear emergency stop
     socket.on('clearEmergencyStop', async () => {
         await clearEmergencyStop();
         broadcastSafetyState();
+        io.emit('clearEmergencyStop');
     });
 
     // Handle mode toggle
@@ -475,36 +517,21 @@ io.on('connection', (socket) => {
         console.log('Client disconnected');
     });
 
-    // Handle event creation
-    socket.on('addEvent', (data) => {
-        const { gpio, time, pwm } = data;
-        
-        // Validate input
-        if (!gpio || !time || pwm === undefined) {
-            socket.emit('eventError', { message: 'Missing required fields' });
-            return;
-        }
-
-        // Insert event into database
-        db.run(
-            'INSERT INTO events (gpio, time, pwm_value) VALUES (?, ?, ?)',
-            [gpio, time, pwm],
-            function(err) {
-                if (err) {
-                    console.error('Error adding event:', err);
-                    socket.emit('eventError', { message: 'Failed to add event' });
-                } else {
-                    // After successful insert, broadcast updated events to all clients
-                    broadcastEvents();
-                    socket.emit('eventAdded', { 
-                        id: this.lastID,
-                        gpio,
-                        time,
-                        pwm
+    // Handle event add
+    socket.on('addEvent', async (data) => {
+        try {
+            await new Promise((resolve, reject) => {
+                db.run('INSERT INTO events (gpio, time, pwm_value, enabled) VALUES (?, ?, ?, ?)',
+                    [data.gpio, data.time, data.pwm_value, data.enabled], (err) => {
+                        if (err) reject(err);
+                        else resolve();
                     });
-                }
-            }
-        );
+            });
+            await broadcastEvents();
+            await broadcastPWMState();
+        } catch (error) {
+            console.error('Error adding event:', error);
+        }
     });
 
     // Handle get events request
@@ -519,19 +546,21 @@ io.on('connection', (socket) => {
         });
     });
 
-    // Handle event deletion
-    socket.on('deleteEvent', (data) => {
-        const { id } = data;
-        
-        db.run('DELETE FROM events WHERE id = ?', [id], (err) => {
-            if (err) {
-                console.error('Error deleting event:', err);
-                socket.emit('eventError', { message: 'Failed to delete event' });
-            } else {
-                broadcastEvents();
-                socket.emit('eventDeleted', { id });
-            }
-        });
+    // Handle event delete
+    socket.on('deleteEvent', async (data) => {
+        try {
+            await new Promise((resolve, reject) => {
+                db.run('DELETE FROM events WHERE id = ?', [data.id], (err) => {
+                    if (err) reject(err);
+                    else resolve();
+                });
+            });
+            await broadcastEvents();
+            await broadcastPWMState();
+            io.emit('eventDeleted', { id: data.id });
+        } catch (error) {
+            console.error('Error deleting event:', error);
+        }
     });
 
     // Handle event toggle
@@ -552,6 +581,25 @@ io.on('connection', (socket) => {
     // Handle normal enable toggle
     socket.on('toggleNormalEnable', async (data) => {
         await toggleNormalEnable(data.enabled);
+    });
+
+    // Handle mode set request
+    socket.on('setMode', async (data) => {
+        try {
+            const { automatic } = data;
+            const mode = automatic ? 0 : 1; // 0 is automatic, 1 is manual
+            await new Promise((resolve, reject) => {
+                db.run('UPDATE system_state SET value = ? WHERE key = ?', 
+                    [mode, 'mode'], (err) => {
+                        if (err) reject(err);
+                        else resolve();
+                    });
+            });
+            console.log('Server: Mode updated successfully to:', mode);
+            io.emit('modeUpdate', { mode });
+        } catch (error) {
+            console.error('Error setting mode:', error);
+        }
     });
 });
 
@@ -684,53 +732,41 @@ async function toggleNormalEnable(enabled) {
 // Control loop for hardware updates
 async function controlLoop() {
     try {
-        // Get current states
-        const states = await new Promise((resolve) => {
-            const states = {};
+        // Get current safety states
+        const safetyStates = await new Promise((resolve, reject) => {
             db.all('SELECT key, value FROM safety_state', [], (err, rows) => {
-                if (err) {
-                    resolve({});
-                    return;
-                }
-                rows.forEach(row => {
-                    states[row.key] = row.value === 1;
-                });
-                resolve(states);
+                if (err) reject(err);
+                else resolve(rows.reduce((acc, row) => {
+                    acc[row.key] = row.value;
+                    return acc;
+                }, {}));
             });
         });
 
         // Get current mode
-        const mode = await new Promise((resolve) => {
+        const mode = await new Promise((resolve, reject) => {
             db.get('SELECT value FROM system_state WHERE key = ?', ['mode'], (err, row) => {
-                if (err || !row) {
-                    resolve(0); // Default to automatic mode
-                    return;
-                }
-                resolve(row.value);
+                if (err) reject(err);
+                else resolve(row ? row.value : 1); // Default to manual mode
             });
         });
 
-        const pwmStates = await new Promise((resolve) => {
-            const states = {};
-            db.all('SELECT pin, value, enabled FROM pwm_states', [], (err, rows) => {
-                if (err) {
-                    resolve({});
-                    return;
-                }
-                rows.forEach(row => {
-                    states[row.pin] = {
-                        value: row.value,
-                        enabled: row.enabled === 1
-                    };
-                });
-                resolve(states);
+        // Get current PWM states based on mode
+        const pwmStates = await new Promise((resolve, reject) => {
+            const table = mode === 0 ? 'auto_pwm_states' : 'pwm_states';
+            db.all(`SELECT pin, value, enabled FROM ${table}`, [], (err, rows) => {
+                if (err) reject(err);
+                else resolve(rows.reduce((acc, row) => {
+                    acc[row.pin] = { value: row.value, enabled: row.enabled };
+                    return acc;
+                }, {}));
             });
         });
 
         // Update hardware first (safety critical)
         if (pwmEnabled) {
-            const isEmergencyStop = states.emergency_stop;
-            const isNormalEnable = states.normal_enable;
+            const isEmergencyStop = safetyStates.emergency_stop;
+            const isNormalEnable = safetyStates.normal_enable;
             let stateChanged = false;
 
             Object.keys(pwmPins).forEach(pin => {

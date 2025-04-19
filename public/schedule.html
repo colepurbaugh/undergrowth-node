@@ -189,31 +189,104 @@
         }
 
         .mode-slider {
-            background-color: var(--inactive-color);
+            background-color: var(--error-color);
         }
 
         .mode-toggle input:checked + .slider {
-            background-color: #004daa;
+            background-color: var(--selection-bg);
         }
 
         .mode-slider.automatic {
-            background-color: #004daa;
+            background-color: var(--selection-bg);
+        }
+
+        /* Clock styles */
+        .clock {
+            font-family: monospace;
+            font-size: 0.9rem;
+            color: var(--text-primary);
+            padding: 0.25rem 0.5rem;
+            background-color: var(--bg-primary);
+        }
+
+        /* Emergency Stop styles */
+        .emergency-stop {
+            padding: 0.5rem 1rem;
+            font-size: 0.9rem;
+            background-color: var(--error-color);
+            color: white;
+            border: none;
+            border-radius: 0.25rem;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+
+        .emergency-stop.active {
+            background-color: var(--error-color);
+            opacity: 0.8;
+        }
+
+        .emergency-stop:hover {
+            opacity: 0.9;
+        }
+
+        body.emergency-stop-active {
+            background-color: var(--error-color);
+            opacity: 0.1;
+        }
+
+        /* Countdown timer styles */
+        .countdown {
+            font-family: monospace;
+            font-size: 0.9rem;
+            color: var(--text-secondary);
+            margin-left: 0.5rem;
+        }
+
+        /* Active schedule indicator */
+        .event-item.active {
+            background-color: var(--active-color);
+        }
+
+        .event-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0.5rem;
+            margin: 0.25rem 0;
+            border-radius: 0.25rem;
+            background-color: #333;
+        }
+
+        .event-time {
+            font-family: monospace;
+            margin-right: 0.5rem;
+        }
+
+        .event-pwm {
+            margin-right: 0.5rem;
+        }
+
+        .event-enabled {
+            margin-left: auto;
         }
     </style>
 </head>
 <body>
     <div class="container">
-        <!-- Header with title and mode toggle -->
+        <!-- Header with title, clock, mode toggle, and emergency stop -->
         <div class="header-row">
-            <h2 class="text-xl font-semibold mb-4 text-[#e8e6e3]">Add Event</h2>
+            <h2 class="header-title">Add Event</h2>
+            <div class="clock" id="clock">00:00:00</div>
             <div class="mode-control">
                 <span class="mode-label">manual</span>
                 <label class="toggle mode-toggle">
-                    <input type="checkbox" id="modeToggle" onchange="toggleMode(this.checked)">
+                    <input type="checkbox" id="modeToggle" onchange="toggleMode()">
                     <span class="slider mode-slider"></span>
                 </label>
                 <span class="mode-label">automatic</span>
             </div>
+            <button class="emergency-stop" id="emergencyStop" onclick="toggleEmergencyStop()">Emergency Stop</button>
         </div>
 
         <!-- Add New Event Form -->
@@ -245,7 +318,122 @@
     <script src="/socket.io/socket.io.js"></script>
     <script>
         const socket = io();
+        let emergencyStopActive = false;
 
+        // Clock functionality
+        function updateClock() {
+            const now = new Date();
+            const hours = now.getHours().toString().padStart(2, '0');
+            const minutes = now.getMinutes().toString().padStart(2, '0');
+            const seconds = now.getSeconds().toString().padStart(2, '0');
+            document.getElementById('clock').textContent = `${hours}:${minutes}:${seconds}`;
+        }
+
+        // Update clock every second
+        setInterval(updateClock, 1000);
+        updateClock(); // Initial update
+
+        // Emergency Stop functionality
+        function toggleEmergencyStop() {
+            const button = document.getElementById('emergencyStop');
+            if (emergencyStopActive) {
+                socket.emit('clearEmergencyStop');
+                button.textContent = 'Emergency Stop';
+                button.classList.remove('active');
+                document.body.style.backgroundColor = 'var(--bg-primary)';
+                emergencyStopActive = false;
+            } else {
+                socket.emit('emergencyStop');
+                button.textContent = 'Clear Emergency Stop';
+                button.classList.add('active');
+                document.body.style.backgroundColor = 'var(--error-color)';
+                emergencyStopActive = true;
+            }
+        }
+
+        // Countdown timer functionality
+        function updateCountdown(index, triggerTime) {
+            const countdownElement = document.getElementById(`countdown-${index}`);
+            if (!countdownElement) return;
+
+            const now = new Date();
+            const [hours, minutes, seconds] = triggerTime.split(':').map(Number);
+            const target = new Date(now);
+            target.setHours(hours, minutes, seconds);
+
+            if (target < now) {
+                target.setDate(target.getDate() + 1);
+            }
+
+            const diff = target - now;
+            const h = Math.floor(diff / 3600000);
+            const m = Math.floor((diff % 3600000) / 60000);
+            const s = Math.floor((diff % 60000) / 1000);
+
+            countdownElement.textContent = `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+        }
+
+        function updateAllCountdowns() {
+            const events = document.querySelectorAll('.event-item');
+            events.forEach(event => {
+                const index = event.dataset.index;
+                const time = event.querySelector('.event-time').textContent;
+                updateCountdown(index, time);
+            });
+        }
+
+        // Update countdowns every second
+        setInterval(updateAllCountdowns, 1000);
+
+        // Socket event handlers
+        socket.on('connect', () => {
+            console.log('Connected to server');
+            socket.emit('getInitialState');
+        });
+
+        socket.on('initialState', (data) => {
+            console.log('Received initial state:', data);
+            updateUI(data);
+        });
+
+        socket.on('stateUpdate', (data) => {
+            console.log('Received state update:', data);
+            updateUI(data);
+        });
+
+        socket.on('emergencyStop', () => {
+            const button = document.getElementById('emergencyStop');
+            button.textContent = 'Clear Emergency Stop';
+            button.classList.add('active');
+            document.body.style.backgroundColor = 'var(--error-color)';
+            emergencyStopActive = true;
+        });
+
+        socket.on('clearEmergencyStop', () => {
+            const button = document.getElementById('emergencyStop');
+            button.textContent = 'Emergency Stop';
+            button.classList.remove('active');
+            document.body.style.backgroundColor = 'var(--bg-primary)';
+            emergencyStopActive = false;
+        });
+
+        // Handle mode toggle
+        function toggleMode() {
+            const modeToggle = document.getElementById('modeToggle');
+            const newMode = modeToggle.checked ? 0 : 1;
+            socket.emit('setMode', { automatic: modeToggle.checked });
+            console.log('Client: Toggling mode to:', newMode);
+        }
+
+        // Handle mode update
+        socket.on('modeUpdate', (data) => {
+            console.log('Client: Received mode update:', data);
+            const modeToggle = document.getElementById('modeToggle');
+            modeToggle.checked = data.mode === 0;
+            updateModeDisplay();
+        });
+
+        // Event handling functions
         function validateTime(timeStr) {
             // Check format
             if (!/^\d{2}:\d{2}:\d{2}$/.test(timeStr)) {
@@ -299,32 +487,76 @@
                 return;
             }
 
-            socket.emit('addEvent', { gpio, time, pwm });
+            socket.emit('addEvent', { 
+                gpio: parseInt(gpio), 
+                time, 
+                pwm_value: parseInt(pwm), 
+                enabled: 1 
+            });
         }
 
         function updateEventDisplay(events) {
             const eventList = document.getElementById('eventList');
-            eventList.innerHTML = '';  // Clear current list
+            eventList.innerHTML = '';
+
+            // Sort events by time
+            events.sort((a, b) => {
+                const timeA = a.time.split(':').map(Number);
+                const timeB = b.time.split(':').map(Number);
+                return (timeA[0] * 3600 + timeA[1] * 60 + timeA[2]) - 
+                       (timeB[0] * 3600 + timeB[1] * 60 + timeB[2]);
+            });
+
+            // Get current time
+            const now = new Date();
+            const currentTime = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds();
+
+            // Find active events for each GPIO
+            const activeEvents = {};
+            events.forEach(event => {
+                if (!event.enabled) return;
+
+                const [hours, minutes, seconds] = event.time.split(':').map(Number);
+                const eventTime = hours * 3600 + minutes * 60 + seconds;
+
+                // If this event is more recent than the current active event for this GPIO
+                if (!activeEvents[event.gpio] || 
+                    (eventTime <= currentTime && eventTime > (activeEvents[event.gpio].time || -1)) ||
+                    (eventTime > currentTime && eventTime < (activeEvents[event.gpio].time || Infinity))) {
+                    activeEvents[event.gpio] = {
+                        time: eventTime,
+                        event: event
+                    };
+                }
+            });
 
             events.forEach(event => {
-                const pwmPercent = Math.round((event.pwm_value / 1024) * 100);
-                
                 const eventDiv = document.createElement('div');
-                eventDiv.className = 'event-control';
+                eventDiv.className = 'event-item';
+                eventDiv.dataset.index = event.id;
+
+                // Check if this is an active event
+                const isActive = activeEvents[event.gpio] && activeEvents[event.gpio].event.id === event.id;
+                if (isActive) {
+                    eventDiv.classList.add('active');
+                }
+
+                const percentage = Math.round((event.pwm_value / 1024) * 100);
                 eventDiv.innerHTML = `
-                    <span class="gpio-title">GPIO${event.gpio}:</span>
-                    <span class="pwm-value">${event.time}</span>
-                    <span class="pwm-value">${event.pwm_value}/1024</span>
-                    <span class="pwm-value">${pwmPercent}%</span>
-                    <div class="controls-group">
-                        <label class="toggle">
-                            <input type="checkbox" ${event.enabled ? 'checked' : ''} onchange="toggleEvent(${event.id}, this.checked)">
-                            <span class="slider"></span>
-                        </label>
-                        <button class="delete" onclick="deleteEvent(${event.id})">Delete</button>
-                    </div>
+                    <span class="gpio-title">GPIO${event.gpio}</span>
+                    <span class="event-time">${event.time}</span>
+                    <span class="event-pwm">${event.pwm_value}/1024 ${percentage}%</span>
+                    <span class="countdown" id="countdown-${event.id}"></span>
+                    <label class="toggle event-enabled">
+                        <input type="checkbox" ${event.enabled ? 'checked' : ''} 
+                               onchange="toggleEvent(${event.id}, this.checked)">
+                        <span class="slider"></span>
+                    </label>
+                    <button class="delete" onclick="deleteEvent(${event.id})">Delete</button>
                 `;
+
                 eventList.appendChild(eventDiv);
+                updateCountdown(event.id, event.time);
             });
         }
 
@@ -338,60 +570,20 @@
             socket.emit('toggleEvent', { id, enabled });
         }
 
-        function toggleMode(automatic) {
-            socket.emit('toggleMode', { automatic });
+        function updateUI(data) {
+            updateEventDisplay(data.events);
+            // Add countdown elements to each event
+            const events = document.querySelectorAll('.event-item');
+            events.forEach(event => {
+                const index = event.dataset.index;
+                const time = event.querySelector('.event-time').textContent;
+                const countdownElement = document.createElement('div');
+                countdownElement.id = `countdown-${index}`;
+                countdownElement.className = 'countdown';
+                event.appendChild(countdownElement);
+                updateCountdown(index, time);
+            });
         }
-
-        // Update UI when mode changes
-        socket.on('modeChanged', (data) => {
-            const toggle = document.getElementById('modeToggle');
-            if (toggle) {
-                toggle.checked = data.automatic;
-            }
-            // Update slider color
-            const slider = document.querySelector('.mode-slider');
-            if (slider) {
-                if (data.automatic) {
-                    slider.style.backgroundColor = '#004daa';  // Blue when automatic
-                } else {
-                    slider.style.backgroundColor = 'var(--inactive-color)';  // Gray when manual
-                }
-            }
-        });
-
-        // Request initial mode state
-        socket.emit('getMode');
-
-        // Request initial events when page loads
-        socket.emit('getEvents');
-
-        // Set up periodic sync
-        setInterval(() => {
-            socket.emit('getEvents');
-        }, 30000);  // Every 30 seconds
-
-        socket.on('eventAdded', (data) => {
-            alert('Event added successfully');
-            // Clear input fields
-            document.getElementById('triggerTime').value = '';
-            document.getElementById('pwmValue').value = '0';
-        });
-
-        socket.on('eventDeleted', (data) => {
-            // No need to do anything here as broadcastEvents will update all clients
-        });
-
-        socket.on('eventToggled', (data) => {
-            // No need to do anything here as broadcastEvents will update all clients
-        });
-
-        socket.on('eventError', (data) => {
-            alert('Error: ' + data.message);
-        });
-
-        socket.on('eventsUpdated', (events) => {
-            updateEventDisplay(events);
-        });
     </script>
 </body>
 </html>
