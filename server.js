@@ -166,14 +166,23 @@ const db = new sqlite3.Database('./ug-node.db', (err) => {
 
             // Initialize PWM states if they don't exist
             db.run(`
-                INSERT OR IGNORE INTO pwm_states (pin, value, enabled)
-                VALUES (12, 0, 0), (13, 0, 0), (14, 0, 0), (15, 0, 0)
+                INSERT OR IGNORE INTO pwm_states (pin, value, enabled, last_modified)
+                VALUES (12, 0, 0, CURRENT_TIMESTAMP), 
+                       (13, 0, 0, CURRENT_TIMESTAMP), 
+                       (18, 0, 0, CURRENT_TIMESTAMP), 
+                       (19, 0, 0, CURRENT_TIMESTAMP)
             `);
 
             // Initialize system state if it doesn't exist
             db.run(`
                 INSERT OR IGNORE INTO system_state (key, value)
                 VALUES ('pwm_enabled', 0)
+            `);
+
+            // Initialize system state if not exists
+            db.run(`
+                INSERT OR IGNORE INTO system_state (key, value) 
+                VALUES ('mode', 0)
             `);
         });
     }
@@ -268,9 +277,10 @@ function broadcastSafetyState() {
 
 // Function to broadcast PWM states to all clients
 function broadcastPWMState() {
+    console.log('Server: Broadcasting PWM state...');
     db.all('SELECT pin, value, enabled FROM pwm_states', [], (err, rows) => {
         if (err) {
-            console.error('Error fetching PWM states for broadcast:', err);
+            console.error('Server: Error fetching PWM states for broadcast:', err);
             return;
         }
         
@@ -282,6 +292,7 @@ function broadcastPWMState() {
             };
         });
         
+        console.log('Server: Broadcasting PWM states:', pwmStates);
         io.emit('pwmStateUpdate', pwmStates);
     });
 }
@@ -303,7 +314,40 @@ async function clearEmergencyStop() {
 // Update togglePWM function
 async function togglePWM(pin, enabled) {
     return new Promise((resolve) => {
-        db.run('UPDATE pwm_states SET enabled = ? WHERE pin = ?', [enabled ? 1 : 0, pin], resolve);
+        // Get current value
+        db.get('SELECT value FROM pwm_states WHERE pin = ?', [pin], (err, row) => {
+            if (err) {
+                console.error('Error getting PWM value:', err);
+                resolve();
+                return;
+            }
+            
+            const value = row ? row.value : 0;
+            
+            // Update database
+            db.run('UPDATE pwm_states SET enabled = ? WHERE pin = ?', [enabled ? 1 : 0, pin], (err) => {
+                if (err) {
+                    console.error('Error updating PWM state:', err);
+                }
+                
+                // Update hardware
+                if (pwmEnabled && pwmPins[pin]) {
+                    if (enabled) {
+                        const pwmValue = Math.floor((value / 1023) * 255);
+                        pwmPins[pin].pwmWrite(pwmValue);
+                        pwmPins[pin]._pwmValue = value;
+                    } else {
+                        pwmPins[pin].pwmWrite(0);
+                        pwmPins[pin]._pwmValue = 0;
+                    }
+                }
+                
+                // Broadcast the new state to all clients
+                broadcastPWMState();
+                
+                resolve();
+            });
+        });
     });
 }
 
@@ -368,59 +412,55 @@ io.on('connection', (socket) => {
     });
 
     // Handle mode toggle
-    socket.on('toggleMode', (data) => {
-        const automatic = data.automatic ? 1 : 0;
-        db.run('UPDATE system_state SET value = ? WHERE key = ?', [automatic, 'automatic_mode'], (err) => {
-            if (err) {
-                console.error('Error updating mode:', err);
-                socket.emit('modeError', { message: 'Failed to update mode' });
-            } else {
-                // Broadcast mode change to all clients
-                io.emit('modeChanged', { automatic: automatic === 1 });
-            }
-        });
+    socket.on('toggleMode', async (data) => {
+        console.log('Server: Received mode toggle:', data);
+        const { automatic } = data;
+        const mode = automatic ? 0 : 1; // 0 is automatic, 1 is manual
+        try {
+            db.run('UPDATE system_state SET value = ? WHERE key = ?',
+                [mode, 'mode'], (err) => {
+                    if (err) {
+                        console.error('Server: Error updating mode:', err);
+                        socket.emit('modeError', { message: 'Failed to update mode' });
+                    } else {
+                        console.log('Server: Mode updated successfully to:', mode);
+                        // Broadcast the new mode to all clients
+                        io.emit('modeUpdate', { mode });
+                    }
+                });
+        } catch (error) {
+            console.error('Server: Error handling mode toggle:', error);
+            socket.emit('modeError', { message: 'Failed to update mode' });
+        }
     });
 
     // Handle PWM set requests
     socket.on('pwmSet', async (data) => {
+        console.log('Server: Received pwmSet event:', data);
         const { pin, value } = data;
         if (pwmEnabled && pwmPins[pin]) {
             try {
-                const isSafe = await isSystemSafe();
-                if (!isSafe) {
-                    // If not safe, force disable
-                    pwmPins[pin].pwmWrite(0);
-                    socket.emit('pwmState', {
-                        pin: pin,
-                        value: value,
-                        enabled: false
-                    });
-                    return;
-                }
-
-                // Convert value from 0-1023 to 0-255 range
-                const pwmValue = Math.floor((value / 1023) * 255);
-                pwmPins[pin].pwmWrite(pwmValue);
-                pwmPins[pin]._pwmValue = value; // Store original value
+                // Store the original value
+                pwmPins[pin]._pwmValue = value;
                 
                 // Update database
-                db.run('INSERT OR REPLACE INTO pwm_states (pin, value, enabled) VALUES (?, ?, ?)',
-                    [pin, value, pwmValue > 0], (err) => {
+                console.log('Server: Updating database with value:', { pin, value });
+                db.run('UPDATE pwm_states SET value = ?, last_modified = CURRENT_TIMESTAMP WHERE pin = ?',
+                    [value, pin], (err) => {
                         if (err) {
-                            console.error('Error saving PWM state:', err);
+                            console.error('Server: Error saving PWM state:', err);
+                        } else {
+                            console.log('Server: Database update successful, broadcasting state');
+                            // Broadcast the new state to all clients
+                            broadcastPWMState();
                         }
                     });
-                
-                socket.emit('pwmState', {
-                    pin: pin,
-                    value: value,
-                    enabled: pwmValue > 0
-                });
             } catch (error) {
-                console.error(`Error setting PWM value for pin ${pin}:`, error);
+                console.error(`Server: Error setting PWM value for pin ${pin}:`, error);
                 socket.emit('pwmError', { pin, message: 'Failed to set PWM value' });
             }
         } else {
+            console.log('Server: PWM not available for pin:', pin);
             socket.emit('pwmError', { pin, message: 'PWM is not available' });
         }
     });
@@ -659,6 +699,17 @@ async function controlLoop() {
             });
         });
 
+        // Get current mode
+        const mode = await new Promise((resolve) => {
+            db.get('SELECT value FROM system_state WHERE key = ?', ['mode'], (err, row) => {
+                if (err || !row) {
+                    resolve(0); // Default to automatic mode
+                    return;
+                }
+                resolve(row.value);
+            });
+        });
+
         const pwmStates = await new Promise((resolve) => {
             const states = {};
             db.all('SELECT pin, value, enabled FROM pwm_states', [], (err, rows) => {
@@ -680,24 +731,46 @@ async function controlLoop() {
         if (pwmEnabled) {
             const isEmergencyStop = states.emergency_stop;
             const isNormalEnable = states.normal_enable;
+            let stateChanged = false;
 
             Object.keys(pwmPins).forEach(pin => {
                 if (pwmPins[pin]) {
+                    const state = pwmStates[pin];
+                    const currentValue = pwmPins[pin]._pwmValue || 0;
+                    const currentEnabled = pwmPins[pin]._pwmEnabled || false;
+                    
                     if (isEmergencyStop || !isNormalEnable) {
                         // Safety override - disable PWM
-                        pwmPins[pin].pwmWrite(0);
+                        if (currentValue !== 0 || currentEnabled) {
+                            pwmPins[pin].pwmWrite(0);
+                            pwmPins[pin]._pwmValue = 0;
+                            pwmPins[pin]._pwmEnabled = false;
+                            stateChanged = true;
+                        }
                     } else {
                         // Normal operation
-                        const state = pwmStates[pin];
                         if (state && state.enabled) {
                             const pwmValue = Math.floor((state.value / 1023) * 255);
-                            pwmPins[pin].pwmWrite(pwmValue);
-                        } else {
+                            if (currentValue !== state.value || currentEnabled !== state.enabled) {
+                                pwmPins[pin].pwmWrite(pwmValue);
+                                pwmPins[pin]._pwmValue = state.value;
+                                pwmPins[pin]._pwmEnabled = state.enabled;
+                                stateChanged = true;
+                            }
+                        } else if (currentValue !== 0 || currentEnabled) {
                             pwmPins[pin].pwmWrite(0);
+                            pwmPins[pin]._pwmValue = 0;
+                            pwmPins[pin]._pwmEnabled = false;
+                            stateChanged = true;
                         }
                     }
                 }
             });
+
+            // Only broadcast if state changed
+            if (stateChanged) {
+                broadcastPWMState();
+            }
         }
 
     } catch (error) {

@@ -198,6 +198,7 @@
             background-color: #c0110b;
         }
 
+        /* PWM Toggle Styles */
         .switch {
             margin-left: auto;
             position: relative;
@@ -219,7 +220,7 @@
             left: 0;
             right: 0;
             bottom: 0;
-            background-color: var(--inactive-color);
+            background-color: var(--error-color); /* Default to disabled (red) */
             transition: .4s;
             border-radius: 24px;
         }
@@ -236,11 +237,25 @@
             border-radius: 50%;
         }
 
-        .switch input:checked + .slider {
-            background-color: var(--success-color);
+        /* Mode Toggle States */
+        .switch.mode-toggle input:checked + .slider {
+            background-color: var(--selection-bg); /* Blue for automatic */
         }
 
-        .switch input:checked + .slider:before {
+        .switch.mode-toggle input:not(:checked) + .slider {
+            background-color: var(--error-color); /* Red for manual */
+        }
+
+        /* PWM Toggle States */
+        .switch.pwm-toggle input:checked + .slider {
+            background-color: var(--success-color); /* Green for enabled */
+        }
+
+        .switch.pwm-toggle input:not(:checked) + .slider {
+            background-color: var(--error-color); /* Red for disabled */
+        }
+
+        input:checked + .slider:before {
             transform: translateX(36px);
         }
     </style>
@@ -251,24 +266,24 @@
         <div class="header-row">
             <h2 class="text-xl font-semibold mb-4 text-[#e8e6e3]">Manual PWM Control</h2>
             <div class="toggle-container">
-                <span class="mode-label">manual</span>
-                <label class="switch">
-                    <input type="checkbox" id="modeToggle" onchange="toggleMode(this.checked)">
+                <span class="mode-label">Manual</span>
+                <label class="switch mode-toggle">
+                    <input type="checkbox" id="modeToggle" onchange="toggleMode()">
                     <span class="slider"></span>
                 </label>
-                <span class="mode-label">automatic</span>
+                <span class="mode-label">Automatic</span>
                 <button id="emergencyButton" class="emergency-button">Emergency Stop</button>
             </div>
         </div>
 
         <div class="pwm-control">
             <span class="gpio-title">GPIO12:</span>
-            <input type="number" class="pwm-input" min="0" max="1023" value="0" onchange="setPWM(12, this.value)">
-            <span class="pwm-value">0</span>
+            <input type="number" class="pwm-input" data-pin="12" min="0" max="1023" value="0" onchange="setPWM(12, this.value)">
+            <span class="pwm-value" data-pin="12">0</span>
             <span class="pwm-max">/1024</span>
-            <span class="pwm-percentage">0%</span>
-            <button class="pwm-set" onclick="setPWM(12, document.querySelector('.pwm-input').value)">Set</button>
-            <label class="switch">
+            <span class="pwm-percentage" data-pin="12">0%</span>
+            <button class="pwm-set" onclick="setPWM(12, document.querySelector('.pwm-input[data-pin=\'12\']').value)">Set</button>
+            <label class="switch pwm-toggle">
                 <input type="checkbox" class="pwm-toggle" data-pin="12" onchange="togglePWM(12, this.checked)">
                 <span class="slider"></span>
             </label>
@@ -276,39 +291,39 @@
 
         <div class="pwm-control">
             <span class="gpio-title">GPIO13:</span>
-            <input type="number" class="pwm-input" min="0" max="1023" value="0" onchange="setPWM(13, this.value)">
-            <span class="pwm-value">0</span>
+            <input type="number" class="pwm-input" data-pin="13" min="0" max="1023" value="0" onchange="setPWM(13, this.value)">
+            <span class="pwm-value" data-pin="13">0</span>
             <span class="pwm-max">/1024</span>
-            <span class="pwm-percentage">0%</span>
-            <button class="pwm-set" onclick="setPWM(13, document.querySelectorAll('.pwm-input')[1].value)">Set</button>
-            <label class="switch">
+            <span class="pwm-percentage" data-pin="13">0%</span>
+            <button class="pwm-set" onclick="setPWM(13, document.querySelector('.pwm-input[data-pin=\'13\']').value)">Set</button>
+            <label class="switch pwm-toggle">
                 <input type="checkbox" class="pwm-toggle" data-pin="13" onchange="togglePWM(13, this.checked)">
                 <span class="slider"></span>
             </label>
         </div>
 
         <div class="pwm-control">
-            <span class="gpio-title">GPIO14:</span>
-            <input type="number" class="pwm-input" min="0" max="1023" value="0" onchange="setPWM(14, this.value)">
-            <span class="pwm-value">0</span>
+            <span class="gpio-title">GPIO18:</span>
+            <input type="number" class="pwm-input" data-pin="18" min="0" max="1023" value="0" onchange="setPWM(18, this.value)">
+            <span class="pwm-value" data-pin="18">0</span>
             <span class="pwm-max">/1024</span>
-            <span class="pwm-percentage">0%</span>
-            <button class="pwm-set" onclick="setPWM(14, document.querySelectorAll('.pwm-input')[2].value)">Set</button>
-            <label class="switch">
-                <input type="checkbox" class="pwm-toggle" data-pin="14" onchange="togglePWM(14, this.checked)">
+            <span class="pwm-percentage" data-pin="18">0%</span>
+            <button class="pwm-set" onclick="setPWM(18, document.querySelector('.pwm-input[data-pin=\'18\']').value)">Set</button>
+            <label class="switch pwm-toggle">
+                <input type="checkbox" class="pwm-toggle" data-pin="18" onchange="togglePWM(18, this.checked)">
                 <span class="slider"></span>
             </label>
         </div>
 
         <div class="pwm-control">
-            <span class="gpio-title">GPIO15:</span>
-            <input type="number" class="pwm-input" min="0" max="1023" value="0" onchange="setPWM(15, this.value)">
-            <span class="pwm-value">0</span>
+            <span class="gpio-title">GPIO19:</span>
+            <input type="number" class="pwm-input" data-pin="19" min="0" max="1023" value="0" onchange="setPWM(19, this.value)">
+            <span class="pwm-value" data-pin="19">0</span>
             <span class="pwm-max">/1024</span>
-            <span class="pwm-percentage">0%</span>
-            <button class="pwm-set" onclick="setPWM(15, document.querySelectorAll('.pwm-input')[3].value)">Set</button>
-            <label class="switch">
-                <input type="checkbox" class="pwm-toggle" data-pin="15" onchange="togglePWM(15, this.checked)">
+            <span class="pwm-percentage" data-pin="19">0%</span>
+            <button class="pwm-set" onclick="setPWM(19, document.querySelector('.pwm-input[data-pin=\'19\']').value)">Set</button>
+            <label class="switch pwm-toggle">
+                <input type="checkbox" class="pwm-toggle" data-pin="19" onchange="togglePWM(19, this.checked)">
                 <span class="slider"></span>
             </label>
         </div>
@@ -326,11 +341,33 @@
         // Request initial state when page loads
         socket.emit('getInitialState');
 
+        // Handle state updates
+        socket.on('pwmStateUpdate', (data) => {
+            console.log('Received PWM state update:', data);
+            Object.keys(data).forEach(pin => {
+                const state = data[pin];
+                currentPWMState[pin] = state;
+                
+                // Update UI elements
+                const input = document.querySelector(`.pwm-input[data-pin="${pin}"]`);
+                const valueSpan = document.querySelector(`.pwm-value[data-pin="${pin}"]`);
+                const percentSpan = document.querySelector(`.pwm-percentage[data-pin="${pin}"]`);
+                const toggle = document.querySelector(`.pwm-toggle[data-pin="${pin}"]`);
+                
+                if (input) input.value = state.value;
+                if (valueSpan) valueSpan.textContent = state.value;
+                if (percentSpan) {
+                    const percent = Math.round((state.value / 1023) * 100);
+                    percentSpan.textContent = `${percent}%`;
+                }
+                if (toggle) toggle.checked = state.enabled;
+            });
+        });
+
         // Handle initial state
         socket.on('initialState', (data) => {
-            currentSafetyState = data.safety;
+            console.log('Received initial state:', data);
             currentPWMState = data.pwm;
-            updateSafetyUI();
             updatePWMUI();
         });
 
@@ -338,12 +375,6 @@
         socket.on('safetyStateUpdate', (data) => {
             currentSafetyState = data;
             updateSafetyUI();
-        });
-
-        // Handle PWM state updates
-        socket.on('pwmStateUpdate', (data) => {
-            currentPWMState = data;
-            updatePWMUI();
         });
 
         function updateSafetyUI() {
@@ -358,12 +389,27 @@
             }
         }
 
+        // Update UI with current PWM state
         function updatePWMUI() {
             Object.keys(currentPWMState).forEach(pin => {
                 const state = currentPWMState[pin];
                 const toggle = document.querySelector(`.pwm-toggle[data-pin="${pin}"]`);
+                const input = document.querySelector(`.pwm-input[data-pin="${pin}"]`);
+                const valueSpan = document.querySelector(`.pwm-value[data-pin="${pin}"]`);
+                const percentSpan = document.querySelector(`.pwm-percentage[data-pin="${pin}"]`);
+                
                 if (toggle) {
                     toggle.checked = state.enabled;
+                }
+                if (input) {
+                    input.value = state.value;
+                }
+                if (valueSpan) {
+                    valueSpan.textContent = state.value;
+                }
+                if (percentSpan) {
+                    const percent = Math.round((state.value / 1023) * 100);
+                    percentSpan.textContent = `${percent}%`;
                 }
             });
         }
@@ -385,39 +431,78 @@
             });
         });
 
-        // Remove duplicate emergency button handler
-        // Event handlers
-        function toggleMode(automatic) {
-            socket.emit('toggleMode', { automatic });
+        // Mode toggle handler
+        function toggleMode() {
+            const modeSwitch = document.getElementById('modeToggle');
+            const newMode = modeSwitch.checked;
+            console.log('Client: Toggling mode to:', newMode);
+            socket.emit('toggleMode', { automatic: newMode });
         }
 
-        // Update UI when mode changes
-        socket.on('modeChanged', (data) => {
-            const toggle = document.getElementById('modeToggle');
-            if (toggle) {
-                toggle.checked = data.automatic;
-            }
-            // Update slider color
-            const slider = document.querySelector('.mode-slider');
-            if (slider) {
-                if (data.automatic) {
-                    slider.style.backgroundColor = 'var(--inactive-color)';  // Gray when automatic
-                } else {
-                    slider.style.backgroundColor = 'var(--error-color)';  // Red when manual
+        // Handle mode updates from server
+        socket.on('modeUpdate', (data) => {
+            console.log('Client: Received mode update:', data);
+            const modeSwitch = document.getElementById('modeToggle');
+            if (modeSwitch) {
+                modeSwitch.checked = data.mode === 0; // 0 is automatic, 1 is manual
+                // Update slider color
+                const slider = document.querySelector('.switch .slider');
+                if (slider) {
+                    slider.style.backgroundColor = data.mode === 0 ? 'var(--selection-bg)' : 'var(--error-color)';
                 }
             }
         });
 
         // PWM control functions
-        function setPWM(pin, value) {
-            if (!isNaN(value) && value >= 0 && value <= 1023) {
-                socket.emit('pwmSet', { pin, value });
+        function setPWM(pin) {
+            const input = document.querySelector(`.pwm-input[data-pin="${pin}"]`);
+            const value = input.value;
+            console.log('Client: Attempting to set PWM:', { pin, value });
+            
+            // Always allow setting the value
+            socket.emit('pwmSet', { pin, value });
+            
+            // Update the display immediately
+            const valueSpan = document.querySelector(`.pwm-value[data-pin="${pin}"]`);
+            const percentSpan = document.querySelector(`.pwm-percentage[data-pin="${pin}"]`);
+            
+            if (valueSpan) {
+                valueSpan.textContent = value;
+            }
+            if (percentSpan) {
+                const percent = Math.round((value / 1023) * 100);
+                percentSpan.textContent = `${percent}%`;
             }
         }
 
         function togglePWM(pin, enabled) {
+            // Update local state immediately for better UX
+            currentPWMState[pin] = {
+                ...currentPWMState[pin],
+                enabled: enabled
+            };
+            
             socket.emit('pwmToggle', { pin, enabled });
         }
+
+        socket.on('pwmError', (data) => {
+            console.log('Client: Received pwmError:', data);
+            const { pin, message, blocked } = data;
+            const input = document.getElementById(`pwm${pin}`);
+            const errorDiv = document.getElementById(`error${pin}`);
+            
+            if (errorDiv) {
+                errorDiv.textContent = message;
+                errorDiv.style.display = 'block';
+                if (blocked) {
+                    input.style.borderColor = 'red';
+                    setTimeout(() => {
+                        input.style.borderColor = '';
+                        errorDiv.style.display = 'none';
+                    }, 2000);
+                }
+            }
+        });
     </script>
 </body>
 </html> 
