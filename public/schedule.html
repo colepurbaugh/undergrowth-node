@@ -204,7 +204,7 @@
         /* Clock styles */
         .clock {
             font-family: monospace;
-            font-size: 0.9rem;
+            font-size: 1.4rem;
             color: var(--text-primary);
             padding: 0.25rem 0.5rem;
             background-color: var(--bg-primary);
@@ -332,14 +332,24 @@
     <script>
         const socket = io();
         let emergencyStopActive = false;
+        let currentTimezone = 'America/Los_Angeles'; // Default, will be updated from server
 
         // Clock functionality
         function updateClock() {
             const now = new Date();
-            const hours = now.getHours().toString().padStart(2, '0');
-            const minutes = now.getMinutes().toString().padStart(2, '0');
-            const seconds = now.getSeconds().toString().padStart(2, '0');
-            document.getElementById('clock').textContent = `${hours}:${minutes}:${seconds}`;
+            const formatter = new Intl.DateTimeFormat('en-US', {
+                timeZone: currentTimezone,
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit',
+                hour12: false
+            });
+            const timeString = formatter.format(now);
+            const timezoneAbbr = new Intl.DateTimeFormat('en-US', {
+                timeZone: currentTimezone,
+                timeZoneName: 'short'
+            }).formatToParts(now).find(part => part.type === 'timeZoneName').value;
+            document.getElementById('clock').textContent = `${timeString} (${timezoneAbbr})`;
         }
 
         // Update clock every second
@@ -388,6 +398,35 @@
 
         function updateAllCountdowns() {
             const events = document.querySelectorAll('.event-item');
+            const now = new Date();
+            const currentTime = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds();
+
+            // Find active events for each GPIO
+            const activeEvents = {};
+            events.forEach(event => {
+                const time = event.querySelector('.event-time').textContent;
+                const [hours, minutes, seconds] = time.split(':').map(Number);
+                const eventTime = hours * 3600 + minutes * 60 + seconds;
+                const gpio = event.querySelector('.gpio-title').textContent.replace('GPIO', '');
+                
+                if (!activeEvents[gpio] || 
+                    (eventTime <= currentTime && eventTime > (activeEvents[gpio].time || -1)) ||
+                    (eventTime > currentTime && eventTime < (activeEvents[gpio].time || Infinity))) {
+                    activeEvents[gpio] = {
+                        time: eventTime,
+                        event: event
+                    };
+                }
+            });
+
+            // Update active states
+            events.forEach(event => {
+                const gpio = event.querySelector('.gpio-title').textContent.replace('GPIO', '');
+                const isActive = activeEvents[gpio] && activeEvents[gpio].event === event;
+                event.classList.toggle('active', isActive);
+            });
+
+            // Update countdowns
             events.forEach(event => {
                 const index = event.dataset.index;
                 const time = event.querySelector('.event-time').textContent;
@@ -402,6 +441,7 @@
         socket.on('connect', () => {
             console.log('Connected to server');
             socket.emit('getInitialState');
+            socket.emit('getTimezone');  // Request timezone
         });
 
         socket.on('initialState', (data) => {
@@ -603,6 +643,11 @@
                 updateCountdown(index, time);
             });
         }
+
+        socket.on('timezoneUpdate', (data) => {
+            currentTimezone = data.timezone;
+            updateClock();
+        });
     </script>
 </body>
 </html>
