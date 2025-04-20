@@ -808,10 +808,13 @@ async function controlLoop() {
                 events.forEach(event => {
                     const [hours, minutes, seconds] = event.time.split(':').map(Number);
                     const eventTime = hours * 3600 + minutes * 60 + seconds;
+                    const gpio = event.gpio;
 
-                    // For automatic mode, we want to use the most recent event
-                    if (!activeEvents[event.gpio] || eventTime > activeEvents[event.gpio].time) {
-                        activeEvents[event.gpio] = {
+                    // For automatic mode, we want to use the most recent past event
+                    if (!activeEvents[gpio] || 
+                        (eventTime <= currentTime && eventTime > (activeEvents[gpio].time || -1)) ||
+                        (eventTime > currentTime && eventTime < (activeEvents[gpio].time || Infinity))) {
+                        activeEvents[gpio] = {
                             time: eventTime,
                             event: event
                         };
