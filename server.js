@@ -358,12 +358,15 @@ io.on('connection', (socket) => {
     // Handle initial state request
     socket.on('getInitialState', async () => {
         try {
+            console.log('Handling getInitialState request');
+            
             const mode = await new Promise((resolve, reject) => {
                 configDb.get('SELECT value FROM system_state WHERE key = ?', ['mode'], (err, row) => {
                     if (err) reject(err);
                     else resolve(row ? row.value : 1);
                 });
             });
+            console.log('Current mode:', mode);
 
             const events = await new Promise((resolve, reject) => {
                 configDb.all('SELECT * FROM events ORDER BY time', [], (err, rows) => {
@@ -381,45 +384,34 @@ io.on('connection', (socket) => {
                     }, {}));
                 });
             });
+            console.log('Safety states:', safetyStates);
 
-            // Update auto_pwm_states based on current active events
-            const now = new Date();
-            const currentTime = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds();
-
-            // Find active events for each GPIO
-            const activeEvents = {};
-            events.forEach(event => {
-                if (!event.enabled) return;
-
-                const [hours, minutes, seconds] = event.time.split(':').map(Number);
-                const eventTime = hours * 3600 + minutes * 60 + seconds;
-
-                if (!activeEvents[event.gpio] || 
-                    (eventTime <= currentTime && eventTime > (activeEvents[event.gpio].time || -1)) ||
-                    (eventTime > currentTime && eventTime < (activeEvents[event.gpio].time || Infinity))) {
-                    activeEvents[event.gpio] = {
-                        time: eventTime,
-                        event: event
-                    };
-                }
-            });
-
-            // Update auto_pwm_states
-            for (const [gpio, activeEvent] of Object.entries(activeEvents)) {
-                await new Promise((resolve, reject) => {
-                    configDb.run('UPDATE auto_pwm_states SET value = ?, enabled = 1 WHERE pin = ?',
-                        [activeEvent.event.pwm_value, gpio], (err) => {
-                            if (err) reject(err);
-                            else resolve();
+            // Get PWM states from pwm_states table
+            const pwmStates = await new Promise((resolve, reject) => {
+                configDb.all('SELECT pin, value, enabled FROM pwm_states', [], (err, rows) => {
+                    if (err) reject(err);
+                    else {
+                        const states = {};
+                        rows.forEach(row => {
+                            states[row.pin] = {
+                                value: row.value,
+                                enabled: row.enabled === 1
+                            };
                         });
+                        resolve(states);
+                    }
                 });
-            }
+            });
+            console.log('PWM states:', pwmStates);
 
-            socket.emit('initialState', {
+            const initialState = {
                 mode,
                 events,
-                safetyStates
-            });
+                safetyStates,
+                pwmStates
+            };
+            console.log('Sending initial state:', initialState);
+            socket.emit('initialState', initialState);
         } catch (error) {
             console.error('Error getting initial state:', error);
         }

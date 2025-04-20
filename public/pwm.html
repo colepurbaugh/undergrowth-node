@@ -356,40 +356,59 @@
         let currentPWMState = {};
 
         // Request initial state when page loads
+        console.log('Requesting initial state...');
         socket.emit('getInitialState');
 
         // Handle state updates
-        socket.on('pwmStateUpdate', (data) => {
-            console.log('Received PWM state update:', data);
-            // Update the current state
-            currentPWMState = { ...currentPWMState, ...data };
+        socket.on('stateUpdate', (data) => {
+            console.log('Received state update:', data);
+            // Update mode toggle
+            const modeToggle = document.getElementById('modeToggle');
+            if (modeToggle) {
+                modeToggle.checked = data.mode === 0; // 0 is automatic
+            }
             
-            // Update UI elements
-            Object.keys(data).forEach(pin => {
-                const state = data[pin];
-                
-                // Update UI elements
-                const input = document.querySelector(`.pwm-input[data-pin="${pin}"]`);
-                const valueSpan = document.querySelector(`.pwm-value[data-pin="${pin}"]`);
-                const percentSpan = document.querySelector(`.pwm-percentage[data-pin="${pin}"]`);
-                const toggle = document.querySelector(`.pwm-toggle[data-pin="${pin}"]`);
-                
-                if (input) input.value = state.value;
-                if (valueSpan) valueSpan.textContent = state.value;
-                if (percentSpan) {
-                    const percent = Math.round((state.value / 1023) * 100);
-                    percentSpan.textContent = `${percent}%`;
-                }
-                if (toggle) toggle.checked = state.enabled;
-            });
+            // Update PWM states
+            currentPWMState = data.pwmStates;
+            updatePWMUI();
+        });
+
+        // Handle mode updates (for backward compatibility)
+        socket.on('modeUpdate', (data) => {
+            // Update mode toggle
+            const modeToggle = document.getElementById('modeToggle');
+            if (modeToggle) {
+                modeToggle.checked = data.mode === 0; // 0 is automatic
+            }
         });
 
         // Handle initial state
         socket.on('initialState', (data) => {
             console.log('Received initial state:', data);
-            if (data && data.pwm) {
-                currentPWMState = data.pwm;
-                updatePWMUI();
+            if (data) {
+                // Update mode toggle
+                const modeToggle = document.getElementById('modeToggle');
+                if (modeToggle) {
+                    modeToggle.checked = data.mode === 0; // 0 is automatic
+                }
+                
+                // Update PWM states
+                if (data.pwmStates) {
+                    console.log('Setting PWM states from initial state:', data.pwmStates);
+                    currentPWMState = data.pwmStates;
+                    updatePWMUI();
+                } else {
+                    console.log('No PWM states in initial state');
+                }
+                
+                // Update safety state
+                if (data.emergencyStop !== undefined) {
+                    currentSafetyState.emergency_stop = data.emergencyStop;
+                }
+                if (data.normalEnable !== undefined) {
+                    currentSafetyState.normal_enable = data.normalEnable;
+                }
+                updateSafetyUI();
             }
         });
 
@@ -434,6 +453,11 @@
                     percentSpan.textContent = `${percent}%`;
                 }
             });
+
+            // Log current PWM states with mode
+            const modeToggle = document.getElementById('modeToggle');
+            const mode = modeToggle.checked ? 'automatic' : 'manual';
+            console.log(`Current ${mode} PWM states:`, currentPWMState);
         }
 
         // Event handler for the emergency button
@@ -455,34 +479,18 @@
 
         // Mode toggle handler
         function toggleMode() {
-            const modeSwitch = document.getElementById('modeToggle');
-            const newMode = modeSwitch.checked;
+            const modeToggle = document.getElementById('modeToggle');
+            const newMode = modeToggle.checked ? 0 : 1;
             console.log('Client: Toggling mode to:', newMode);
-            socket.emit('toggleMode', { automatic: newMode });
+            socket.emit('setMode', { automatic: modeToggle.checked });
         }
 
-        // Handle mode updates from server
-        socket.on('modeUpdate', (data) => {
-            console.log('Client: Received mode update:', data);
-            const modeSwitch = document.getElementById('modeToggle');
-            if (modeSwitch) {
-                modeSwitch.checked = data.mode === 0; // 0 is automatic, 1 is manual
-                // Update slider color
-                const slider = document.querySelector('.switch .slider');
-                if (slider) {
-                    slider.style.backgroundColor = data.mode === 0 ? 'var(--selection-bg)' : 'var(--error-color)';
-                }
-            }
-        });
-
         // PWM control functions
-        function setPWM(pin) {
-            const input = document.querySelector(`.pwm-input[data-pin="${pin}"]`);
-            const value = input.value;
-            console.log('Client: Attempting to set PWM:', { pin, value });
+        function setPWM(pin, value) {
+            console.log('Client: Setting manual PWM value:', { pin, value });
             
             // Always allow setting the value
-            socket.emit('pwmSet', { pin, value });
+            socket.emit('setPwm', { gpio: pin, value: parseInt(value), enabled: true });
             
             // Update the display immediately
             const valueSpan = document.querySelector(`.pwm-value[data-pin="${pin}"]`);
@@ -494,6 +502,19 @@
             if (percentSpan) {
                 const percent = Math.round((value / 1023) * 100);
                 percentSpan.textContent = `${percent}%`;
+            }
+
+            // Update local state
+            currentPWMState[pin] = {
+                ...currentPWMState[pin],
+                value: parseInt(value),
+                enabled: true
+            };
+
+            // Log all manual values after setting
+            const modeToggle = document.getElementById('modeToggle');
+            if (!modeToggle.checked) { // Only log if in manual mode
+                console.log('All manual PWM values:', currentPWMState);
             }
         }
 
