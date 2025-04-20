@@ -490,7 +490,7 @@
             console.log('Client: Setting manual PWM value:', { pin, value });
             
             // Always allow setting the value
-            socket.emit('setPwm', { gpio: pin, value: parseInt(value), enabled: true });
+            socket.emit('pwmSet', { pin: pin, value: parseInt(value) });
             
             // Update the display immediately
             const valueSpan = document.querySelector(`.pwm-value[data-pin="${pin}"]`);

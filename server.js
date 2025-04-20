@@ -137,6 +137,15 @@ const configDb = new sqlite3.Database('undergrowth.db', (err) => {
             value INTEGER DEFAULT 1
         )`);
         
+        // Create timezone table
+        configDb.run(`CREATE TABLE IF NOT EXISTS timezone (
+            key TEXT PRIMARY KEY,
+            value TEXT DEFAULT 'America/Los_Angeles'
+        )`);
+        
+        // Initialize timezone
+        configDb.run('INSERT OR IGNORE INTO timezone (key, value) VALUES (?, ?)', ['timezone', 'America/Los_Angeles']);
+        
         // Initialize PWM states in database if they don't exist
         const pins = [12, 13, 18, 19];
         pins.forEach(pin => {
@@ -354,6 +363,31 @@ async function togglePWM(pin, enabled) {
 // Socket.io connection handling
 io.on('connection', (socket) => {
     console.log('Client connected');
+
+    // Handle timezone get request
+    socket.on('getTimezone', () => {
+        configDb.get('SELECT value FROM timezone WHERE key = ?', ['timezone'], (err, row) => {
+            if (err) {
+                console.error('Error getting timezone:', err);
+                return;
+            }
+            const timezone = row ? row.value : 'America/Los_Angeles';
+            socket.emit('timezoneUpdate', { timezone });
+        });
+    });
+
+    // Handle timezone set request
+    socket.on('setTimezone', (data) => {
+        const { timezone } = data;
+        configDb.run('UPDATE timezone SET value = ? WHERE key = ?', [timezone, 'timezone'], (err) => {
+            if (err) {
+                console.error('Error setting timezone:', err);
+                return;
+            }
+            // Broadcast the new timezone to all clients
+            io.emit('timezoneUpdate', { timezone });
+        });
+    });
 
     // Handle initial state request
     socket.on('getInitialState', async () => {

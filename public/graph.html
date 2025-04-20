@@ -10,18 +10,13 @@
     <link rel="manifest" href="/assets/icons/site.webmanifest">
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="/socket.io/socket.io.js"></script>
 </head>
 <body class="bg-[#181a1b] p-4">
     <div class="w-full">
         <div class="flex justify-between items-center mb-4">
             <h1 class="text-2xl font-bold text-[#e8e6e3]">Sensor Data Graphs</h1>
             <div class="flex items-center gap-2">
-                <select id="timezone" class="rounded-md border-gray-500 bg-[#181a1b] text-[#e8e6e3]">
-                    <option value="America/Los_Angeles">Pacific (PDT/PST)</option>
-                    <option value="America/Denver">Mountain (MDT/MST)</option>
-                    <option value="America/Chicago">Central (CDT/CST)</option>
-                    <option value="America/New_York">Eastern (EDT/EST)</option>
-                </select>
                 <div id="currentTime" class="text-lg text-[#e8e6e3]"></div>
             </div>
         </div>
@@ -74,17 +69,26 @@
         let tempChart = null;
         let humidityChart = null;
         let autoUpdateInterval = null;
+        let currentTimezone = 'America/Los_Angeles'; // Default, will be updated from server
 
-        // Get timezone from localStorage or default to local timezone
-        const defaultTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-        const savedTimezone = localStorage.getItem('selectedTimezone') || defaultTimezone;
-        document.getElementById('timezone').value = savedTimezone;
+        // Initialize socket connection
+        const socket = io();
+
+        // Get timezone from server on connect
+        socket.on('connect', () => {
+            socket.emit('getTimezone');
+        });
+
+        // Handle timezone updates from server
+        socket.on('timezoneUpdate', (data) => {
+            currentTimezone = data.timezone;
+            updateTime();
+        });
 
         function updateTime() {
-            const timezone = document.getElementById('timezone').value;
             const now = new Date();
             const formatter = new Intl.DateTimeFormat('en-US', {
-                timeZone: timezone,
+                timeZone: currentTimezone,
                 year: 'numeric',
                 month: 'numeric',
                 day: 'numeric',
@@ -95,7 +99,7 @@
             });
             const timeString = formatter.format(now);
             const timezoneAbbr = new Intl.DateTimeFormat('en-US', {
-                timeZone: timezone,
+                timeZone: currentTimezone,
                 timeZoneName: 'short'
             }).formatToParts(now).find(part => part.type === 'timeZoneName').value;
             document.getElementById('currentTime').textContent = `${timeString} ${timezoneAbbr}`;
@@ -108,7 +112,7 @@
                     console.log(`${type} data received:`, data.length, 'points');
                     const formattedData = data.map(row => ({
                         ...row,
-                        timestamp: new Date(row.timestamp).toLocaleString('en-US', { timeZone: document.getElementById('timezone').value })
+                        timestamp: new Date(row.timestamp).toLocaleString('en-US', { timeZone: currentTimezone })
                     }));
                     
                     // Destroy existing chart if it exists
@@ -182,7 +186,6 @@
         function updateCharts() {
             const timeRange = document.getElementById('timeRange').value;
             const points = document.getElementById('points').value;
-            const timezone = document.getElementById('timezone').value;
             const now = new Date();
             const startDate = new Date(now.getTime() - (timeRange * 3600 * 1000)).toISOString();
 
@@ -199,32 +202,22 @@
             humidityUrl.searchParams.set('points', points);
             humidityUrl.searchParams.set('type', 'humidity');
 
-            // Update both charts
-            fetchAndUpdateChart(tempUrl.toString(), 'temperature');
-            fetchAndUpdateChart(humidityUrl.toString(), 'humidity');
+            // Fetch and update both charts
+            fetchAndUpdateChart(tempUrl, 'temperature');
+            fetchAndUpdateChart(humidityUrl, 'humidity');
         }
 
-        // Initialize charts and time display
-        document.addEventListener('DOMContentLoaded', () => {
-            // Update time every second
-            updateTime();
-            setInterval(updateTime, 1000);
-            
-            // Save timezone selection
-            document.getElementById('timezone').addEventListener('change', (e) => {
-                localStorage.setItem('selectedTimezone', e.target.value);
-                updateTime();
-            });
-            
-            // Add click handler for Update button
-            document.getElementById('updateButton').addEventListener('click', () => {
-                console.log('Update button clicked');
-                updateCharts();
-            });
+        // Initial update
+        updateTime();
+        setInterval(updateTime, 1000);
+        updateCharts();
 
-            // Initial chart update
-            updateCharts();
-        });
+        // Add click handler for Update button
+        document.getElementById('updateButton').addEventListener('click', updateCharts);
+
+        // Add change handlers for time range and points
+        document.getElementById('timeRange').addEventListener('change', updateCharts);
+        document.getElementById('points').addEventListener('change', updateCharts);
     </script>
 </body>
 </html> 

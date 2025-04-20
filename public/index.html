@@ -142,6 +142,63 @@
             background-color: #9c27b0; /* purple */
         }
 
+        .timezone-section {
+            background-color: #333;
+            padding: 1rem;
+            border: 1px solid var(--border-color);
+            border-radius: 0.25rem;
+            margin-bottom: 1rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .clock-display {
+            font-family: monospace;
+            font-size: 1.5rem;
+            color: var(--text-primary);
+            display: flex;
+            flex-direction: row;
+            gap: 0.25rem;
+            align-items: center;
+        }
+
+        .clock-time {
+            font-size: 1.5rem;
+        }
+
+        .clock-timezone {
+            font-size: 1.5rem;
+            color: var(--text-primary);
+        }
+
+        .timezone-controls {
+            display: flex;
+            gap: 1rem;
+            align-items: center;
+        }
+
+        #timezoneSelect {
+            padding: 0.5rem;
+            background-color: var(--bg-primary);
+            color: var(--text-primary);
+            border: 1px solid var(--border-color);
+            border-radius: 0.25rem;
+        }
+
+        #updateTimezone {
+            padding: 0.5rem 1rem;
+            background-color: var(--success-color);
+            color: var(--text-primary);
+            border: 1px solid var(--border-color);
+            border-radius: 0.25rem;
+            cursor: pointer;
+        }
+
+        #updateTimezone:hover {
+            opacity: 0.9;
+        }
+
         @media (max-width: 600px) {
             body {
                 padding: 0.5rem;
@@ -155,6 +212,60 @@
                 min-width: 100%;
             }
         }
+
+        .state-display {
+            margin: 20px;
+            padding: 10px;
+            border: 1px solid var(--border-color);
+            background: var(--bg-primary);
+        }
+
+        .state-container {
+            display: flex;
+            gap: 20px;
+            margin-top: 10px;
+        }
+
+        .state-section {
+            flex: 1;
+            padding: 10px;
+            border: 1px solid var(--border-color);
+            background: #333;
+        }
+
+        .state-section h3 {
+            margin-top: 0;
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 5px;
+            color: var(--text-primary);
+            font-size: 0.9rem;
+        }
+
+        .state-section div {
+            margin: 5px 0;
+            font-family: monospace;
+            font-size: 0.8rem;
+            color: var(--text-primary);
+        }
+
+        #retrieve-values-btn {
+            padding: 6px 12px;
+            background: var(--success-color);
+            color: var(--text-primary);
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.8rem;
+        }
+
+        #retrieve-values-btn:hover {
+            opacity: 0.9;
+        }
+
+        .schedule-event {
+            margin-left: 0;
+            font-size: 0.7rem;
+        }
     </style>
 </head>
 <body>
@@ -163,6 +274,52 @@
             <h2 class="text-xl font-semibold mb-4 text-[#e8e6e3]">System Information</h2>
             <button id="emergencyButton" class="emergency-button" onclick="toggleEmergencyStop()">Emergency Stop</button>
         </div>
+        <div class="timezone-section">
+            <div class="clock-display">
+                <span id="dateDisplay"></span>
+                <span id="timeDisplay"></span>
+                <span id="timezoneDisplay"></span>
+            </div>
+            <div class="timezone-controls">
+                <select id="timezoneSelect">
+                    <!-- US Timezones -->
+                    <option value="America/New_York">ET</option>
+                    <option value="America/Chicago">CT</option>
+                    <option value="America/Denver">MT</option>
+                    <option value="America/Los_Angeles">PT</option>
+                    <option value="America/Anchorage">AKT</option>
+                    <option value="Pacific/Honolulu">HT</option>
+                    <!-- UTC Offsets -->
+                    <option value="UTC">UTC</option>
+                    <option value="UTC+1">UTC+1</option>
+                    <option value="UTC+2">UTC+2</option>
+                    <option value="UTC+3">UTC+3</option>
+                    <option value="UTC+4">UTC+4</option>
+                    <option value="UTC+5">UTC+5</option>
+                    <option value="UTC+6">UTC+6</option>
+                    <option value="UTC+7">UTC+7</option>
+                    <option value="UTC+8">UTC+8</option>
+                    <option value="UTC+9">UTC+9</option>
+                    <option value="UTC+10">UTC+10</option>
+                    <option value="UTC+11">UTC+11</option>
+                    <option value="UTC+12">UTC+12</option>
+                    <option value="UTC-1">UTC-1</option>
+                    <option value="UTC-2">UTC-2</option>
+                    <option value="UTC-3">UTC-3</option>
+                    <option value="UTC-4">UTC-4</option>
+                    <option value="UTC-5">UTC-5</option>
+                    <option value="UTC-6">UTC-6</option>
+                    <option value="UTC-7">UTC-7</option>
+                    <option value="UTC-8">UTC-8</option>
+                    <option value="UTC-9">UTC-9</option>
+                    <option value="UTC-10">UTC-10</option>
+                    <option value="UTC-11">UTC-11</option>
+                    <option value="UTC-12">UTC-12</option>
+                </select>
+                <button id="updateTimezone">Update Timezone</button>
+            </div>
+        </div>
+    
         <div class="nav-buttons">
             <a href="/schedule" class="nav-button schedule">Schedule</a>
             <a href="/pwm" class="nav-button pwm">PWM</a>
@@ -232,6 +389,42 @@
         </div>
     </div>
 
+    <div class="state-display">
+        <button id="retrieve-values-btn">Retrieve Values</button>
+        <div class="state-container">
+            <div class="state-section">
+                <h3>Modes</h3>
+                <div>Automatic: <span id="mode-auto">-</span></div>
+                <div>Emergency: <span id="mode-emergency">-</span></div>
+            </div>
+            <div class="state-section">
+                <h3>Manual PWM</h3>
+                <div>12: <span id="manual-12">-</span></div>
+                <div>13: <span id="manual-13">-</span></div>
+                <div>18: <span id="manual-18">-</span></div>
+                <div>19: <span id="manual-19">-</span></div>
+            </div>
+            <div class="state-section">
+                <h3>Automatic PWM</h3>
+                <div>12: <span id="auto-12">-</span></div>
+                <div>13: <span id="auto-13">-</span></div>
+                <div>18: <span id="auto-18">-</span></div>
+                <div>19: <span id="auto-19">-</span></div>
+            </div>
+            <div class="state-section">
+                <h3>Schedule</h3>
+                <div>12:</div>
+                <div id="schedule-12">-</div>
+                <div>13:</div>
+                <div id="schedule-13">-</div>
+                <div>18:</div>
+                <div id="schedule-18">-</div>
+                <div>19:</div>
+                <div id="schedule-19">-</div>
+            </div>
+        </div>
+    </div>
+
     <script src="/socket.io/socket.io.js"></script>
     <script>
         const socket = io();
@@ -294,6 +487,116 @@
             document.getElementById('sensor2Address').textContent = data.sensor2.address;
             document.getElementById('sensor2Temp').textContent = data.sensor2.temperature;
             document.getElementById('sensor2Humidity').textContent = `${data.sensor2.humidity.toFixed(1)}%`;
+        });
+
+        // Clock and timezone handling
+        let currentTimezone = 'America/Los_Angeles';
+        
+        function updateClock() {
+            const now = new Date();
+            const formatter = new Intl.DateTimeFormat('en-US', {
+                timeZone: currentTimezone,
+                month: 'long',
+                day: 'numeric',
+                year: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit',
+                hour12: false,
+                timeZoneName: 'short'
+            });
+            
+            const parts = formatter.formatToParts(now);
+            const date = parts.find(p => p.type === 'month').value + ' ' +
+                        parts.find(p => p.type === 'day').value + ' ' +
+                        parts.find(p => p.type === 'year').value;
+            const time = parts.find(p => p.type === 'hour').value + ':' +
+                        parts.find(p => p.type === 'minute').value + ':' +
+                        parts.find(p => p.type === 'second').value;
+            const timezone = parts.find(p => p.type === 'timeZoneName').value;
+            
+            document.getElementById('dateDisplay').textContent = date + ', ';
+            document.getElementById('timeDisplay').textContent = time;
+            document.getElementById('timezoneDisplay').textContent = ' (' + timezone + ')';
+        }
+
+        // Update clock every second
+        setInterval(updateClock, 1000);
+        updateClock(); // Initial update
+
+        // Request initial timezone when connecting
+        socket.on('connect', () => {
+            socket.emit('getTimezone');
+        });
+
+        // Handle timezone updates
+        socket.on('timezoneUpdate', (data) => {
+            const { timezone } = data;
+            const timezoneSelect = document.getElementById('timezoneSelect');
+            timezoneSelect.value = timezone;
+            currentTimezone = timezone;
+            updateClock();
+        });
+
+        // Update timezone button click handler
+        document.getElementById('updateTimezone').addEventListener('click', () => {
+            const timezone = timezoneSelect.value;
+            socket.emit('setTimezone', { timezone });
+        });
+
+        document.getElementById('retrieve-values-btn').addEventListener('click', function() {
+            socket.emit('getSystemState');
+        });
+
+        socket.on('systemState', function(data) {
+            console.log('Received system state:', data);
+            
+            // Update modes
+            document.getElementById('mode-auto').textContent = data.modes.automatic ? '1' : '0';
+            document.getElementById('mode-emergency').textContent = data.modes.emergency ? '1' : '0';
+
+            // Update manual PWM
+            Object.entries(data.manualPwm).forEach(([pin, state]) => {
+                const element = document.getElementById(`manual-${pin}`);
+                if (element) {
+                    element.textContent = `{${state.value}, ${state.enabled}}`;
+                }
+            });
+
+            // Update automatic PWM
+            Object.entries(data.autoPwm).forEach(([pin, value]) => {
+                const element = document.getElementById(`auto-${pin}`);
+                if (element) {
+                    element.textContent = value;
+                }
+            });
+
+            // Update schedule
+            console.log('Schedule data:', data.schedule);
+            Object.entries(data.schedule).forEach(([pin, events]) => {
+                console.log(`Processing pin ${pin}:`, events);
+                const element = document.getElementById(`schedule-${pin}`);
+                if (element) {
+                    if (events.length === 0) {
+                        element.textContent = '-';
+                    } else {
+                        element.innerHTML = events.map(event => 
+                            `<div class="schedule-event ${event.enabled ? 'enabled' : 'disabled'}">
+                                {"${event.time}", ${event.value}, ${event.enabled}}
+                            </div>`
+                        ).join('');
+                    }
+                }
+            });
+        });
+
+        // Also update on state changes
+        socket.on('stateUpdate', function() {
+            socket.emit('getSystemState');
+        });
+
+        socket.on('modeUpdate', function() {
+            socket.emit('getSystemState');
         });
     </script>
 </body>
