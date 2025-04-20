@@ -401,7 +401,35 @@
             const now = new Date();
             const currentTime = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds();
 
-            // Update countdowns only
+            // Find active events for each GPIO, only considering enabled events
+            const activeEvents = {};
+            events.forEach(event => {
+                const time = event.querySelector('.event-time').textContent;
+                const [hours, minutes, seconds] = time.split(':').map(Number);
+                const eventTime = hours * 3600 + minutes * 60 + seconds;
+                const gpio = event.querySelector('.gpio-title').textContent.replace('GPIO', '');
+                const isEnabled = event.querySelector('.event-enabled input').checked;
+                
+                if (!isEnabled) return; // Skip disabled events
+                
+                if (!activeEvents[gpio] || 
+                    (eventTime <= currentTime && eventTime > (activeEvents[gpio].time || -1)) ||
+                    (eventTime > currentTime && eventTime < (activeEvents[gpio].time || Infinity))) {
+                    activeEvents[gpio] = {
+                        time: eventTime,
+                        event: event
+                    };
+                }
+            });
+
+            // Update active states
+            events.forEach(event => {
+                const gpio = event.querySelector('.gpio-title').textContent.replace('GPIO', '');
+                const isActive = activeEvents[gpio] && activeEvents[gpio].event === event;
+                event.classList.toggle('active', isActive);
+            });
+
+            // Update countdowns
             events.forEach(event => {
                 const index = event.dataset.index;
                 const time = event.querySelector('.event-time').textContent;
