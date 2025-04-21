@@ -33,6 +33,9 @@
             margin: 0;
             padding: 1rem;
             background-color: var(--bg-primary);
+            background-image: url('/assets/backgrounds/undergrowth_logo.png');
+            background-repeat: no-repeat;
+            background-position: top center;
             color: var(--text-primary);
             line-height: 1.5;
             font-size: 1rem;
@@ -41,6 +44,7 @@
 
         .container {
             background-color: var(--bg-primary);
+            background: none;
             padding: 1rem;
             border-radius: 0.5rem;
             margin-bottom: 1rem;
@@ -49,6 +53,7 @@
 
         .event-control {
             display: flex;
+            opacity: 0.8;
             flex-wrap: wrap;
             align-items: center;
             gap: 0.5rem;
@@ -175,7 +180,7 @@
         }
 
         .header-row h2 {
-            margin-bottom: 0;  /* Override the mb-4 from Tailwind */
+            margin-bottom: 0;
         }
 
         .header-title {
@@ -207,7 +212,8 @@
             font-size: 1.4rem;
             color: var(--text-primary);
             padding: 0.25rem 0.5rem;
-            background-color: var(--bg-primary);
+            background: none;
+            /*background-color: var(--bg-primary);*/
         }
 
         /* Emergency Stop styles */
@@ -249,6 +255,7 @@
         .event-item {
             display: flex;
             justify-content: space-between;
+            opacity: 0.8;
             align-items: center;
             padding: 0.5rem;
             margin: 1rem;

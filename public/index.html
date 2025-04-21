@@ -4,6 +4,13 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Undergrowth Node</title>
+    <link rel="apple-touch-icon" sizes="180x180" href="/assets/icons/apple-touch-icon.png">
+    <link rel="icon" type="image/png" sizes="32x32" href="/assets/icons/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="/assets/icons/favicon-16x16.png">
+    <link rel="manifest" href="/assets/icons/site.webmanifest">
+    <link rel="mask-icon" href="/assets/icons/safari-pinned-tab.svg" color="#5bbad5">
+    <meta name="msapplication-TileColor" content="#da532c">
+    <meta name="theme-color" content="#ffffff">
     <style>
         :root {
             --bg-primary: #181a1b;
@@ -30,6 +37,9 @@
             margin: 0;
             padding: 1rem;
             background-color: var(--bg-primary);
+            background-image: url('/assets/backgrounds/undergrowth_logo.png');
+            background-repeat: no-repeat;
+            background-position: top center;
             color: var(--text-primary);
             line-height: 1.5;
             font-size: 1rem;
@@ -48,6 +58,7 @@
 
         .container {
             background-color: var(--bg-primary);
+            background: none;
             padding: 1rem;
             border-radius: 0.5rem;
             margin-bottom: 1rem;
@@ -91,6 +102,7 @@
             min-width: 200px;
             padding: 10px;
             background-color: #333;
+            opacity: 0.8;
             border: 1px solid var(--border-color);
             border-radius: 0.25rem;
         }
@@ -109,6 +121,7 @@
 
         .nav-buttons {
             display: flex;
+            opacity: 0.8;
             gap: 1rem;
             margin: 1rem 0;
             padding: 1rem;
@@ -127,7 +140,7 @@
         }
 
         .nav-button:hover {
-            opacity: 0.9;
+            opacity: 0.8;
         }
 
         .nav-button.schedule {
@@ -144,6 +157,7 @@
 
         .timezone-section {
             background-color: #333;
+            opacity: 0.8;
             padding: 1rem;
             border: 1px solid var(--border-color);
             border-radius: 0.25rem;
@@ -196,7 +210,7 @@
         }
 
         #updateTimezone:hover {
-            opacity: 0.9;
+            opacity: 0.8;
         }
 
         @media (max-width: 600px) {
@@ -216,6 +230,7 @@
         .state-display {
             margin: 20px;
             padding: 10px;
+            opacity: 0.8;
             border: 1px solid var(--border-color);
             background: var(--bg-primary);
         }
@@ -229,6 +244,7 @@
         .state-section {
             flex: 1;
             padding: 10px;
+            opacity: 0.8;
             border: 1px solid var(--border-color);
             background: #333;
         }
@@ -246,20 +262,6 @@
             font-family: monospace;
             font-size: 0.8rem;
             color: var(--text-primary);
-        }
-
-        #retrieve-values-btn {
-            padding: 6px 12px;
-            background: var(--success-color);
-            color: var(--text-primary);
-            border: 1px solid var(--border-color);
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 0.8rem;
-        }
-
-        #retrieve-values-btn:hover {
-            opacity: 0.9;
         }
 
         .schedule-event {
@@ -389,48 +391,12 @@
         </div>
     </div>
 
-    <div class="state-display">
-        <button id="retrieve-values-btn">Retrieve Values</button>
-        <div class="state-container">
-            <div class="state-section">
-                <h3>Modes</h3>
-                <div>Automatic: <span id="mode-auto">-</span></div>
-                <div>Emergency: <span id="mode-emergency">-</span></div>
-            </div>
-            <div class="state-section">
-                <h3>Manual PWM</h3>
-                <div>12: <span id="manual-12">-</span></div>
-                <div>13: <span id="manual-13">-</span></div>
-                <div>18: <span id="manual-18">-</span></div>
-                <div>19: <span id="manual-19">-</span></div>
-            </div>
-            <div class="state-section">
-                <h3>Automatic PWM</h3>
-                <div>12: <span id="auto-12">-</span></div>
-                <div>13: <span id="auto-13">-</span></div>
-                <div>18: <span id="auto-18">-</span></div>
-                <div>19: <span id="auto-19">-</span></div>
-            </div>
-            <div class="state-section">
-                <h3>Schedule</h3>
-                <div>12:</div>
-                <div id="schedule-12">-</div>
-                <div>13:</div>
-                <div id="schedule-13">-</div>
-                <div>18:</div>
-                <div id="schedule-18">-</div>
-                <div>19:</div>
-                <div id="schedule-19">-</div>
-            </div>
-        </div>
-    </div>
-
     <script src="/socket.io/socket.io.js"></script>
     <script>
         const socket = io();
         let currentSafetyState = {
             emergency_stop: false,
-            normal_enable: false
+            normal_enable: true
         };
 
         // Request initial state when page loads
@@ -438,20 +404,25 @@
 
         // Handle initial state
         socket.on('initialState', (data) => {
-            currentSafetyState = data.safety;
-            updateSafetyUI();
+            if (data && data.safety) {
+                currentSafetyState = data.safety;
+                updateSafetyUI();
+            }
         });
 
         // Handle safety state updates
         socket.on('safetyStateUpdate', (data) => {
-            currentSafetyState = data;
-            updateSafetyUI();
+            if (data) {
+                currentSafetyState = data;
+                updateSafetyUI();
+            }
         });
 
         function updateSafetyUI() {
             const emergencyButton = document.getElementById('emergencyButton');
+            if (!emergencyButton) return; // Safety check
             
-            if (currentSafetyState.emergency_stop) {
+            if (currentSafetyState && currentSafetyState.emergency_stop) {
                 emergencyButton.textContent = 'Clear Emergency Stop';
                 document.body.style.backgroundColor = 'var(--error-color)';
             } else {
@@ -462,7 +433,7 @@
 
         // Event handler for the emergency button
         document.getElementById('emergencyButton').addEventListener('click', () => {
-            if (currentSafetyState.emergency_stop) {
+            if (currentSafetyState && currentSafetyState.emergency_stop) {
                 socket.emit('clearEmergencyStop');
             } else {
                 socket.emit('emergencyStop');
