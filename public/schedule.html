@@ -10,16 +10,18 @@
     <link rel="manifest" href="/assets/icons/site.webmanifest">
     <style>
         :root {
-            --bg-primary: #181a1b;
+            --bg-primary: #1a1a1a;
+            --bg-secondary: #333;
             --text-primary: #e8e6e3;
-            --text-secondary: #b2aba1;
-            --border-color: #736b5e;
+            --text-secondary: #a8a8a8;
+            --border-color: #444;
             --success-color: #3d8c40;
             --error-color: #a91409;
-            --active-color: #4b4000;
+            --active-color: #998100;
             --inactive-color: #4f5559;
             --selection-bg: #004daa;
             --selection-text: #e8e6e3;
+            --emergency-button-color: #ff6b00;
         }
 
         * {
@@ -73,7 +75,7 @@
 
         .gpio-title {
             font-family: monospace;
-            font-size: 1.2rem;
+            font-size: 1rem;
             color: var(--text-primary);
             font-weight: bold;
             min-width: 50px;
@@ -137,6 +139,7 @@
         .toggle-container {
             display: flex;
             align-items: center;
+            flex-wrap: wrap;
             gap: 0.5rem;
         }
 
@@ -176,6 +179,8 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
+            flex-wrap: wrap;
+            gap: 1rem;
             margin-bottom: 1rem;
         }
 
@@ -209,7 +214,7 @@
         /* Clock styles */
         .clock {
             font-family: monospace;
-            font-size: 1.4rem;
+            font-size: 1.2rem;
             color: var(--text-primary);
             padding: 0.25rem 0.5rem;
             background: none;
@@ -217,25 +222,24 @@
         }
 
         /* Emergency Stop styles */
-        .emergency-stop {
+        .emergency-button {
             padding: 0.5rem 1rem;
             font-size: 0.9rem;
-            font-weight: bold;
             background-color: var(--error-color);
-            color: white;
+            color: var(--text-primary);
             border: none;
             border-radius: 0.25rem;
             cursor: pointer;
+            font-weight: bold;
             transition: background-color 0.3s;
         }
 
-        .emergency-stop.active {
-            background-color: var(--error-color);
-            opacity: 0.8;
+        .emergency-button:hover {
+            background-color: #c0110b;
         }
 
-        .emergency-stop:hover {
-            background-color: #c0110b;
+        .emergency-button.emergency-active {
+            background-color: #ff6b00;
         }
 
         body.emergency-stop-active {
@@ -255,8 +259,9 @@
         .event-item {
             display: flex;
             justify-content: space-between;
-            opacity: 0.8;
             align-items: center;
+            flex-wrap: wrap;
+            gap: 0.5rem;
             padding: 0.5rem;
             margin: 1rem;
             margin-left: 0;
@@ -264,10 +269,38 @@
             border: 1px solid var(--border-color);
             border-radius: 0.25rem;
             background-color: #333;
+            opacity: 0.8;
         }
 
         .event-item.active {
             background-color: var(--active-color) !important;
+        }
+
+        .event-item > * {
+            flex: 0 1 auto;
+        }
+
+        .event-item .event-time {
+            flex: 0 1 auto;
+            min-width: 100px;
+        }
+
+        .event-item .event-pwm {
+            flex: 0 1 auto;
+            min-width: 80px;
+        }
+
+        .event-item .event-gpio {
+            flex: 0 1 auto;
+            min-width: 80px;
+        }
+
+        .event-item .toggle-switch {
+            flex: 0 0 auto;
+        }
+
+        .event-item button {
+            flex: 0 0 auto;
         }
 
         .gpio-title-12 { color: #ffeb3b; } /* yellow */
@@ -290,6 +323,47 @@
         .event-enabled {
             margin-left: auto;
         }
+
+        .event-controls {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+            margin-bottom: 1rem;
+            padding: 0.5rem;
+            background-color: #333;
+            border: 1px solid var(--border-color);
+            border-radius: 0.25rem;
+        }
+
+        .event-controls > * {
+            flex: 0 1 auto;
+        }
+
+        .event-controls .time-input {
+            flex: 0 1 auto;
+            min-width: 120px;
+        }
+
+        .event-controls .pwm-input {
+            flex: 0 1 auto;
+            min-width: 100px;
+        }
+
+        .event-controls .gpio-select {
+            flex: 0 1 auto;
+            min-width: 100px;
+        }
+
+        .event-controls button {
+            flex: 0 0 auto;
+        }
+
+        .active-events {
+            display: flex;
+            flex-direction: column;
+            flex-wrap: wrap;
+            gap: 1rem;
+        }
     </style>
 </head>
 <body>
@@ -305,7 +379,7 @@
                     <span class="slider mode-slider"></span>
                 </label>
                 <span class="mode-label">automatic</span>
-                <button class="emergency-stop" id="emergencyStop" onclick="toggleEmergencyStop()">Emergency Stop</button>
+                <button class="emergency-button" id="emergencyButton" onclick="toggleEmergencyStop()">Emergency Stop</button>
             </div>
         </div>
 
@@ -365,17 +439,17 @@
 
         // Emergency Stop functionality
         function toggleEmergencyStop() {
-            const button = document.getElementById('emergencyStop');
+            const button = document.getElementById('emergencyButton');
             if (emergencyStopActive) {
                 socket.emit('clearEmergencyStop');
                 button.textContent = 'Emergency Stop';
-                button.classList.remove('active');
+                button.classList.remove('emergency-active');
                 document.body.style.backgroundColor = 'var(--bg-primary)';
                 emergencyStopActive = false;
             } else {
                 socket.emit('emergencyStop');
-                button.textContent = 'Clear Emergency Stop';
-                button.classList.add('active');
+                button.textContent = 'Clear Emergency';
+                button.classList.add('emergency-active');
                 document.body.style.backgroundColor = 'var(--error-color)';
                 emergencyStopActive = true;
             }
@@ -414,7 +488,7 @@
                 const time = event.querySelector('.event-time').textContent;
                 const [hours, minutes, seconds] = time.split(':').map(Number);
                 const eventTime = hours * 3600 + minutes * 60 + seconds;
-                const gpio = event.querySelector('.gpio-title').textContent.replace('GPIO', '');
+                const gpio = event.querySelector('.event-gpio').textContent.replace('GPIO', '');
                 const isEnabled = event.querySelector('.event-enabled input').checked;
                 
                 if (!isEnabled) return; // Skip disabled events
@@ -431,7 +505,7 @@
 
             // Update active states
             events.forEach(event => {
-                const gpio = event.querySelector('.gpio-title').textContent.replace('GPIO', '');
+                const gpio = event.querySelector('.event-gpio').textContent.replace('GPIO', '');
                 const isActive = activeEvents[gpio] && activeEvents[gpio].event === event;
                 event.classList.toggle('active', isActive);
             });
@@ -465,17 +539,17 @@
         });
 
         socket.on('emergencyStop', () => {
-            const button = document.getElementById('emergencyStop');
-            button.textContent = 'Clear Emergency Stop';
-            button.classList.add('active');
+            const button = document.getElementById('emergencyButton');
+            button.textContent = 'Clear Emergency';
+            button.classList.add('emergency-active');
             document.body.style.backgroundColor = 'var(--error-color)';
             emergencyStopActive = true;
         });
 
         socket.on('clearEmergencyStop', () => {
-            const button = document.getElementById('emergencyStop');
+            const button = document.getElementById('emergencyButton');
             button.textContent = 'Emergency Stop';
-            button.classList.remove('active');
+            button.classList.remove('emergency-active');
             document.body.style.backgroundColor = 'var(--bg-primary)';
             emergencyStopActive = false;
         });
@@ -603,7 +677,7 @@
 
                 const percentage = Math.round((event.pwm_value / 1024) * 100);
                 eventDiv.innerHTML = `
-                    <span class="gpio-title gpio-title-${event.gpio}">GPIO${event.gpio}</span>
+                    <span class="event-gpio">GPIO${event.gpio}</span>
                     <span class="event-time">${event.time}</span>
                     <span class="event-pwm">${event.pwm_value}/1024 ${percentage}%</span>
                     <span class="countdown" id="countdown-${event.id}"></span>

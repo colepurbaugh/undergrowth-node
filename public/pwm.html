@@ -10,16 +10,18 @@
     <link rel="manifest" href="/assets/icons/site.webmanifest">
     <style>
         :root {
-            --bg-primary: #181a1b;
+            --bg-primary: #1a1a1a;
+            --bg-secondary: #333;
             --text-primary: #e8e6e3;
-            --text-secondary: #b2aba1;
-            --border-color: #736b5e;
+            --text-secondary: #a8a8a8;
+            --border-color: #444;
             --success-color: #3d8c40;
             --error-color: #a91409;
             --active-color: #998100;
             --inactive-color: #4f5559;
             --selection-bg: #004daa;
             --selection-text: #e8e6e3;
+            --emergency-button-color: #ff6b00;
         }
 
         * {
@@ -57,17 +59,59 @@
             color: var(--text-primary);
         }
 
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+
+        .header-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+
         .pwm-control {
             display: flex;
             font-family: monospace;
             opacity: 0.8;
             align-items: center;
+            flex-wrap: wrap;
             gap: 0.5rem;
             margin-bottom: 1rem;
             padding: 0.5rem;
             background-color: #333;
             border: 1px solid var(--border-color);
             border-radius: 0.25rem;
+        }
+
+        .pwm-control > * {
+            flex: 0 1 auto;
+        }
+
+        .pwm-control .toggle-switch {
+            flex: 0 0 auto;
+        }
+
+        .pwm-control .slider-container {
+            flex: 1 1 auto;
+            min-width: 200px;
+        }
+
+        .pwm-control .value-display {
+            flex: 0 0 auto;
+            min-width: 60px;
+        }
+
+        .pwm-control .pwm-label {
+            flex: 0 0 auto;
+            min-width: 100px;
         }
 
         .gpio-title {
@@ -171,13 +215,6 @@
             transform: translateX(36px);
         }
 
-        .header-row {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 1rem;
-        }
-
         .header-row h2 {
             margin-bottom: 0;
         }
@@ -214,10 +251,15 @@
             border-radius: 0.25rem;
             cursor: pointer;
             font-weight: bold;
+            transition: background-color 0.3s;
         }
 
         .emergency-button:hover {
             background-color: #c0110b;
+        }
+
+        .emergency-button.emergency-active {
+            background-color: #ff6b00;
         }
 
         /* PWM Toggle Styles */
@@ -427,10 +469,12 @@
             const emergencyButton = document.getElementById('emergencyButton');
             
             if (currentSafetyState.emergency_stop) {
-                emergencyButton.textContent = 'Clear Emergency Stop';
+                emergencyButton.textContent = 'Clear Emergency';
+                emergencyButton.classList.add('emergency-active');
                 document.body.style.backgroundColor = 'var(--error-color)';
             } else {
                 emergencyButton.textContent = 'Emergency Stop';
+                emergencyButton.classList.remove('emergency-active');
                 document.body.style.backgroundColor = 'var(--bg-primary)';
             }
         }
@@ -465,12 +509,17 @@
             console.log(`Current ${mode} PWM states:`, currentPWMState);
         }
 
-        // Event handler for the emergency button
-        document.getElementById('emergencyButton').addEventListener('click', () => {
-            if (currentSafetyState.emergency_stop) {
-                socket.emit('clearEmergencyStop');
-            } else {
+        // Emergency stop button
+        const emergencyStopButton = document.getElementById('emergencyButton');
+        emergencyStopButton.addEventListener('click', () => {
+            if (emergencyStopButton.textContent === 'Emergency Stop') {
                 socket.emit('emergencyStop');
+                emergencyStopButton.textContent = 'Clear Emergency';
+                emergencyStopButton.classList.add('emergency-active');
+            } else {
+                socket.emit('clearEmergencyStop');
+                emergencyStopButton.textContent = 'Emergency Stop';
+                emergencyStopButton.classList.remove('emergency-active');
             }
         });
 
