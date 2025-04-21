@@ -38,7 +38,7 @@
             background-image: url('/assets/backgrounds/undergrowth_logo.png');
             background-repeat: no-repeat;
             background-position: top center;
-            background-size: 100vw auto;
+            background-size: 90vh auto;
             background-attachment: fixed;
             color: var(--text-primary);
             line-height: 1.5;
@@ -87,8 +87,9 @@
         input[type="text"],
         input[type="number"],
         select {
-            width: 80px;
+            width: 100px;
             padding: 0.25rem;
+            font-size: 1rem;
             background-color: var(--bg-primary);
             color: var(--text-primary);
             border: 1px solid var(--border-color);
@@ -97,6 +98,7 @@
 
         .pwm-value {
             color: var(--text-secondary);
+            font-size: 1.2rem;
             min-width: 40px;
         }
 
@@ -220,7 +222,9 @@
             color: var(--text-primary);
             padding: 0.25rem 0.5rem;
             background: none;
-            /*background-color: var(--bg-primary);*/
+            flex: 0 1 auto;
+            min-width: 150px;
+            text-align: center;
         }
 
         /* Emergency Stop styles */
@@ -293,6 +297,9 @@
         }
 
         .event-item .event-gpio {
+            font-family: monospace;
+            font-size: 1.2rem;
+            font-weight: bold;
             flex: 0 1 auto;
             min-width: 80px;
         }
@@ -366,6 +373,47 @@
             flex-wrap: wrap;
             gap: 1rem;
         }
+
+        .timezone-section {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 1rem;
+            margin-bottom: 1rem;
+        }
+
+        .timezone-control {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 0.5rem;
+            flex: 1 1 auto;
+            min-width: 200px;
+        }
+
+        .timezone-select {
+            flex: 1 1 auto;
+            min-width: 150px;
+            padding: 0.25rem;
+            background-color: var(--bg-secondary);
+            color: var(--text-primary);
+            border: 1px solid var(--border-color);
+            border-radius: 0.25rem;
+        }
+
+        .timezone-display {
+            flex: 1 1 auto;
+            min-width: 100px;
+            padding: 0.25rem;
+            background-color: var(--bg-secondary);
+            color: var(--text-primary);
+            border: 1px solid var(--border-color);
+            border-radius: 0.25rem;
+        }
+
+        .event-gpio.gpio-12 { color: #ffeb3b; } /* yellow */
+        .event-gpio.gpio-13 { color: #2196f3; } /* blue */
+        .event-gpio.gpio-18 { color: #f44336; } /* red */
+        .event-gpio.gpio-19 { color: #4caf50; } /* green */
     </style>
 </head>
 <body>
@@ -416,8 +464,9 @@
         const socket = io();
         let emergencyStopActive = false;
         let currentTimezone = 'America/Los_Angeles'; // Default, will be updated from server
+        let currentMode = 1; // Assuming 1 for automatic mode
 
-        // Clock functionality
+        // Clock and timezone handling
         function updateClock() {
             const now = new Date();
             const formatter = new Intl.DateTimeFormat('en-US', {
@@ -432,12 +481,12 @@
                 timeZone: currentTimezone,
                 timeZoneName: 'short'
             }).formatToParts(now).find(part => part.type === 'timeZoneName').value;
-            document.getElementById('clock').textContent = `${timeString} (${timezoneAbbr})`;
+            
+            const clockElement = document.getElementById('clock');
+            if (clockElement) {
+                clockElement.textContent = `${timeString} (${timezoneAbbr})`;
+            }
         }
-
-        // Update clock every second
-        setInterval(updateClock, 1000);
-        updateClock(); // Initial update
 
         // Emergency Stop functionality
         function toggleEmergencyStop() {
@@ -572,10 +621,14 @@
 
         // Handle mode update
         socket.on('modeUpdate', (data) => {
-            console.log('Client: Received mode update:', data);
-            const modeToggle = document.getElementById('modeToggle');
-            modeToggle.checked = data.mode === 0;
-            updateModeDisplay();
+            currentMode = data.mode;
+        });
+
+        // Handle timezone updates
+        socket.on('timezoneUpdate', (data) => {
+            const { timezone } = data;
+            currentTimezone = timezone;
+            updateClock();
         });
 
         // Event handling functions
@@ -679,7 +732,7 @@
 
                 const percentage = Math.round((event.pwm_value / 1024) * 100);
                 eventDiv.innerHTML = `
-                    <span class="event-gpio">GPIO${event.gpio}</span>
+                    <span class="event-gpio gpio-${event.gpio}">GPIO${event.gpio}</span>
                     <span class="event-time">${event.time}</span>
                     <span class="event-pwm">${event.pwm_value}/1024 ${percentage}%</span>
                     <span class="countdown" id="countdown-${event.id}"></span>
@@ -721,9 +774,11 @@
             });
         }
 
-        socket.on('timezoneUpdate', (data) => {
-            currentTimezone = data.timezone;
+        // Move all initialization code into a DOMContentLoaded event listener
+        document.addEventListener('DOMContentLoaded', () => {
+            // Initial clock update
             updateClock();
+            setInterval(updateClock, 1000);
         });
     </script>
 </body>

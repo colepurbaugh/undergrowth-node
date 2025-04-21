@@ -40,7 +40,7 @@
             background-image: url('/assets/backgrounds/undergrowth_logo.png');
             background-repeat: no-repeat;
             background-position: top center;
-            background-size: 100vw auto;
+            background-size: 90vh auto;
             background-attachment: fixed;
             color: var(--text-primary);
             line-height: 1.5;
@@ -171,7 +171,7 @@
 
         .clock-display {
             font-family: monospace;
-            font-size: 1.5rem;
+            font-size: 1.2rem;
             color: var(--text-primary);
             display: flex;
             flex-direction: row;
@@ -276,7 +276,7 @@
     <div class="container">
         <div class="header-row">
             <h2 class="text-xl font-semibold mb-4 text-[#e8e6e3]">System Information</h2>
-            <button id="emergencyButton" class="emergency-button" onclick="toggleEmergencyStop()">Emergency Stop</button>
+            <button id="emergencyButton" class="emergency-button">Emergency Stop</button>
         </div>
         <div class="timezone-section">
             <div class="clock-display">
@@ -401,8 +401,95 @@
             normal_enable: true
         };
 
-        // Request initial state when page loads
-        socket.emit('getInitialState');
+        // Clock and timezone handling
+        let currentTimezone = 'America/Los_Angeles';
+        
+        function updateClock() {
+            const now = new Date();
+            const formatter = new Intl.DateTimeFormat('en-US', {
+                timeZone: currentTimezone,
+                month: 'long',
+                day: 'numeric',
+                year: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit',
+                hour12: false,
+                timeZoneName: 'short'
+            });
+            
+            const parts = formatter.formatToParts(now);
+            const date = parts.find(p => p.type === 'month').value + ' ' +
+                        parts.find(p => p.type === 'day').value + ' ' +
+                        parts.find(p => p.type === 'year').value;
+            const time = parts.find(p => p.type === 'hour').value + ':' +
+                        parts.find(p => p.type === 'minute').value + ':' +
+                        parts.find(p => p.type === 'second').value;
+            const timezone = parts.find(p => p.type === 'timeZoneName').value;
+            
+            const dateDisplay = document.getElementById('dateDisplay');
+            const timeDisplay = document.getElementById('timeDisplay');
+            const timezoneDisplay = document.getElementById('timezoneDisplay');
+            
+            if (dateDisplay && timeDisplay && timezoneDisplay) {
+                dateDisplay.textContent = date + ', ';
+                timeDisplay.textContent = time;
+                timezoneDisplay.textContent = ' (' + timezone + ')';
+            }
+        }
+
+        // Move all initialization code into a DOMContentLoaded event listener
+        document.addEventListener('DOMContentLoaded', () => {
+            // Update clock every second
+            setInterval(updateClock, 1000);
+            updateClock(); // Initial update
+
+            // Emergency Stop functionality
+            const emergencyButton = document.getElementById('emergencyButton');
+            if (emergencyButton) {
+                emergencyButton.addEventListener('click', () => {
+                    if (currentSafetyState && currentSafetyState.emergency_stop) {
+                        socket.emit('clearEmergencyStop');
+                    } else {
+                        socket.emit('emergencyStop');
+                    }
+                });
+            }
+
+            // Timezone update button
+            const updateTimezoneButton = document.getElementById('updateTimezone');
+            if (updateTimezoneButton) {
+                updateTimezoneButton.addEventListener('click', () => {
+                    const timezoneSelect = document.getElementById('timezoneSelect');
+                    if (timezoneSelect) {
+                        const timezone = timezoneSelect.value;
+                        socket.emit('setTimezone', { timezone });
+                    }
+                });
+            }
+
+            // Retrieve values button
+            const retrieveValuesBtn = document.getElementById('retrieve-values-btn');
+            if (retrieveValuesBtn) {
+                retrieveValuesBtn.addEventListener('click', function() {
+                    socket.emit('getSystemState');
+                });
+            }
+
+            // Request initial state
+            socket.emit('getInitialState');
+        });
+
+        // Handle timezone updates
+        socket.on('timezoneUpdate', (data) => {
+            const { timezone } = data;
+            const timezoneSelect = document.getElementById('timezoneSelect');
+            if (timezoneSelect) {
+                timezoneSelect.value = timezone;
+            }
+            currentTimezone = timezone;
+            updateClock();
+        });
 
         // Handle initial state
         socket.on('initialState', (data) => {
@@ -433,15 +520,6 @@
             }
         }
 
-        // Event handler for the emergency button
-        document.getElementById('emergencyButton').addEventListener('click', () => {
-            if (currentSafetyState && currentSafetyState.emergency_stop) {
-                socket.emit('clearEmergencyStop');
-            } else {
-                socket.emit('emergencyStop');
-            }
-        });
-
         socket.on('sensorData', (data) => {
             // Update system information
             document.getElementById('piUptime').textContent = data.system.piUptime;
@@ -460,65 +538,6 @@
             document.getElementById('sensor2Address').textContent = data.sensor2.address;
             document.getElementById('sensor2Temp').textContent = data.sensor2.temperature;
             document.getElementById('sensor2Humidity').textContent = `${data.sensor2.humidity.toFixed(1)}%`;
-        });
-
-        // Clock and timezone handling
-        let currentTimezone = 'America/Los_Angeles';
-        
-        function updateClock() {
-            const now = new Date();
-            const formatter = new Intl.DateTimeFormat('en-US', {
-                timeZone: currentTimezone,
-                month: 'long',
-                day: 'numeric',
-                year: 'numeric',
-                hour: '2-digit',
-                minute: '2-digit',
-                second: '2-digit',
-                hour12: false,
-                timeZoneName: 'short'
-            });
-            
-            const parts = formatter.formatToParts(now);
-            const date = parts.find(p => p.type === 'month').value + ' ' +
-                        parts.find(p => p.type === 'day').value + ' ' +
-                        parts.find(p => p.type === 'year').value;
-            const time = parts.find(p => p.type === 'hour').value + ':' +
-                        parts.find(p => p.type === 'minute').value + ':' +
-                        parts.find(p => p.type === 'second').value;
-            const timezone = parts.find(p => p.type === 'timeZoneName').value;
-            
-            document.getElementById('dateDisplay').textContent = date + ', ';
-            document.getElementById('timeDisplay').textContent = time;
-            document.getElementById('timezoneDisplay').textContent = ' (' + timezone + ')';
-        }
-
-        // Update clock every second
-        setInterval(updateClock, 1000);
-        updateClock(); // Initial update
-
-        // Request initial timezone when connecting
-        socket.on('connect', () => {
-            socket.emit('getTimezone');
-        });
-
-        // Handle timezone updates
-        socket.on('timezoneUpdate', (data) => {
-            const { timezone } = data;
-            const timezoneSelect = document.getElementById('timezoneSelect');
-            timezoneSelect.value = timezone;
-            currentTimezone = timezone;
-            updateClock();
-        });
-
-        // Update timezone button click handler
-        document.getElementById('updateTimezone').addEventListener('click', () => {
-            const timezone = timezoneSelect.value;
-            socket.emit('setTimezone', { timezone });
-        });
-
-        document.getElementById('retrieve-values-btn').addEventListener('click', function() {
-            socket.emit('getSystemState');
         });
 
         socket.on('systemState', function(data) {
