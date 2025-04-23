@@ -8,413 +8,7 @@
     <link rel="icon" type="image/png" sizes="32x32" href="/assets/icons/favicon-32x32.png">
     <link rel="icon" type="image/png" sizes="16x16" href="/assets/icons/favicon-16x16.png">
     <link rel="manifest" href="/assets/icons/site.webmanifest">
-    <style>
-        :root {
-            --bg-primary: #1a1a1a;
-            --bg-secondary: #333;
-            --text-primary: #e8e6e3;
-            --text-secondary: #a8a8a8;
-            --border-color: #444;
-            --success-color: #3d8c40;
-            --error-color: #a91409;
-            --active-color: #998100;
-            --inactive-color: #4f5559;
-            --selection-bg: #004daa;
-            --selection-text: #e8e6e3;
-            --emergency-button-color: #ff6b00;
-        }
-
-        * {
-            box-sizing: border-box;
-            margin: 0;
-            padding: 0;
-        }
-
-        body {
-            font-family: Arial, sans-serif;
-            margin: 0;
-            padding: 1rem;
-            background-color: var(--bg-primary);
-            background-image: url('/assets/backgrounds/undergrowth_logo.png');
-            background-repeat: no-repeat;
-            background-position: top center;
-            background-size: 90vh auto;
-            background-attachment: fixed;
-            color: var(--text-primary);
-            line-height: 1.5;
-            font-size: 1rem;
-            min-height: 100vh;
-        }
-
-        .container {
-            background-color: var(--bg-primary);
-            background: none;
-            padding: 1rem;
-            border-radius: 0.5rem;
-            margin-bottom: 1rem;
-            width: 100%;
-        }
-
-        .event-control {
-            display: flex;
-            opacity: 0.8;
-            flex-wrap: wrap;
-            align-items: center;
-            gap: 0.5rem;
-            margin-bottom: 1rem;
-            padding: 0.5rem;
-            background-color: #333;
-            border: 1px solid var(--border-color);
-            border-radius: 0.25rem;
-        }
-
-        .controls-group {
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-            margin-left: auto;
-        }
-
-        .gpio-title {
-            font-family: monospace;
-            font-size: 1rem;
-            color: var(--text-primary);
-            font-weight: bold;
-            min-width: 50px;
-            margin-right: 0.5rem;
-        }
-
-        input[type="text"],
-        input[type="number"],
-        select {
-            width: 100px;
-            padding: 0.25rem;
-            font-size: 1rem;
-            background-color: var(--bg-primary);
-            color: var(--text-primary);
-            border: 1px solid var(--border-color);
-            border-radius: 0.25rem;
-        }
-
-        .pwm-value {
-            color: var(--text-secondary);
-            font-size: 1.2rem;
-            min-width: 40px;
-        }
-
-        button {
-            padding: 0.25rem 0.5rem;
-            background-color: var(--inactive-color);
-            color: var(--text-primary);
-            border: 1px solid var(--border-color);
-            border-radius: 0.25rem;
-            cursor: pointer;
-        }
-
-        button:hover {
-            background-color: var(--active-color);
-        }
-
-        button.delete {
-            margin-left: 1rem;
-            background-color: var(--error-color);
-            padding: 0.4rem 0.75rem;
-        }
-
-        button.add-event {
-            margin-left: auto;
-            background-color: var(--success-color);
-            padding: 0.4rem 0.75rem;
-        }
-
-        .toggle {
-            position: relative;
-            display: inline-block;
-            width: 60px;
-            height: 24px;
-        }
-
-        .toggle input {
-            opacity: 0;
-            width: 0;
-            height: 0;
-        }
-
-        .toggle-container {
-            display: flex;
-            align-items: center;
-            flex-wrap: wrap;
-            gap: 0.5rem;
-        }
-
-        .slider {
-            position: absolute;
-            cursor: pointer;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background-color: var(--inactive-color);
-            transition: .4s;
-            border-radius: 24px;
-        }
-
-        .slider:before {
-            position: absolute;
-            content: "";
-            height: 16px;
-            width: 16px;
-            left: 4px;
-            bottom: 4px;
-            background-color: var(--text-primary);
-            transition: .4s;
-            border-radius: 50%;
-        }
-
-        input:checked + .slider {
-            background-color: var(--success-color);
-        }
-
-        input:checked + .slider:before {
-            transform: translateX(36px);
-        }
-
-        .header-row {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            flex-wrap: wrap;
-            gap: 1rem;
-            margin-bottom: 1rem;
-        }
-
-        .header-row h2 {
-            margin-bottom: 0;
-        }
-
-        .header-title {
-            font-size: 1.6rem;
-            font-weight: semibold;
-            color: var(--text-primary);
-        }
-
-        .mode-label {
-            color: var(--text-primary);
-            font-size: 1rem;
-        }
-
-        .mode-slider {
-            background-color: var(--error-color);
-        }
-
-        .mode-toggle input:checked + .slider {
-            background-color: var(--selection-bg);
-        }
-
-        .mode-slider.automatic {
-            background-color: var(--selection-bg);
-        }
-
-        /* Clock styles */
-        .clock {
-            font-family: monospace;
-            font-size: 1.2rem;
-            color: var(--text-primary);
-            padding: 0.25rem 0.5rem;
-            background: none;
-            flex: 0 1 auto;
-            min-width: 150px;
-            text-align: center;
-        }
-
-        /* Emergency Stop styles */
-        .emergency-button {
-            padding: 0.5rem 1rem;
-            font-size: 0.9rem;
-            background-color: var(--error-color);
-            color: var(--text-primary);
-            border: none;
-            border-radius: 0.25rem;
-            cursor: pointer;
-            font-weight: bold;
-            transition: background-color 0.3s;
-        }
-
-        .emergency-button:hover {
-            background-color: #c0110b;
-        }
-
-        .emergency-button.emergency-active {
-            background-color: #ff6b00;
-        }
-
-        body.emergency-stop-active {
-            background-color: var(--error-color);
-            opacity: 0.1;
-        }
-
-        /* Countdown timer styles */
-        .countdown {
-            font-family: monospace;
-            font-size: 1rem;
-            color: var(--text-secondary);
-            margin-left: 0.5rem;
-        }
-
-        /* Active schedule indicator */
-        .event-item {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            flex-wrap: wrap;
-            gap: 0.5rem;
-            padding: 0.5rem;
-            margin: 1rem;
-            margin-left: 0;
-            margin-right: 0;
-            border: 1px solid var(--border-color);
-            border-radius: 0.25rem;
-            background-color: #333;
-            opacity: 0.8;
-        }
-
-        .event-item.active {
-            background-color: var(--active-color) !important;
-        }
-
-        .event-item > * {
-            flex: 0 1 auto;
-        }
-
-        .event-item .event-time {
-            flex: 0 1 auto;
-            min-width: 100px;
-        }
-
-        .event-item .event-pwm {
-            flex: 0 1 auto;
-            min-width: 80px;
-        }
-
-        .event-item .event-gpio {
-            font-family: monospace;
-            font-size: 1.2rem;
-            font-weight: bold;
-            flex: 0 1 auto;
-            min-width: 80px;
-        }
-
-        .event-item .toggle-switch {
-            flex: 0 0 auto;
-        }
-
-        .event-item button {
-            flex: 0 0 auto;
-        }
-
-        .gpio-title-12 { color: #ffeb3b; } /* yellow */
-        .gpio-title-13 { color: #2196f3; } /* blue */
-        .gpio-title-18 { color: #f44336; } /* red */
-        .gpio-title-19 { color: #4caf50; } /* green */
-
-        .event-time {
-            font-family: monospace;
-            font-size: 1rem;
-            margin-right: 0.5rem;
-        }
-
-        .event-pwm {
-            font-family: monospace;
-            font-size: 1rem;
-            margin-right: 0.5rem;
-        }
-
-        .event-enabled {
-            margin-left: auto;
-        }
-
-        .event-controls {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 0.5rem;
-            margin-bottom: 1rem;
-            padding: 0.5rem;
-            background-color: #333;
-            border: 1px solid var(--border-color);
-            border-radius: 0.25rem;
-        }
-
-        .event-controls > * {
-            flex: 0 1 auto;
-        }
-
-        .event-controls .time-input {
-            flex: 0 1 auto;
-            min-width: 120px;
-        }
-
-        .event-controls .pwm-input {
-            flex: 0 1 auto;
-            min-width: 100px;
-        }
-
-        .event-controls .gpio-select {
-            flex: 0 1 auto;
-            min-width: 100px;
-        }
-
-        .event-controls button {
-            flex: 0 0 auto;
-        }
-
-        .active-events {
-            display: flex;
-            flex-direction: column;
-            flex-wrap: wrap;
-            gap: 1rem;
-        }
-
-        .timezone-section {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 1rem;
-            margin-bottom: 1rem;
-        }
-
-        .timezone-control {
-            display: flex;
-            flex-wrap: wrap;
-            align-items: center;
-            gap: 0.5rem;
-            flex: 1 1 auto;
-            min-width: 200px;
-        }
-
-        .timezone-select {
-            flex: 1 1 auto;
-            min-width: 150px;
-            padding: 0.25rem;
-            background-color: var(--bg-secondary);
-            color: var(--text-primary);
-            border: 1px solid var(--border-color);
-            border-radius: 0.25rem;
-        }
-
-        .timezone-display {
-            flex: 1 1 auto;
-            min-width: 100px;
-            padding: 0.25rem;
-            background-color: var(--bg-secondary);
-            color: var(--text-primary);
-            border: 1px solid var(--border-color);
-            border-radius: 0.25rem;
-        }
-
-        .event-gpio.gpio-12 { color: #ffeb3b; } /* yellow */
-        .event-gpio.gpio-13 { color: #2196f3; } /* blue */
-        .event-gpio.gpio-18 { color: #f44336; } /* red */
-        .event-gpio.gpio-19 { color: #4caf50; } /* green */
-    </style>
+    <link rel="stylesheet" href="/assets/css/main.css">
 </head>
 <body>
     <div class="container">
@@ -429,7 +23,7 @@
                     <span class="slider mode-slider"></span>
                 </label>
                 <span class="mode-label">automatic</span>
-                <button class="emergency-button" id="emergencyButton" onclick="toggleEmergencyStop()">Emergency Stop</button>
+                <button class="emergency-button" id="emergencyButton">Emergency Stop</button>
             </div>
         </div>
 
@@ -462,7 +56,10 @@
     <script src="/socket.io/socket.io.js"></script>
     <script>
         const socket = io();
-        let emergencyStopActive = false;
+        let currentSafetyState = { 
+            emergency_stop: false,
+            normal_enable: true
+        };
         let currentTimezone = 'America/Los_Angeles'; // Default, will be updated from server
         let currentMode = 1; // Assuming 1 for automatic mode
 
@@ -485,24 +82,6 @@
             const clockElement = document.getElementById('clock');
             if (clockElement) {
                 clockElement.textContent = `${timeString} (${timezoneAbbr})`;
-            }
-        }
-
-        // Emergency Stop functionality
-        function toggleEmergencyStop() {
-            const button = document.getElementById('emergencyButton');
-            if (emergencyStopActive) {
-                socket.emit('clearEmergencyStop');
-                button.textContent = 'Emergency Stop';
-                button.classList.remove('emergency-active');
-                document.body.style.backgroundColor = 'var(--bg-primary)';
-                emergencyStopActive = false;
-            } else {
-                socket.emit('emergencyStop');
-                button.textContent = 'Clear Emergency';
-                button.classList.add('emergency-active');
-                document.body.style.backgroundColor = 'var(--error-color)';
-                emergencyStopActive = true;
             }
         }
 
@@ -581,28 +160,80 @@
 
         socket.on('initialState', (data) => {
             console.log('Received initial state:', data);
+            
+            // Update mode toggle if it exists
+            const modeToggle = document.getElementById('modeToggle');
+            if (modeToggle && data.mode !== undefined) {
+                modeToggle.checked = data.mode === 0; // 0 is automatic, 1 is manual
+            }
+            
+            // Handle safety state - proper conversion of numeric values to boolean
+            if (data.safetyStates) {
+                console.log('Found safety data in initialState:', data.safetyStates);
+                // Convert number values to boolean for UI consistency
+                currentSafetyState = {
+                    emergency_stop: data.safetyStates.emergency_stop === 1,
+                    normal_enable: data.safetyStates.normal_enable === 1
+                };
+                updateSafetyUI();
+            } else if (data.safety) {
+                // Handle already boolean data
+                currentSafetyState = data.safety;
+                updateSafetyUI();
+            }
+            
             updateUI(data);
         });
 
         socket.on('stateUpdate', (data) => {
             console.log('Received state update:', data);
+            
+            // Update mode toggle if it exists
+            const modeToggle = document.getElementById('modeToggle');
+            if (modeToggle && data.mode !== undefined) {
+                modeToggle.checked = data.mode === 0; // 0 is automatic, 1 is manual
+            }
+            
             updateUI(data);
         });
 
+        // Handle safety state updates
+        socket.on('safetyStateUpdate', (data) => {
+            console.log('Received safetyStateUpdate:', data);
+            currentSafetyState = data;
+            updateSafetyUI();
+        });
+
+        function updateSafetyUI() {
+            console.log('Updating safety UI with state:', currentSafetyState);
+            
+            const emergencyButton = document.getElementById('emergencyButton');
+            if (!emergencyButton) {
+                console.log('Emergency button not found in DOM');
+                return;
+            }
+            
+            if (currentSafetyState.emergency_stop) {
+                console.log('Setting UI to emergency state');
+                emergencyButton.textContent = 'Clear Emergency';
+                emergencyButton.classList.add('emergency-active');
+                document.body.style.backgroundColor = 'var(--error-color)';
+            } else {
+                console.log('Setting UI to normal state');
+                emergencyButton.textContent = 'Emergency Stop';
+                emergencyButton.classList.remove('emergency-active');
+                document.body.style.backgroundColor = 'var(--bg-primary)';
+            }
+        }
+
         socket.on('emergencyStop', () => {
-            const button = document.getElementById('emergencyButton');
-            button.textContent = 'Clear Emergency';
-            button.classList.add('emergency-active');
-            document.body.style.backgroundColor = 'var(--error-color)';
-            emergencyStopActive = true;
+            currentSafetyState.emergency_stop = true;
+            updateSafetyUI();
         });
 
         socket.on('clearEmergencyStop', () => {
-            const button = document.getElementById('emergencyButton');
-            button.textContent = 'Emergency Stop';
-            button.classList.remove('emergency-active');
-            document.body.style.backgroundColor = 'var(--bg-primary)';
-            emergencyStopActive = false;
+            currentSafetyState.emergency_stop = false;
+            updateSafetyUI();
         });
 
         // Handle events update
@@ -622,6 +253,12 @@
         // Handle mode update
         socket.on('modeUpdate', (data) => {
             currentMode = data.mode;
+            
+            // Update mode toggle UI
+            const modeToggle = document.getElementById('modeToggle');
+            if (modeToggle && data.mode !== undefined) {
+                modeToggle.checked = data.mode === 0; // 0 is automatic, 1 is manual
+            }
         });
 
         // Handle timezone updates
@@ -779,6 +416,29 @@
             // Initial clock update
             updateClock();
             setInterval(updateClock, 1000);
+            
+            // Apply current safety state to UI immediately
+            updateSafetyUI();
+            
+            // Emergency Stop functionality
+            const emergencyButton = document.getElementById('emergencyButton');
+            if (emergencyButton) {
+                emergencyButton.addEventListener('click', () => {
+                    if (emergencyButton.textContent === 'Emergency Stop') {
+                        socket.emit('emergencyStop');
+                        emergencyButton.textContent = 'Clear Emergency';
+                        emergencyButton.classList.add('emergency-active');
+                    } else {
+                        socket.emit('clearEmergencyStop');
+                        emergencyButton.textContent = 'Emergency Stop';
+                        emergencyButton.classList.remove('emergency-active');
+                    }
+                });
+            }
+            
+            // Request initial state
+            socket.emit('getInitialState');
+            socket.emit('getTimezone');
         });
     </script>
 </body>

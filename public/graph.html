@@ -10,136 +10,15 @@
     <link rel="manifest" href="/assets/icons/site.webmanifest">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="/socket.io/socket.io.js"></script>
-    <style>
-        :root {
-            --bg-primary: #181a1b;
-            --text-primary: #e8e6e3;
-            --text-secondary: #b2aba1;
-            --border-color: #736b5e;
-            --success-color: #3d8c40;
-            --error-color: #a91409;
-            --active-color: #998100;
-            --inactive-color: #4f5559;
-            --selection-bg: #004daa;
-            --selection-text: #e8e6e3;
-            --emergency-color: #ff8c00;
-        }
-
-        body {
-            font-family: Arial, sans-serif;
-            margin: 0;
-            padding: 1rem;
-            background-color: var(--bg-primary);
-            background-image: url('/assets/backgrounds/undergrowth_logo.png');
-            background-repeat: no-repeat;
-            background-position: top center;
-            background-size: 90vh auto;
-            background-attachment: fixed;
-            color: var(--text-primary);
-            line-height: 1.5;
-            font-size: 1rem;
-            min-height: 100vh;
-        }
-
-        .container {
-            width: 100%;
-        }
-
-        .header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 1rem;
-        }
-
-        .title {
-            font-size: 1.5rem;
-            font-weight: bold;
-            color: var(--text-primary);
-        }
-
-        .controls {
-            background-color: #333;
-            opacity: 0.8;
-            padding: 1rem;
-            border-radius: 0.25rem;
-            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-            margin-bottom: 1rem;
-        }
-
-        .controls-container {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 1rem;
-            align-items: flex-end;
-            justify-content: space-between;
-        }
-
-        .controls-group {
-            display: flex;
-            gap: 1rem;
-        }
-
-        .control-label {
-            display: block;
-            font-size: 0.875rem;
-            font-weight: 500;
-            color: var(--text-primary);
-            margin-bottom: 0.25rem;
-        }
-
-        select {
-            display: block;
-            width: 100%;
-            margin-top: 0.25rem;
-            padding: 0.5rem;
-            border-radius: 0.375rem;
-            border: 1px solid var(--border-color);
-            background-color: var(--bg-primary);
-            color: var(--text-primary);
-        }
-
-        .update-button {
-            padding: 0.5rem 1rem;
-            background-color: var(--success-color);
-            color: var(--text-primary);
-            border-radius: 0.375rem;
-            border: none;
-            cursor: pointer;
-            transition: background-color 0.2s;
-        }
-
-        .update-button:hover {
-            background-color: #2d6c30;
-        }
-
-        .chart-container {
-            background-color: #333;
-            opacity: 0.8;
-            padding: 1rem;
-            border-radius: 0.25rem;
-            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-            margin-bottom: 1rem;
-        }
-
-        .chart-title {
-            font-size: 1.25rem;
-            font-weight: 600;
-            margin-bottom: 0.5rem;
-            color: var(--text-primary);
-        }
-
-        .chart-canvas {
-            height: 300px;
-        }
-    </style>
+    <link rel="stylesheet" href="/assets/css/main.css">
 </head>
 <body>
     <div class="container">
         <div class="header">
             <h1 class="title">Sensor Data Graphs</h1>
-            <div class="time-container">
+            <div class="header-right">
                 <div id="currentTime" class="time-display"></div>
+                <button id="emergencyButton" class="emergency-button">Emergency Stop</button>
             </div>
         </div>
         
@@ -158,8 +37,8 @@
                     <div>
                         <label for="points" class="control-label">Points:</label>
                         <select id="points">
-                            <option value="100">100 points</option>
-                            <option value="1000" selected>1000 points</option>
+                            <option value="100" selected>100 points</option>
+                            <option value="1000">1000 points</option>
                             <option value="10000">10000 points</option>
                         </select>
                     </div>
@@ -192,14 +71,81 @@
         let humidityChart = null;
         let autoUpdateInterval = null;
         let currentTimezone = 'America/Los_Angeles'; // Default, will be updated from server
+        let currentSafetyState = {
+            emergency_stop: false,
+            normal_enable: true
+        };
 
         // Initialize socket connection
         const socket = io();
 
-        // Get timezone from server on connect
+        // Get timezone and initial state from server on connect
         socket.on('connect', () => {
             socket.emit('getTimezone');
+            socket.emit('getInitialState');
         });
+
+        // Handle initial state
+        socket.on('initialState', (data) => {
+            console.log('Received initial state:', data);
+            
+            // Handle safety state - proper conversion of numeric values to boolean
+            if (data && data.safetyStates) {
+                console.log('Found safety data in initialState:', data.safetyStates);
+                // Convert number values to boolean for UI consistency
+                currentSafetyState = {
+                    emergency_stop: data.safetyStates.emergency_stop === 1,
+                    normal_enable: data.safetyStates.normal_enable === 1
+                };
+                updateSafetyUI();
+            } else if (data && data.safety) {
+                currentSafetyState = data.safety;
+                updateSafetyUI();
+            }
+        });
+
+        // Handle safety state updates
+        socket.on('safetyStateUpdate', (data) => {
+            console.log('Received safetyStateUpdate:', data);
+            currentSafetyState = data;
+            updateSafetyUI();
+        });
+
+        // Emergency stop event
+        socket.on('emergencyStop', () => {
+            console.log('Received emergencyStop event');
+            currentSafetyState.emergency_stop = true;
+            updateSafetyUI();
+        });
+
+        // Clear emergency stop event
+        socket.on('clearEmergencyStop', () => {
+            console.log('Received clearEmergencyStop event');
+            currentSafetyState.emergency_stop = false;
+            updateSafetyUI();
+        });
+
+        function updateSafetyUI() {
+            console.log('Updating safety UI with state:', currentSafetyState);
+            
+            const emergencyButton = document.getElementById('emergencyButton');
+            if (!emergencyButton) {
+                console.log('Emergency button not found in DOM');
+                return;
+            }
+            
+            if (currentSafetyState.emergency_stop) {
+                console.log('Setting UI to emergency state');
+                emergencyButton.textContent = 'Clear Emergency';
+                emergencyButton.classList.add('emergency-active');
+                document.body.style.backgroundColor = 'var(--error-color)';
+            } else {
+                console.log('Setting UI to normal state');
+                emergencyButton.textContent = 'Emergency Stop';
+                emergencyButton.classList.remove('emergency-active');
+                document.body.style.backgroundColor = 'var(--bg-primary)';
+            }
+        }
 
         // Handle timezone updates from server
         socket.on('timezoneUpdate', (data) => {
@@ -340,6 +286,27 @@
         // Add change handlers for time range and points
         document.getElementById('timeRange').addEventListener('change', updateCharts);
         document.getElementById('points').addEventListener('change', updateCharts);
+
+        // Add emergency stop functionality when document is ready
+        document.addEventListener('DOMContentLoaded', () => {
+            // Initialize emergency button with current state immediately
+            updateSafetyUI();
+            
+            const emergencyButton = document.getElementById('emergencyButton');
+            if (emergencyButton) {
+                emergencyButton.addEventListener('click', () => {
+                    if (emergencyButton.textContent === 'Emergency Stop') {
+                        socket.emit('emergencyStop');
+                        emergencyButton.textContent = 'Clear Emergency';
+                        emergencyButton.classList.add('emergency-active');
+                    } else {
+                        socket.emit('clearEmergencyStop');
+                        emergencyButton.textContent = 'Emergency Stop';
+                        emergencyButton.classList.remove('emergency-active');
+                    }
+                });
+            }
+        });
     </script>
 </body>
 </html> 

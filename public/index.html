@@ -11,266 +11,7 @@
     <link rel="mask-icon" href="/assets/icons/safari-pinned-tab.svg" color="#5bbad5">
     <meta name="msapplication-TileColor" content="#da532c">
     <meta name="theme-color" content="#ffffff">
-    <style>
-        :root {
-            --bg-primary: #181a1b;
-            --text-primary: #e8e6e3;
-            --text-secondary: #b2aba1;
-            --border-color: #736b5e;
-            --success-color: #3d8c40;
-            --error-color: #a91409;
-            --active-color: #998100;
-            --inactive-color: #4f5559;
-            --selection-bg: #004daa;
-            --selection-text: #e8e6e3;
-            --emergency-color: #ff8c00;
-        }
-
-        * {
-            box-sizing: border-box;
-            margin: 0;
-            padding: 0;
-        }
-
-        body {
-            font-family: Arial, sans-serif;
-            margin: 0;
-            padding: 1rem;
-            background-color: var(--bg-primary);
-            background-image: url('/assets/backgrounds/undergrowth_logo.png');
-            background-repeat: no-repeat;
-            background-position: top center;
-            background-size: 90vh auto;
-            background-attachment: fixed;
-            color: var(--text-primary);
-            line-height: 1.5;
-            font-size: 1rem;
-            min-height: 100vh;
-        }
-
-        ::selection {
-            background-color: var(--selection-bg);
-            color: var(--selection-text);
-        }
-
-        h2, h3 {
-            color: var(--text-primary);
-            margin-bottom: 1rem;
-        }
-
-        .container {
-            background-color: var(--bg-primary);
-            background: none;
-            padding: 1rem;
-            border-radius: 0.5rem;
-            margin-bottom: 1rem;
-            width: 100%;
-        }
-
-        .header-row {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 1rem;
-        }
-
-        .header-row h2 {
-            margin-bottom: 0;
-        }
-
-        .emergency-button {
-            padding: 0.5rem 1rem;
-            background-color: var(--error-color);
-            color: var(--text-primary);
-            border: 1px solid var(--border-color);
-            border-radius: 0.25rem;
-            cursor: pointer;
-            font-weight: bold;
-        }
-
-        .emergency-button:hover {
-            background-color: #c0110b;
-        }
-
-        .info-section {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 0.5rem;
-            margin-bottom: 1rem;
-        }
-
-        .info-item {
-            flex: 1;
-            min-width: 200px;
-            padding: 10px;
-            background-color: #333;
-            opacity: 0.8;
-            border: 1px solid var(--border-color);
-            border-radius: 0.25rem;
-        }
-
-        .info-label {
-            font-weight: bold;
-            color: var(--text-secondary);
-            margin-bottom: 0.25rem;
-        }
-
-        .info-value {
-            color: var(--text-primary);
-            font-family: monospace;
-            font-size: 1.1rem;
-        }
-
-        .nav-buttons {
-            display: flex;
-            opacity: 0.8;
-            gap: 1rem;
-            margin: 1rem 0;
-            padding: 1rem;
-            background-color: #333;
-            border: 1px solid var(--border-color);
-            border-radius: 0.25rem;
-        }
-
-        .nav-button {
-            padding: 0.5rem 1rem;
-            color: var(--text-primary);
-            text-decoration: none;
-            border-radius: 0.25rem;
-            font-weight: bold;
-            transition: background-color 0.3s;
-        }
-
-        .nav-button:hover {
-            opacity: 0.8;
-        }
-
-        .nav-button.schedule {
-            background-color: #2196f3; /* blue */
-        }
-
-        .nav-button.pwm {
-            background-color: #f44336; /* red */
-        }
-
-        .nav-button.graph {
-            background-color: #9c27b0; /* purple */
-        }
-
-        .timezone-section {
-            background-color: #333;
-            opacity: 0.8;
-            padding: 1rem;
-            border: 1px solid var(--border-color);
-            border-radius: 0.25rem;
-            margin-bottom: 1rem;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-
-        .clock-display {
-            font-family: monospace;
-            font-size: 1.2rem;
-            color: var(--text-primary);
-            display: flex;
-            flex-direction: row;
-            gap: 0.25rem;
-            align-items: center;
-        }
-
-        .clock-time {
-            font-size: 1.5rem;
-        }
-
-        .clock-timezone {
-            font-size: 1.5rem;
-            color: var(--text-primary);
-        }
-
-        .timezone-controls {
-            display: flex;
-            gap: 1rem;
-            align-items: center;
-        }
-
-        #timezoneSelect {
-            padding: 0.5rem;
-            background-color: var(--bg-primary);
-            color: var(--text-primary);
-            border: 1px solid var(--border-color);
-            border-radius: 0.25rem;
-        }
-
-        #updateTimezone {
-            padding: 0.5rem 1rem;
-            background-color: var(--success-color);
-            color: var(--text-primary);
-            border: 1px solid var(--border-color);
-            border-radius: 0.25rem;
-            cursor: pointer;
-        }
-
-        #updateTimezone:hover {
-            opacity: 0.8;
-        }
-
-        @media (max-width: 600px) {
-            body {
-                padding: 0.5rem;
-            }
-
-            .container {
-                padding: 0.5rem;
-            }
-
-            .info-item {
-                min-width: 100%;
-            }
-        }
-
-        .state-display {
-            margin: 20px;
-            padding: 10px;
-            opacity: 0.8;
-            border: 1px solid var(--border-color);
-            background: var(--bg-primary);
-        }
-
-        .state-container {
-            display: flex;
-            gap: 20px;
-            margin-top: 10px;
-        }
-
-        .state-section {
-            flex: 1;
-            padding: 10px;
-            opacity: 0.8;
-            border: 1px solid var(--border-color);
-            background: #333;
-        }
-
-        .state-section h3 {
-            margin-top: 0;
-            border-bottom: 1px solid var(--border-color);
-            padding-bottom: 5px;
-            color: var(--text-primary);
-            font-size: 0.9rem;
-        }
-
-        .state-section div {
-            margin: 5px 0;
-            font-family: monospace;
-            font-size: 0.8rem;
-            color: var(--text-primary);
-        }
-
-        .schedule-event {
-            margin-left: 0;
-            font-size: 0.7rem;
-        }
-    </style>
+    <link rel="stylesheet" href="/assets/css/main.css">
 </head>
 <body>
     <div class="container">
@@ -444,14 +185,21 @@
             setInterval(updateClock, 1000);
             updateClock(); // Initial update
 
+            // Apply current safety state to UI immediately
+            updateSafetyUI();
+
             // Emergency Stop functionality
             const emergencyButton = document.getElementById('emergencyButton');
             if (emergencyButton) {
                 emergencyButton.addEventListener('click', () => {
-                    if (currentSafetyState && currentSafetyState.emergency_stop) {
-                        socket.emit('clearEmergencyStop');
-                    } else {
+                    if (emergencyButton.textContent === 'Emergency Stop') {
                         socket.emit('emergencyStop');
+                        emergencyButton.textContent = 'Clear Emergency';
+                        emergencyButton.classList.add('emergency-active');
+                    } else {
+                        socket.emit('clearEmergencyStop');
+                        emergencyButton.textContent = 'Emergency Stop';
+                        emergencyButton.classList.remove('emergency-active');
                     }
                 });
             }
@@ -493,9 +241,42 @@
 
         // Handle initial state
         socket.on('initialState', (data) => {
-            if (data && data.safety) {
+            console.log('Received initial state:', data);
+            
+            // Handle safety state - proper conversion of numeric values to boolean
+            if (data.safetyStates) {
+                console.log('Found safety data in initialState:', data.safetyStates);
+                // Convert number values to boolean for UI consistency
+                currentSafetyState = {
+                    emergency_stop: data.safetyStates.emergency_stop === 1,
+                    normal_enable: data.safetyStates.normal_enable === 1
+                };
+                updateSafetyUI();
+            } else if (data && data.safety) {
                 currentSafetyState = data.safety;
                 updateSafetyUI();
+            }
+
+            // Update system information and other data handling remains unchanged
+            if (data.system) {
+                document.getElementById('piUptime').textContent = data.system.piUptime;
+                document.getElementById('serverUptime').textContent = data.system.serverUptime;
+                document.getElementById('ipAddress').textContent = data.system.ipAddress;
+                document.getElementById('macAddress').textContent = data.system.macAddress;
+                document.getElementById('hostname').textContent = data.system.hostname;
+                document.getElementById('cpuTemp').textContent = data.system.cpuTemp;
+            }
+
+            if (data.sensor1) {
+                document.getElementById('sensor1Address').textContent = data.sensor1.address;
+                document.getElementById('sensor1Temp').textContent = data.sensor1.temperature;
+                document.getElementById('sensor1Humidity').textContent = `${data.sensor1.humidity.toFixed(1)}%`;
+            }
+
+            if (data.sensor2) {
+                document.getElementById('sensor2Address').textContent = data.sensor2.address;
+                document.getElementById('sensor2Temp').textContent = data.sensor2.temperature;
+                document.getElementById('sensor2Humidity').textContent = `${data.sensor2.humidity.toFixed(1)}%`;
             }
         });
 
@@ -507,15 +288,38 @@
             }
         });
 
+        // Emergency stop event
+        socket.on('emergencyStop', () => {
+            console.log('Received emergencyStop event');
+            currentSafetyState.emergency_stop = true;
+            updateSafetyUI();
+        });
+
+        // Clear emergency stop event
+        socket.on('clearEmergencyStop', () => {
+            console.log('Received clearEmergencyStop event');
+            currentSafetyState.emergency_stop = false;
+            updateSafetyUI();
+        });
+
         function updateSafetyUI() {
+            console.log('Updating safety UI with state:', currentSafetyState);
+            
             const emergencyButton = document.getElementById('emergencyButton');
-            if (!emergencyButton) return; // Safety check
+            if (!emergencyButton) {
+                console.log('Emergency button not found in DOM');
+                return;
+            }
             
             if (currentSafetyState && currentSafetyState.emergency_stop) {
-                emergencyButton.textContent = 'Clear Emergency Stop';
+                console.log('Setting UI to emergency state');
+                emergencyButton.textContent = 'Clear Emergency';
+                emergencyButton.classList.add('emergency-active');
                 document.body.style.backgroundColor = 'var(--error-color)';
             } else {
+                console.log('Setting UI to normal state');
                 emergencyButton.textContent = 'Emergency Stop';
+                emergencyButton.classList.remove('emergency-active');
                 document.body.style.backgroundColor = 'var(--bg-primary)';
             }
         }

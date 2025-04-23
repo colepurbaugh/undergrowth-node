@@ -8,323 +8,7 @@
     <link rel="icon" type="image/png" sizes="32x32" href="/assets/icons/favicon-32x32.png">
     <link rel="icon" type="image/png" sizes="16x16" href="/assets/icons/favicon-16x16.png">
     <link rel="manifest" href="/assets/icons/site.webmanifest">
-    <style>
-        :root {
-            --bg-primary: #1a1a1a;
-            --bg-secondary: #333;
-            --text-primary: #e8e6e3;
-            --text-secondary: #a8a8a8;
-            --border-color: #444;
-            --success-color: #3d8c40;
-            --error-color: #a91409;
-            --active-color: #998100;
-            --inactive-color: #4f5559;
-            --selection-bg: #004daa;
-            --selection-text: #e8e6e3;
-            --emergency-button-color: #ff6b00;
-        }
-
-        * {
-            box-sizing: border-box;
-            margin: 0;
-            padding: 0;
-        }
-
-        body {
-            font-family: Arial, sans-serif;
-            margin: 0;
-            padding: 1rem;
-            background-color: var(--bg-primary);
-            background-image: url('/assets/backgrounds/undergrowth_logo.png');
-            background-repeat: no-repeat;
-            background-position: top center;
-            background-size: 90vh auto;
-            background-attachment: fixed;
-            color: var(--text-primary);
-            line-height: 1.5;
-            font-size: 1rem;
-            min-height: 100vh;
-        }
-
-        .container {
-            background: none;
-            /*background-color: var(--bg-primary);*/
-            padding: 1rem;
-            border-radius: 0.5rem;
-            margin-bottom: 1rem;
-            width: 100%;
-        }
-
-        .pwm-max {
-            font-size: 1rem;
-            font-family: monospace;
-            color: var(--text-primary);
-        }
-
-        .header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            flex-wrap: wrap;
-            gap: 1rem;
-            margin-bottom: 2rem;
-        }
-
-        .header-row {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            flex-wrap: wrap;
-            gap: 1rem;
-            margin-bottom: 2rem;
-        }
-
-        .pwm-control {
-            display: flex;
-            font-family: monospace;
-            opacity: 0.8;
-            align-items: center;
-            flex-wrap: wrap;
-            gap: 0.5rem;
-            margin-bottom: 1rem;
-            padding: 0.5rem;
-            background-color: #333;
-            border: 1px solid var(--border-color);
-            border-radius: 0.25rem;
-        }
-
-        .pwm-control > * {
-            flex: 0 1 auto;
-        }
-
-        .pwm-control .toggle-switch {
-            flex: 0 0 auto;
-        }
-
-        .pwm-control .slider-container {
-            flex: 1 1 auto;
-            min-width: 200px;
-        }
-
-        .pwm-control .value-display {
-            flex: 0 0 auto;
-            min-width: 60px;
-        }
-
-        .pwm-control .pwm-label {
-            flex: 0 0 auto;
-            min-width: 100px;
-        }
-
-        .gpio-title {
-            font-size: 1.2rem;
-            color: var(--text-primary);
-            font-weight: bold;
-            min-width: 80px;
-        }
-
-        .gpio-title-12 {
-            color: #ffeb3b; /* yellow */
-        }
-
-        .gpio-title-13 {
-            color: #2196f3; /* blue */
-        }
-
-        .gpio-title-18 {
-            color: #f44336; /* red */
-        }
-
-        .gpio-title-19 {
-            color: #4caf50; /* green */
-        }
-
-        input[type="number"] {
-            width: 80px;
-            padding: 0.25rem;
-            background-color: var(--bg-primary);
-            color: var(--text-primary);
-            border: 1px solid var(--border-color);
-            border-radius: 0.25rem;
-        }
-
-        .pwm-value {
-            color: var(--text-secondary);
-            min-width: 40px;
-        }
-
-        #percent12, #percent13, #percent18, #percent19 {
-            min-width: 40px;
-            display: inline-block;
-        }
-
-        button {
-            padding: 0.25rem 0.5rem;
-            background-color: var(--inactive-color);
-            color: var(--text-primary);
-            border: 1px solid var(--border-color);
-            border-radius: 0.25rem;
-            cursor: pointer;
-        }
-
-        button:hover {
-            background-color: var(--active-color);
-        }
-
-        .toggle {
-            margin-left: auto;
-            position: relative;
-            display: inline-block;
-            width: 60px;
-            height: 24px;
-        }
-
-        .toggle input {
-            opacity: 0;
-            width: 0;
-            height: 0;
-        }
-
-        .slider {
-            position: absolute;
-            cursor: pointer;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background-color: var(--inactive-color);
-            transition: .4s;
-            border-radius: 24px;
-        }
-
-        .slider:before {
-            position: absolute;
-            content: "";
-            height: 16px;
-            width: 16px;
-            left: 4px;
-            bottom: 4px;
-            background-color: var(--text-primary);
-            transition: .4s;
-            border-radius: 50%;
-        }
-
-        input:checked + .slider {
-            background-color: var(--success-color);
-        }
-
-        input:checked + .slider:before {
-            transform: translateX(36px);
-        }
-
-        .header-row h2 {
-            margin-bottom: 0;
-        }
-
-        .mode-label {
-            color: var(--text-primary);
-            font-size: 1rem;
-        }
-
-        .mode-slider {
-            background-color: var(--inactive-color);
-        }
-
-        .mode-toggle input:checked + .slider {
-            background-color: var(--error-color);
-        }
-
-        .mode-slider.manual {
-            background-color: var(--error-color);
-        }
-
-        .toggle-container {
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-        }
-
-        .emergency-button {
-            padding: 0.5rem 1rem;
-            font-size: 0.9rem;
-            background-color: var(--error-color);
-            color: var(--text-primary);
-            border: none;
-            border-radius: 0.25rem;
-            cursor: pointer;
-            font-weight: bold;
-            transition: background-color 0.3s;
-        }
-
-        .emergency-button:hover {
-            background-color: #c0110b;
-        }
-
-        .emergency-button.emergency-active {
-            background-color: #ff6b00;
-        }
-
-        /* PWM Toggle Styles */
-        .switch {
-            margin-left: auto;
-            position: relative;
-            display: inline-block;
-            width: 60px;
-            height: 24px;
-        }
-
-        .switch input {
-            opacity: 0;
-            width: 0;
-            height: 0;
-        }
-
-        .switch .slider {
-            position: absolute;
-            cursor: pointer;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background-color: var(--error-color); /* Default to disabled (red) */
-            transition: .4s;
-            border-radius: 24px;
-        }
-
-        .switch .slider:before {
-            position: absolute;
-            content: "";
-            height: 16px;
-            width: 16px;
-            left: 4px;
-            bottom: 4px;
-            background-color: var(--text-primary);
-            transition: .4s;
-            border-radius: 50%;
-        }
-
-        /* Mode Toggle States */
-        .switch.mode-toggle input:checked + .slider {
-            background-color: var(--selection-bg); /* Blue for automatic */
-        }
-
-        .switch.mode-toggle input:not(:checked) + .slider {
-            background-color: var(--error-color); /* Red for manual */
-        }
-
-        /* PWM Toggle States */
-        .switch.pwm-toggle input:checked + .slider {
-            background-color: var(--success-color); /* Green for enabled */
-        }
-
-        .switch.pwm-toggle input:not(:checked) + .slider {
-            background-color: var(--error-color); /* Red for disabled */
-        }
-
-        input:checked + .slider:before {
-            transform: translateX(36px);
-        }
-    </style>
+    <link rel="stylesheet" href="/assets/css/main.css">
 </head>
 <body>
     <div class="container">
@@ -404,9 +88,26 @@
         };
         let currentPWMState = {};
 
-        // Request initial state when page loads
-        console.log('Requesting initial state...');
-        socket.emit('getInitialState');
+        // Socket connection management
+        socket.on('connect', () => {
+            console.log('Socket connected, requesting initialState');
+            socket.emit('getInitialState');
+        });
+
+        // Initialize UI immediately
+        document.addEventListener('DOMContentLoaded', () => {
+            // Set up emergency button click handler
+            const emergencyButton = document.getElementById('emergencyButton');
+            if (emergencyButton) {
+                emergencyButton.addEventListener('click', () => {
+                    if (emergencyButton.textContent === 'Emergency Stop') {
+                        socket.emit('emergencyStop');
+                    } else {
+                        socket.emit('clearEmergencyStop');
+                    }
+                });
+            }
+        });
 
         // Handle state updates
         socket.on('stateUpdate', (data) => {
@@ -418,11 +119,13 @@
             }
             
             // Update PWM states
-            currentPWMState = data.pwmStates;
-            updatePWMUI();
+            if (data.pwmStates) {
+                currentPWMState = data.pwmStates;
+                updatePWMUI();
+            }
         });
 
-        // Handle mode updates (for backward compatibility)
+        // Handle mode updates
         socket.on('modeUpdate', (data) => {
             // Update mode toggle
             const modeToggle = document.getElementById('modeToggle');
@@ -434,10 +137,11 @@
         // Handle initial state
         socket.on('initialState', (data) => {
             console.log('Received initial state:', data);
+            
             if (data) {
                 // Update mode toggle
                 const modeToggle = document.getElementById('modeToggle');
-                if (modeToggle) {
+                if (modeToggle && data.mode !== undefined) {
                     modeToggle.checked = data.mode === 0; // 0 is automatic
                 }
                 
@@ -446,35 +150,63 @@
                     console.log('Setting PWM states from initial state:', data.pwmStates);
                     currentPWMState = data.pwmStates;
                     updatePWMUI();
-                } else {
-                    console.log('No PWM states in initial state');
                 }
                 
-                // Update safety state
-                if (data.emergencyStop !== undefined) {
-                    currentSafetyState.emergency_stop = data.emergencyStop;
+                // Handle safety state from initialState
+                if (data.safetyStates) {
+                    console.log('Found safety data in initialState:', data.safetyStates);
+                    // Convert number values to boolean for UI consistency
+                    currentSafetyState = {
+                        emergency_stop: data.safetyStates.emergency_stop === 1,
+                        normal_enable: data.safetyStates.normal_enable === 1
+                    };
+                } else if (data.safety) {
+                    // Handle already boolean data
+                    currentSafetyState = data.safety;
                 }
-                if (data.normalEnable !== undefined) {
-                    currentSafetyState.normal_enable = data.normalEnable;
-                }
+                
+                // Update safety UI immediately
                 updateSafetyUI();
             }
         });
 
         // Handle safety state updates
         socket.on('safetyStateUpdate', (data) => {
+            console.log('Received safetyStateUpdate:', data);
             currentSafetyState = data;
             updateSafetyUI();
         });
 
+        // Emergency stop event
+        socket.on('emergencyStop', () => {
+            console.log('Received emergencyStop event');
+            currentSafetyState.emergency_stop = true;
+            updateSafetyUI();
+        });
+
+        // Clear emergency stop event
+        socket.on('clearEmergencyStop', () => {
+            console.log('Received clearEmergencyStop event');
+            currentSafetyState.emergency_stop = false;
+            updateSafetyUI();
+        });
+
         function updateSafetyUI() {
+            console.log('Updating safety UI with state:', currentSafetyState);
+            
             const emergencyButton = document.getElementById('emergencyButton');
+            if (!emergencyButton) {
+                console.log('Emergency button not found in DOM');
+                return;
+            }
             
             if (currentSafetyState.emergency_stop) {
+                console.log('Setting UI to emergency state');
                 emergencyButton.textContent = 'Clear Emergency';
                 emergencyButton.classList.add('emergency-active');
                 document.body.style.backgroundColor = 'var(--error-color)';
             } else {
+                console.log('Setting UI to normal state');
                 emergencyButton.textContent = 'Emergency Stop';
                 emergencyButton.classList.remove('emergency-active');
                 document.body.style.backgroundColor = 'var(--bg-primary)';
@@ -507,45 +239,27 @@
 
             // Log current PWM states with mode
             const modeToggle = document.getElementById('modeToggle');
-            const mode = modeToggle.checked ? 'automatic' : 'manual';
-            console.log(`Current ${mode} PWM states:`, currentPWMState);
-        }
-
-        // Emergency stop button
-        const emergencyStopButton = document.getElementById('emergencyButton');
-        emergencyStopButton.addEventListener('click', () => {
-            if (emergencyStopButton.textContent === 'Emergency Stop') {
-                socket.emit('emergencyStop');
-                emergencyStopButton.textContent = 'Clear Emergency';
-                emergencyStopButton.classList.add('emergency-active');
-            } else {
-                socket.emit('clearEmergencyStop');
-                emergencyStopButton.textContent = 'Emergency Stop';
-                emergencyStopButton.classList.remove('emergency-active');
+            if (modeToggle) {
+                const mode = modeToggle.checked ? 'automatic' : 'manual';
+                console.log(`Current ${mode} PWM states:`, currentPWMState);
             }
-        });
-
-        // Event handler for PWM toggles
-        document.querySelectorAll('.pwm-toggle').forEach(toggle => {
-            toggle.addEventListener('change', () => {
-                const pin = parseInt(toggle.dataset.pin);
-                socket.emit('pwmToggle', { pin, enabled: toggle.checked });
-            });
-        });
+        }
 
         // Mode toggle handler
         function toggleMode() {
             const modeToggle = document.getElementById('modeToggle');
-            const newMode = modeToggle.checked ? 0 : 1;
-            console.log('Client: Toggling mode to:', newMode);
-            socket.emit('setMode', { automatic: modeToggle.checked });
+            if (!modeToggle) return;
+            
+            const automatic = modeToggle.checked;
+            console.log('Toggling mode to:', automatic ? 'automatic' : 'manual');
+            socket.emit('setMode', { automatic });
         }
 
         // PWM control functions
         function setPWM(pin, value) {
-            console.log('Client: Setting manual PWM value:', { pin, value });
+            console.log('Setting PWM value:', { pin, value });
             
-            // Always allow setting the value
+            // Send to server
             socket.emit('pwmSet', { pin: pin, value: parseInt(value) });
             
             // Update the display immediately
@@ -561,21 +275,24 @@
             }
 
             // Update local state
+            if (!currentPWMState[pin]) {
+                currentPWMState[pin] = { value: 0, enabled: false };
+            }
+            
             currentPWMState[pin] = {
                 ...currentPWMState[pin],
-                value: parseInt(value),
-                enabled: true
+                value: parseInt(value)
             };
-
-            // Log all manual values after setting
-            const modeToggle = document.getElementById('modeToggle');
-            if (!modeToggle.checked) { // Only log if in manual mode
-                console.log('All manual PWM values:', currentPWMState);
-            }
         }
 
         function togglePWM(pin, enabled) {
+            console.log('Toggling PWM:', { pin, enabled });
+            
             // Update local state immediately for better UX
+            if (!currentPWMState[pin]) {
+                currentPWMState[pin] = { value: 0, enabled: false };
+            }
+            
             currentPWMState[pin] = {
                 ...currentPWMState[pin],
                 enabled: enabled
@@ -585,7 +302,7 @@
         }
 
         socket.on('pwmError', (data) => {
-            console.log('Client: Received pwmError:', data);
+            console.log('Received pwmError:', data);
             const { pin, message, blocked } = data;
             const input = document.getElementById(`pwm${pin}`);
             const errorDiv = document.getElementById(`error${pin}`);
