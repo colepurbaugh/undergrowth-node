@@ -11,6 +11,7 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="/socket.io/socket.io.js"></script>
     <link rel="stylesheet" href="/assets/css/main.css">
+    <script src="/assets/js/core.js"></script>
 </head>
 <body>
     <div class="container">
@@ -71,81 +72,9 @@
         let humidityChart = null;
         let autoUpdateInterval = null;
         let currentTimezone = 'America/Los_Angeles'; // Default, will be updated from server
-        let currentSafetyState = {
-            emergency_stop: false,
-            normal_enable: true
-        };
 
         // Initialize socket connection
         const socket = io();
-
-        // Get timezone and initial state from server on connect
-        socket.on('connect', () => {
-            socket.emit('getTimezone');
-            socket.emit('getInitialState');
-        });
-
-        // Handle initial state
-        socket.on('initialState', (data) => {
-            console.log('Received initial state:', data);
-            
-            // Handle safety state - proper conversion of numeric values to boolean
-            if (data && data.safetyStates) {
-                console.log('Found safety data in initialState:', data.safetyStates);
-                // Convert number values to boolean for UI consistency
-                currentSafetyState = {
-                    emergency_stop: data.safetyStates.emergency_stop === 1,
-                    normal_enable: data.safetyStates.normal_enable === 1
-                };
-                updateSafetyUI();
-            } else if (data && data.safety) {
-                currentSafetyState = data.safety;
-                updateSafetyUI();
-            }
-        });
-
-        // Handle safety state updates
-        socket.on('safetyStateUpdate', (data) => {
-            console.log('Received safetyStateUpdate:', data);
-            currentSafetyState = data;
-            updateSafetyUI();
-        });
-
-        // Emergency stop event
-        socket.on('emergencyStop', () => {
-            console.log('Received emergencyStop event');
-            currentSafetyState.emergency_stop = true;
-            updateSafetyUI();
-        });
-
-        // Clear emergency stop event
-        socket.on('clearEmergencyStop', () => {
-            console.log('Received clearEmergencyStop event');
-            currentSafetyState.emergency_stop = false;
-            updateSafetyUI();
-        });
-
-        function updateSafetyUI() {
-            console.log('Updating safety UI with state:', currentSafetyState);
-            
-            const emergencyButton = document.getElementById('emergencyButton');
-            if (!emergencyButton) {
-                console.log('Emergency button not found in DOM');
-                return;
-            }
-            
-            if (currentSafetyState.emergency_stop) {
-                console.log('Setting UI to emergency state');
-                emergencyButton.textContent = 'Clear Emergency';
-                emergencyButton.classList.add('emergency-active');
-                document.body.style.backgroundColor = 'var(--error-color)';
-            } else {
-                console.log('Setting UI to normal state');
-                emergencyButton.textContent = 'Emergency Stop';
-                emergencyButton.classList.remove('emergency-active');
-                document.body.style.backgroundColor = 'var(--bg-primary)';
-            }
-        }
 
         // Handle timezone updates from server
         socket.on('timezoneUpdate', (data) => {
@@ -275,38 +204,26 @@
             fetchAndUpdateChart(humidityUrl, 'humidity');
         }
 
-        // Initial update
-        updateTime();
-        setInterval(updateTime, 1000);
-        updateCharts();
+        // Custom initialization for this page
+        function customInit() {
+            // Initial update
+            updateTime();
+            setInterval(updateTime, 1000);
+            updateCharts();
 
-        // Add click handler for Update button
-        document.getElementById('updateButton').addEventListener('click', updateCharts);
+            // Add click handler for Update button
+            document.getElementById('updateButton').addEventListener('click', updateCharts);
 
-        // Add change handlers for time range and points
-        document.getElementById('timeRange').addEventListener('change', updateCharts);
-        document.getElementById('points').addEventListener('change', updateCharts);
-
-        // Add emergency stop functionality when document is ready
-        document.addEventListener('DOMContentLoaded', () => {
-            // Initialize emergency button with current state immediately
-            updateSafetyUI();
+            // Add change handlers for time range and points
+            document.getElementById('timeRange').addEventListener('change', updateCharts);
+            document.getElementById('points').addEventListener('change', updateCharts);
             
-            const emergencyButton = document.getElementById('emergencyButton');
-            if (emergencyButton) {
-                emergencyButton.addEventListener('click', () => {
-                    if (emergencyButton.textContent === 'Emergency Stop') {
-                        socket.emit('emergencyStop');
-                        emergencyButton.textContent = 'Clear Emergency';
-                        emergencyButton.classList.add('emergency-active');
-                    } else {
-                        socket.emit('clearEmergencyStop');
-                        emergencyButton.textContent = 'Emergency Stop';
-                        emergencyButton.classList.remove('emergency-active');
-                    }
-                });
-            }
-        });
+            // Request timezone
+            socket.emit('getTimezone');
+        }
+
+        // Initialize the application
+        initializeApp(socket, customInit);
     </script>
 </body>
 </html> 

@@ -3,8 +3,8 @@ const { Server } = require('socket.io');
 const http = require('http');
 const raspi = require('raspi');
 const { I2C } = require('raspi-i2c');
-const AHT10 = require('./aht10');
-const SystemInfo = require('./systemInfo');
+const AHT10 = require('./public/assets/js/aht10');
+const SystemInfo = require('./public/assets/js/systemInfo');
 const Gpio = require('pigpio').Gpio;
 const path = require('path');
 const sqlite3 = require('sqlite3').verbose();
@@ -91,7 +91,7 @@ app.get('/schedule', (req, res) => {
 });
 
 // Initialize databases
-const configDb = new sqlite3.Database('undergrowth.db', (err) => {
+const configDb = new sqlite3.Database('./database/ug-config.db', (err) => {
     if (err) {
         console.error('Error opening config database:', err);
         process.exit(1);
@@ -165,7 +165,7 @@ const configDb = new sqlite3.Database('undergrowth.db', (err) => {
     });
 });
 
-const dataDb = new sqlite3.Database('undergrowth-data.db', (err) => {
+const dataDb = new sqlite3.Database('./database/ug-data.db', (err) => {
     if (err) {
         console.error('Error opening data database:', err);
         process.exit(1);

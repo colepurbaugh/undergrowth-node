@@ -9,6 +9,7 @@
     <link rel="icon" type="image/png" sizes="16x16" href="/assets/icons/favicon-16x16.png">
     <link rel="manifest" href="/assets/icons/site.webmanifest">
     <link rel="stylesheet" href="/assets/css/main.css">
+    <script src="/assets/js/core.js"></script>
 </head>
 <body>
     <div class="container">
@@ -18,9 +19,9 @@
             <div class="clock" id="clock">00:00:00</div>
             <div class="toggle-container">
                 <span class="mode-label">manual</span>
-                <label class="toggle mode-toggle">
-                    <input type="checkbox" id="modeToggle" onchange="toggleMode()">
-                    <span class="slider mode-slider"></span>
+                <label class="toggle pwm-mode-toggle">
+                    <input type="checkbox" id="modeToggle">
+                    <span class="slider pwm-mode-slider"></span>
                 </label>
                 <span class="mode-label">automatic</span>
                 <button class="emergency-button" id="emergencyButton">Emergency Stop</button>
@@ -56,12 +57,19 @@
     <script src="/socket.io/socket.io.js"></script>
     <script>
         const socket = io();
-        let currentSafetyState = { 
-            emergency_stop: false,
-            normal_enable: true
-        };
         let currentTimezone = 'America/Los_Angeles'; // Default, will be updated from server
         let currentMode = 1; // Assuming 1 for automatic mode
+
+        // Define custom handler for initial state data
+        function onInitialState(data) {
+            // Update mode toggle if it exists
+            const modeToggle = document.getElementById('modeToggle');
+            if (modeToggle && data.mode !== undefined) {
+                modeToggle.checked = data.mode === 0; // 0 is automatic, 1 is manual
+            }
+            
+            updateUI(data);
+        }
 
         // Clock and timezone handling
         function updateClock() {
@@ -147,44 +155,11 @@
                 updateCountdown(index, time);
             });
         }
-
+        
         // Update countdowns every second
         setInterval(updateAllCountdowns, 1000);
 
-        // Socket event handlers
-        socket.on('connect', () => {
-            console.log('Connected to server');
-            socket.emit('getInitialState');
-            socket.emit('getTimezone');  // Request timezone
-        });
-
-        socket.on('initialState', (data) => {
-            console.log('Received initial state:', data);
-            
-            // Update mode toggle if it exists
-            const modeToggle = document.getElementById('modeToggle');
-            if (modeToggle && data.mode !== undefined) {
-                modeToggle.checked = data.mode === 0; // 0 is automatic, 1 is manual
-            }
-            
-            // Handle safety state - proper conversion of numeric values to boolean
-            if (data.safetyStates) {
-                console.log('Found safety data in initialState:', data.safetyStates);
-                // Convert number values to boolean for UI consistency
-                currentSafetyState = {
-                    emergency_stop: data.safetyStates.emergency_stop === 1,
-                    normal_enable: data.safetyStates.normal_enable === 1
-                };
-                updateSafetyUI();
-            } else if (data.safety) {
-                // Handle already boolean data
-                currentSafetyState = data.safety;
-                updateSafetyUI();
-            }
-            
-            updateUI(data);
-        });
-
+        // Handle state updates
         socket.on('stateUpdate', (data) => {
             console.log('Received state update:', data);
             
@@ -195,51 +170,6 @@
             }
             
             updateUI(data);
-        });
-
-        // Handle safety state updates
-        socket.on('safetyStateUpdate', (data) => {
-            console.log('Received safetyStateUpdate:', data);
-            currentSafetyState = data;
-            updateSafetyUI();
-        });
-
-        function updateSafetyUI() {
-            console.log('Updating safety UI with state:', currentSafetyState);
-            
-            const emergencyButton = document.getElementById('emergencyButton');
-            if (!emergencyButton) {
-                console.log('Emergency button not found in DOM');
-                return;
-            }
-            
-            if (currentSafetyState.emergency_stop) {
-                console.log('Setting UI to emergency state');
-                emergencyButton.textContent = 'Clear Emergency';
-                emergencyButton.classList.add('emergency-active');
-                document.body.style.backgroundColor = 'var(--error-color)';
-            } else {
-                console.log('Setting UI to normal state');
-                emergencyButton.textContent = 'Emergency Stop';
-                emergencyButton.classList.remove('emergency-active');
-                document.body.style.backgroundColor = 'var(--bg-primary)';
-            }
-        }
-
-        socket.on('emergencyStop', () => {
-            currentSafetyState.emergency_stop = true;
-            updateSafetyUI();
-        });
-
-        socket.on('clearEmergencyStop', () => {
-            currentSafetyState.emergency_stop = false;
-            updateSafetyUI();
-        });
-
-        // Handle events update
-        socket.on('eventsUpdated', (events) => {
-            console.log('Received events update:', events);
-            updateEventDisplay(events);
         });
 
         // Handle mode toggle
@@ -266,6 +196,12 @@
             const { timezone } = data;
             currentTimezone = timezone;
             updateClock();
+        });
+
+        // Handle events update
+        socket.on('eventsUpdated', (events) => {
+            console.log('Received events update:', events);
+            updateEventDisplay(events);
         });
 
         // Event handling functions
@@ -397,49 +333,34 @@
         }
 
         function updateUI(data) {
-            updateEventDisplay(data.events);
-            // Add countdown elements to each event
-            const events = document.querySelectorAll('.event-item');
-            events.forEach(event => {
-                const index = event.dataset.index;
-                const time = event.querySelector('.event-time').textContent;
-                const countdownElement = document.createElement('div');
-                countdownElement.id = `countdown-${index}`;
-                countdownElement.className = 'countdown';
-                event.appendChild(countdownElement);
-                updateCountdown(index, time);
-            });
+            if (data.events) {
+                updateEventDisplay(data.events);
+                // Add countdown elements to each event
+                const events = document.querySelectorAll('.event-item');
+                events.forEach(event => {
+                    const index = event.dataset.index;
+                    const time = event.querySelector('.event-time').textContent;
+                    const countdownElement = document.createElement('div');
+                    countdownElement.id = `countdown-${index}`;
+                    countdownElement.className = 'countdown';
+                    event.appendChild(countdownElement);
+                    updateCountdown(index, time);
+                });
+            }
         }
 
-        // Move all initialization code into a DOMContentLoaded event listener
-        document.addEventListener('DOMContentLoaded', () => {
+        // Custom initialization for this page
+        function customInit() {
             // Initial clock update
             updateClock();
             setInterval(updateClock, 1000);
             
-            // Apply current safety state to UI immediately
-            updateSafetyUI();
-            
-            // Emergency Stop functionality
-            const emergencyButton = document.getElementById('emergencyButton');
-            if (emergencyButton) {
-                emergencyButton.addEventListener('click', () => {
-                    if (emergencyButton.textContent === 'Emergency Stop') {
-                        socket.emit('emergencyStop');
-                        emergencyButton.textContent = 'Clear Emergency';
-                        emergencyButton.classList.add('emergency-active');
-                    } else {
-                        socket.emit('clearEmergencyStop');
-                        emergencyButton.textContent = 'Emergency Stop';
-                        emergencyButton.classList.remove('emergency-active');
-                    }
-                });
-            }
-            
-            // Request initial state
-            socket.emit('getInitialState');
+            // Request timezone
             socket.emit('getTimezone');
-        });
+        }
+        
+        // Initialize the application
+        initializeApp(socket, customInit);
     </script>
 </body>
 </html>

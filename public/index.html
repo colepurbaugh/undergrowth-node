@@ -12,6 +12,7 @@
     <meta name="msapplication-TileColor" content="#da532c">
     <meta name="theme-color" content="#ffffff">
     <link rel="stylesheet" href="/assets/css/main.css">
+    <script src="/assets/js/core.js"></script>
 </head>
 <body>
     <div class="container">
@@ -137,13 +138,32 @@
     <script src="/socket.io/socket.io.js"></script>
     <script>
         const socket = io();
-        let currentSafetyState = {
-            emergency_stop: false,
-            normal_enable: true
-        };
-
-        // Clock and timezone handling
         let currentTimezone = 'America/Los_Angeles';
+        
+        // Define custom handler for initial state data
+        function onInitialState(data) {
+            // Update system information and other data
+            if (data.system) {
+                document.getElementById('piUptime').textContent = data.system.piUptime;
+                document.getElementById('serverUptime').textContent = data.system.serverUptime;
+                document.getElementById('ipAddress').textContent = data.system.ipAddress;
+                document.getElementById('macAddress').textContent = data.system.macAddress;
+                document.getElementById('hostname').textContent = data.system.hostname;
+                document.getElementById('cpuTemp').textContent = data.system.cpuTemp;
+            }
+
+            if (data.sensor1) {
+                document.getElementById('sensor1Address').textContent = data.sensor1.address;
+                document.getElementById('sensor1Temp').textContent = data.sensor1.temperature;
+                document.getElementById('sensor1Humidity').textContent = `${data.sensor1.humidity.toFixed(1)}%`;
+            }
+
+            if (data.sensor2) {
+                document.getElementById('sensor2Address').textContent = data.sensor2.address;
+                document.getElementById('sensor2Temp').textContent = data.sensor2.temperature;
+                document.getElementById('sensor2Humidity').textContent = `${data.sensor2.humidity.toFixed(1)}%`;
+            }
+        }
         
         function updateClock() {
             const now = new Date();
@@ -179,30 +199,11 @@
             }
         }
 
-        // Move all initialization code into a DOMContentLoaded event listener
-        document.addEventListener('DOMContentLoaded', () => {
+        // Custom initialization for this page
+        function customInit() {
             // Update clock every second
             setInterval(updateClock, 1000);
             updateClock(); // Initial update
-
-            // Apply current safety state to UI immediately
-            updateSafetyUI();
-
-            // Emergency Stop functionality
-            const emergencyButton = document.getElementById('emergencyButton');
-            if (emergencyButton) {
-                emergencyButton.addEventListener('click', () => {
-                    if (emergencyButton.textContent === 'Emergency Stop') {
-                        socket.emit('emergencyStop');
-                        emergencyButton.textContent = 'Clear Emergency';
-                        emergencyButton.classList.add('emergency-active');
-                    } else {
-                        socket.emit('clearEmergencyStop');
-                        emergencyButton.textContent = 'Emergency Stop';
-                        emergencyButton.classList.remove('emergency-active');
-                    }
-                });
-            }
 
             // Timezone update button
             const updateTimezoneButton = document.getElementById('updateTimezone');
@@ -223,10 +224,10 @@
                     socket.emit('getSystemState');
                 });
             }
-
-            // Request initial state
-            socket.emit('getInitialState');
-        });
+            
+            // Request timezone
+            socket.emit('getTimezone');
+        }
 
         // Handle timezone updates
         socket.on('timezoneUpdate', (data) => {
@@ -238,91 +239,6 @@
             currentTimezone = timezone;
             updateClock();
         });
-
-        // Handle initial state
-        socket.on('initialState', (data) => {
-            console.log('Received initial state:', data);
-            
-            // Handle safety state - proper conversion of numeric values to boolean
-            if (data.safetyStates) {
-                console.log('Found safety data in initialState:', data.safetyStates);
-                // Convert number values to boolean for UI consistency
-                currentSafetyState = {
-                    emergency_stop: data.safetyStates.emergency_stop === 1,
-                    normal_enable: data.safetyStates.normal_enable === 1
-                };
-                updateSafetyUI();
-            } else if (data && data.safety) {
-                currentSafetyState = data.safety;
-                updateSafetyUI();
-            }
-
-            // Update system information and other data handling remains unchanged
-            if (data.system) {
-                document.getElementById('piUptime').textContent = data.system.piUptime;
-                document.getElementById('serverUptime').textContent = data.system.serverUptime;
-                document.getElementById('ipAddress').textContent = data.system.ipAddress;
-                document.getElementById('macAddress').textContent = data.system.macAddress;
-                document.getElementById('hostname').textContent = data.system.hostname;
-                document.getElementById('cpuTemp').textContent = data.system.cpuTemp;
-            }
-
-            if (data.sensor1) {
-                document.getElementById('sensor1Address').textContent = data.sensor1.address;
-                document.getElementById('sensor1Temp').textContent = data.sensor1.temperature;
-                document.getElementById('sensor1Humidity').textContent = `${data.sensor1.humidity.toFixed(1)}%`;
-            }
-
-            if (data.sensor2) {
-                document.getElementById('sensor2Address').textContent = data.sensor2.address;
-                document.getElementById('sensor2Temp').textContent = data.sensor2.temperature;
-                document.getElementById('sensor2Humidity').textContent = `${data.sensor2.humidity.toFixed(1)}%`;
-            }
-        });
-
-        // Handle safety state updates
-        socket.on('safetyStateUpdate', (data) => {
-            if (data) {
-                currentSafetyState = data;
-                updateSafetyUI();
-            }
-        });
-
-        // Emergency stop event
-        socket.on('emergencyStop', () => {
-            console.log('Received emergencyStop event');
-            currentSafetyState.emergency_stop = true;
-            updateSafetyUI();
-        });
-
-        // Clear emergency stop event
-        socket.on('clearEmergencyStop', () => {
-            console.log('Received clearEmergencyStop event');
-            currentSafetyState.emergency_stop = false;
-            updateSafetyUI();
-        });
-
-        function updateSafetyUI() {
-            console.log('Updating safety UI with state:', currentSafetyState);
-            
-            const emergencyButton = document.getElementById('emergencyButton');
-            if (!emergencyButton) {
-                console.log('Emergency button not found in DOM');
-                return;
-            }
-            
-            if (currentSafetyState && currentSafetyState.emergency_stop) {
-                console.log('Setting UI to emergency state');
-                emergencyButton.textContent = 'Clear Emergency';
-                emergencyButton.classList.add('emergency-active');
-                document.body.style.backgroundColor = 'var(--error-color)';
-            } else {
-                console.log('Setting UI to normal state');
-                emergencyButton.textContent = 'Emergency Stop';
-                emergencyButton.classList.remove('emergency-active');
-                document.body.style.backgroundColor = 'var(--bg-primary)';
-            }
-        }
 
         socket.on('sensorData', (data) => {
             // Update system information
@@ -394,6 +310,9 @@
         socket.on('modeUpdate', function() {
             socket.emit('getSystemState');
         });
+        
+        // Initialize the application
+        initializeApp(socket, customInit);
     </script>
 </body>
 </html> 
