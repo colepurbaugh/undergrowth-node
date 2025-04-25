@@ -106,7 +106,6 @@
             fetch(url)
                 .then(response => response.json())
                 .then(data => {
-                    console.log(`${type} data received:`, data.length, 'points');
                     const formattedData = data.map(row => ({
                         ...row,
                         timestamp: new Date(row.timestamp).toLocaleString('en-US', { timeZone: currentTimezone })
@@ -213,10 +212,6 @@
 
             // Add click handler for Update button
             document.getElementById('updateButton').addEventListener('click', updateCharts);
-
-            // Add change handlers for time range and points
-            document.getElementById('timeRange').addEventListener('change', updateCharts);
-            document.getElementById('points').addEventListener('change', updateCharts);
             
             // Request timezone
             socket.emit('getTimezone');

@@ -232,18 +232,25 @@ async function initAndRead() {
                         [timestamp, 'sensor2', 'humidity', data2.humidity]
                     );
 
-                    io.emit('sensorData', {
-                        system: systemInfo.system,
-                        sensor1: {
-                            ...data1,
-                            address: '0x38',
-                            temperature: `${data1.temperature.toFixed(1)}°F (${((data1.temperature - 32) * 5/9).toFixed(1)}°C)`
-                        },
-                        sensor2: {
-                            ...data2,
-                            address: '0x39',
-                            temperature: `${data2.temperature.toFixed(1)}°F (${((data2.temperature - 32) * 5/9).toFixed(1)}°C)`
-                        }
+                    // Get database timezone
+                    configDb.get('SELECT value FROM timezone WHERE key = ?', ['timezone'], (err, row) => {
+                        const databaseTimezone = err || !row ? 'America/Los_Angeles' : row.value;
+                        
+                        // Send sensor data with both system and database timezone
+                        io.emit('sensorData', {
+                            system: systemInfo.system,
+                            databaseTimezone,
+                            sensor1: {
+                                ...data1,
+                                address: '0x38',
+                                temperature: `${data1.temperature.toFixed(1)}°F (${((data1.temperature - 32) * 5/9).toFixed(1)}°C)`
+                            },
+                            sensor2: {
+                                ...data2,
+                                address: '0x39',
+                                temperature: `${data2.temperature.toFixed(1)}°F (${((data2.temperature - 32) * 5/9).toFixed(1)}°C)`
+                            }
+                        });
                     });
                 }
             } catch (error) {
@@ -392,15 +399,29 @@ io.on('connection', (socket) => {
     // Handle initial state request
     socket.on('getInitialState', async () => {
         try {
-            console.log('Handling getInitialState request');
+            //console.log('Handling getInitialState request');
             
+            // Get system info including system timezone - forced fresh data
+            const systemInfo = await SystemInfo.getSystemInfo();
+            
+            // Get mode from database
             const mode = await new Promise((resolve, reject) => {
                 configDb.get('SELECT value FROM system_state WHERE key = ?', ['mode'], (err, row) => {
                     if (err) reject(err);
                     else resolve(row ? row.value : 1);
                 });
             });
-            console.log('Current mode:', mode);
+            //console.log('Current mode:', mode);
+            
+            // Get database timezone
+            const databaseTimezone = await new Promise((resolve, reject) => {
+                configDb.get('SELECT value FROM timezone WHERE key = ?', ['timezone'], (err, row) => {
+                    if (err) reject(err);
+                    else resolve(row ? row.value : 'America/Los_Angeles');
+                });
+            });
+            //console.log('Database timezone:', databaseTimezone);
+            //console.log('System timezone:', systemInfo.system.systemTimezone);
 
             const events = await new Promise((resolve, reject) => {
                 configDb.all('SELECT * FROM events ORDER BY time', [], (err, rows) => {
@@ -418,7 +439,7 @@ io.on('connection', (socket) => {
                     }, {}));
                 });
             });
-            console.log('Safety states:', safetyStates);
+            //console.log('Safety states:', safetyStates);
 
             // Get PWM states from pwm_states table
             const pwmStates = await new Promise((resolve, reject) => {
@@ -436,15 +457,17 @@ io.on('connection', (socket) => {
                     }
                 });
             });
-            console.log('PWM states:', pwmStates);
+            //console.log('PWM states:', pwmStates);
 
             const initialState = {
                 mode,
                 events,
                 safetyStates,
-                pwmStates
+                pwmStates,
+                system: systemInfo.system,
+                databaseTimezone
             };
-            console.log('Sending initial state:', initialState);
+            //console.log('Sending initial state:', initialState);
             socket.emit('initialState', initialState);
         } catch (error) {
             console.error('Error getting initial state:', error);
@@ -467,7 +490,7 @@ io.on('connection', (socket) => {
 
     // Handle mode toggle
     socket.on('toggleMode', async (data) => {
-        console.log('Server: Received mode toggle:', data);
+        //console.log('Server: Received mode toggle:', data);
         const { automatic } = data;
         const mode = automatic ? 0 : 1; // 0 is automatic, 1 is manual
         try {
@@ -546,6 +569,7 @@ io.on('connection', (socket) => {
     // Handle event add
     socket.on('addEvent', async (data) => {
         try {
+            // Store time in UTC format (HH:MM:SS) regardless of database or system timezone
             await new Promise((resolve, reject) => {
                 configDb.run('INSERT INTO events (gpio, time, pwm_value, enabled) VALUES (?, ?, ?, ?)',
                     [data.gpio, data.time, data.pwm_value, data.enabled], (err) => {
@@ -791,9 +815,9 @@ async function controlLoop() {
             }
 
             if (mode === 0) { // Automatic mode
-                // Get current time
+                // Get current time in UTC
                 const now = new Date();
-                const currentTime = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds();
+                const currentTime = now.getUTCHours() * 3600 + now.getUTCMinutes() * 60 + now.getUTCSeconds();
                 
                 // Get all enabled events
                 const events = await new Promise((resolve, reject) => {
@@ -806,6 +830,7 @@ async function controlLoop() {
                 // Find active events for each GPIO
                 const activeEvents = {};
                 events.forEach(event => {
+                    // Since we now store event times in UTC, parse them directly
                     const [hours, minutes, seconds] = event.time.split(':').map(Number);
                     const eventTime = hours * 3600 + minutes * 60 + seconds;
                     const gpio = event.gpio;
@@ -888,7 +913,14 @@ async function controlLoop() {
 setInterval(controlLoop, 1000);
 
 // Initialize Raspberry Pi and then start the application
-raspi.init(() => {
+raspi.init(async () => {
+    // Check time sync status at startup
+    await SystemInfo.checkTimeSync();
+    
+    // Check internet connectivity
+    await SystemInfo.checkInternetConnectivity();
+    
+    // Initialize hardware and services
     initPwmPins(); // Initialize PWM pins
     initAndRead();
     

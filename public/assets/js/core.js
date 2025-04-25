@@ -14,11 +14,8 @@ let currentSafetyState = {
 function initializeSafetyListeners(socket) {
     // Initial state handling
     socket.on('initialState', (data) => {
-        console.log('Received initial state:', data);
-        
         // Handle safety state - proper conversion of numeric values to boolean
         if (data && data.safetyStates) {
-            console.log('Found safety data in initialState:', data.safetyStates);
             // Convert number values to boolean for UI consistency
             currentSafetyState = {
                 emergency_stop: data.safetyStates.emergency_stop === 1,
@@ -38,21 +35,18 @@ function initializeSafetyListeners(socket) {
 
     // Safety state updates
     socket.on('safetyStateUpdate', (data) => {
-        console.log('Received safetyStateUpdate:', data);
         currentSafetyState = data;
         updateSafetyUI();
     });
 
     // Emergency stop event
     socket.on('emergencyStop', () => {
-        console.log('Received emergencyStop event');
         currentSafetyState.emergency_stop = true;
         updateSafetyUI();
     });
 
     // Clear emergency stop event
     socket.on('clearEmergencyStop', () => {
-        console.log('Received clearEmergencyStop event');
         currentSafetyState.emergency_stop = false;
         updateSafetyUI();
     });
@@ -62,21 +56,16 @@ function initializeSafetyListeners(socket) {
  * Update the UI based on current safety state
  */
 function updateSafetyUI() {
-    console.log('Updating safety UI with state:', currentSafetyState);
-    
     const emergencyButton = document.getElementById('emergencyButton');
     if (!emergencyButton) {
-        console.log('Emergency button not found in DOM');
         return;
     }
     
     if (currentSafetyState.emergency_stop) {
-        console.log('Setting UI to emergency state');
         emergencyButton.textContent = 'Clear Emergency';
         emergencyButton.classList.add('emergency-active');
         document.body.style.backgroundColor = 'var(--error-color)';
     } else {
-        console.log('Setting UI to normal state');
         emergencyButton.textContent = 'Emergency Stop';
         emergencyButton.classList.remove('emergency-active');
         document.body.style.backgroundColor = 'var(--bg-primary)';
@@ -137,7 +126,6 @@ function togglePwmMode(socket) {
     if (!modeToggle) return;
     
     const automatic = modeToggle.checked;
-    console.log('Toggling PWM mode to:', automatic ? 'automatic' : 'manual');
     socket.emit('setMode', { automatic });
 }
 
@@ -163,6 +151,44 @@ function getTimezoneAbbr(date, timezone) {
         timeZone: timezone,
         timeZoneName: 'short'
     }).formatToParts(date).find(part => part.type === 'timeZoneName').value;
+}
+
+/**
+ * Format a timezone string to display as "PDT (UTC-7)" format
+ * @param {string} timezone - Timezone string (e.g. "America/Los_Angeles")
+ * @returns {string} Formatted timezone (e.g. "PDT (UTC-7)")
+ */
+function formatTimezoneDisplay(timezone) {
+    try {
+        const date = new Date();
+        
+        // Get the abbreviation (e.g., "PDT")
+        const abbr = getTimezoneAbbr(date, timezone);
+        
+        // Calculate the UTC offset
+        const formatter = new Intl.DateTimeFormat('en-US', {
+            timeZone: timezone,
+            timeZoneName: 'longOffset'
+        });
+        
+        // Extract the UTC offset from the formatted string
+        const parts = formatter.formatToParts(date);
+        const offsetPart = parts.find(part => part.type === 'timeZoneName');
+        let offset = '';
+        
+        if (offsetPart) {
+            // Extract just the UTC+X or UTC-X part
+            const match = offsetPart.value.match(/GMT([+-]\d+)/);
+            if (match && match[1]) {
+                offset = `UTC${match[1]}`;
+            }
+        }
+        
+        return `${abbr} (${offset})`;
+    } catch (error) {
+        console.error('Error formatting timezone:', error);
+        return timezone; // Return original if there's an error
+    }
 }
 
 /**

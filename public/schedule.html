@@ -161,8 +161,6 @@
 
         // Handle state updates
         socket.on('stateUpdate', (data) => {
-            console.log('Received state update:', data);
-            
             // Update mode toggle if it exists
             const modeToggle = document.getElementById('modeToggle');
             if (modeToggle && data.mode !== undefined) {
@@ -177,7 +175,6 @@
             const modeToggle = document.getElementById('modeToggle');
             const newMode = modeToggle.checked ? 0 : 1;
             socket.emit('setMode', { automatic: modeToggle.checked });
-            console.log('Client: Toggling mode to:', newMode);
         }
 
         // Handle mode update
@@ -200,7 +197,6 @@
 
         // Handle events update
         socket.on('eventsUpdated', (events) => {
-            console.log('Received events update:', events);
             updateEventDisplay(events);
         });
 
@@ -240,17 +236,70 @@
             return true;
         }
 
+        // Convert local time string (HH:MM:SS) to UTC time string (HH:MM:SS)
+        function convertLocalToUTC(timeStr) {
+            // Parse the time string
+            const [hours, minutes, seconds] = timeStr.split(':').map(Number);
+            
+            // Create a Date object for today with the specified time in the database timezone
+            const now = new Date();
+            const localDate = new Date(
+                now.getFullYear(), 
+                now.getMonth(), 
+                now.getDate(), 
+                hours, 
+                minutes, 
+                seconds
+            );
+            
+            // Get the UTC hours, minutes, seconds
+            const utcHours = localDate.getUTCHours();
+            const utcMinutes = localDate.getUTCMinutes();
+            const utcSeconds = localDate.getUTCSeconds();
+            
+            // Format as HH:MM:SS
+            return `${utcHours.toString().padStart(2, '0')}:${utcMinutes.toString().padStart(2, '0')}:${utcSeconds.toString().padStart(2, '0')}`;
+        }
+
+        // Convert UTC time string (HH:MM:SS) to local time string (HH:MM:SS) in database timezone
+        function convertUTCToLocal(timeStr) {
+            // Parse the time string
+            const [hours, minutes, seconds] = timeStr.split(':').map(Number);
+            
+            // Create a Date object for today at the UTC time
+            const now = new Date();
+            const utcDate = new Date(Date.UTC(
+                now.getUTCFullYear(),
+                now.getUTCMonth(),
+                now.getUTCDate(),
+                hours,
+                minutes,
+                seconds
+            ));
+            
+            // Format the date to the database timezone
+            const formatter = new Intl.DateTimeFormat('en-US', {
+                timeZone: currentTimezone,
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit',
+                hour12: false
+            });
+            
+            return formatter.format(utcDate);
+        }
+
         function addEvent() {
             const gpio = document.getElementById('gpio').value;
-            const time = document.getElementById('triggerTime').value;
+            const localTime = document.getElementById('triggerTime').value;
             const pwm = document.getElementById('pwmValue').value;
             
-            if (!time) {
+            if (!localTime) {
                 alert('Please enter a time');
                 return;
             }
             
-            if (!validateTime(time)) {
+            if (!validateTime(localTime)) {
                 return;
             }
 
@@ -258,9 +307,12 @@
                 return;
             }
 
+            // Convert the local time to UTC for storage
+            const utcTime = convertLocalToUTC(localTime);
+
             socket.emit('addEvent', { 
                 gpio: parseInt(gpio), 
-                time, 
+                time: utcTime, // Send UTC time to server
                 pwm_value: parseInt(pwm), 
                 enabled: 1 
             });
@@ -270,32 +322,64 @@
             const eventList = document.getElementById('eventList');
             eventList.innerHTML = '';
             
+            // Get current time in both local and UTC for different purposes
             const now = new Date();
-            const currentTime = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds();
+            // For display sorting
+            const currentTimeSeconds = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds();
+            // For active event detection (to match server logic)
+            const currentUTCTimeSeconds = now.getUTCHours() * 3600 + now.getUTCMinutes() * 60 + now.getUTCSeconds();
             
-            // Find active events for each GPIO, only considering enabled events
-            const activeEvents = {};
-            events.forEach(event => {
-                if (!event.enabled) return; // Skip disabled events
-
-                const [hours, minutes, seconds] = event.time.split(':').map(Number);
-                const eventTime = hours * 3600 + minutes * 60 + seconds;
+            // Convert all UTC times to local times first for sorting and display
+            const eventsWithLocalTime = events.map(event => {
+                const localTimeStr = convertUTCToLocal(event.time);
+                const [localHours, localMinutes, localSeconds] = localTimeStr.split(':').map(Number);
+                const localTimeSeconds = localHours * 3600 + localMinutes * 60 + localSeconds;
                 
-                if (!activeEvents[event.gpio] || 
-                    (eventTime <= currentTime && eventTime > (activeEvents[event.gpio].time || -1)) ||
-                    (eventTime > currentTime && eventTime < (activeEvents[event.gpio].time || Infinity))) {
-                    activeEvents[event.gpio] = {
+                // Also keep UTC time information for active event detection
+                const [utcHours, utcMinutes, utcSeconds] = event.time.split(':').map(Number);
+                const utcTimeSeconds = utcHours * 3600 + utcMinutes * 60 + utcSeconds;
+                
+                return {
+                    ...event,
+                    localTimeStr,
+                    localTimeSeconds,
+                    utcTimeSeconds
+                };
+            });
+            
+            // Sort events by local time for display, not UTC time
+            eventsWithLocalTime.sort((a, b) => a.localTimeSeconds - b.localTimeSeconds);
+            
+            // Find active events for each GPIO using UTC time (to match server logic)
+            // This ensures UI and hardware are in sync
+            const activeEvents = {};
+            eventsWithLocalTime.forEach(event => {
+                if (!event.enabled) return; // Skip disabled events
+                
+                const gpio = event.gpio;
+                const eventTime = event.utcTimeSeconds;
+                
+                // EXACT match of server-side logic:
+                // For automatic mode, we want to use the most recent past event OR the closest future event
+                if (!activeEvents[gpio] || 
+                    (eventTime <= currentUTCTimeSeconds && eventTime > (activeEvents[gpio].time || -1)) ||
+                    (eventTime > currentUTCTimeSeconds && 
+                     (!activeEvents[gpio].futureEvent || eventTime < activeEvents[gpio].time))) {
+                    
+                    activeEvents[gpio] = {
                         time: eventTime,
-                        event: event
+                        event: event,
+                        futureEvent: eventTime > currentUTCTimeSeconds
                     };
                 }
             });
 
             // Create event items
-            events.forEach(event => {
+            eventsWithLocalTime.forEach(event => {
                 const eventDiv = document.createElement('div');
                 eventDiv.className = 'event-item';
                 eventDiv.dataset.index = event.id;
+                eventDiv.dataset.utcTime = event.time; // Store original UTC time
 
                 // Check if this is an active event
                 const isActive = activeEvents[event.gpio] && activeEvents[event.gpio].event.id === event.id;
@@ -306,7 +390,7 @@
                 const percentage = Math.round((event.pwm_value / 1024) * 100);
                 eventDiv.innerHTML = `
                     <span class="event-gpio gpio-${event.gpio}">GPIO${event.gpio}</span>
-                    <span class="event-time">${event.time}</span>
+                    <span class="event-time">${event.localTimeStr}</span>
                     <span class="event-pwm">${event.pwm_value}/1024 ${percentage}%</span>
                     <span class="countdown" id="countdown-${event.id}"></span>
                     <label class="toggle event-enabled">
@@ -318,8 +402,19 @@
                 `;
 
                 eventList.appendChild(eventDiv);
-                updateCountdown(event.id, event.time);
+                updateCountdown(event.id, event.localTimeStr);
             });
+            
+            // Add timezone indicator to the event list header
+            const headerRow = document.querySelector('.header-row:nth-child(3)');
+            if (headerRow) {
+                const timezoneAbbr = new Intl.DateTimeFormat('en-US', {
+                    timeZone: currentTimezone,
+                    timeZoneName: 'short'
+                }).formatToParts(new Date()).find(part => part.type === 'timeZoneName').value;
+                
+                headerRow.querySelector('h2').textContent = `Active Events (${timezoneAbbr})`;
+            }
         }
 
         function deleteEvent(id) {

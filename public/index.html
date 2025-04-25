@@ -96,6 +96,22 @@
                 <div class="info-label">CPU Temperature:</div>
                 <div class="info-value" id="cpuTemp">Loading...</div>
             </div>
+            <div class="info-item">
+                <div class="info-label">Internet Status:</div>
+                <div class="info-value" id="internetStatus">Loading...</div>
+            </div>
+            <div class="info-item">
+                <div class="info-label">Last Time Sync:</div>
+                <div class="info-value" id="clockStatus">Loading...</div>
+            </div>
+            <div class="info-item">
+                <div class="info-label">System Timezone:</div>
+                <div class="info-value" id="systemTimezone">Loading...</div>
+            </div>
+            <div class="info-item">
+                <div class="info-label">Database Timezone:</div>
+                <div class="info-value" id="databaseTimezone">Loading...</div>
+            </div>
         </div>
     </div>
 
@@ -150,6 +166,32 @@
                 document.getElementById('macAddress').textContent = data.system.macAddress;
                 document.getElementById('hostname').textContent = data.system.hostname;
                 document.getElementById('cpuTemp').textContent = data.system.cpuTemp;
+                
+                // Update internet status with color coding
+                const internetStatusElement = document.getElementById('internetStatus');
+                if (internetStatusElement) {
+                    internetStatusElement.textContent = data.system.internetStatus;
+                    internetStatusElement.style.color = data.system.internetConnected ? 
+                        'var(--success-color)' : 'var(--error-color)';
+                }
+                
+                // Update clock status
+                const clockStatusElement = document.getElementById('clockStatus');
+                if (clockStatusElement) {
+                    clockStatusElement.textContent = data.system.timeSinceSync;
+                }
+                
+                // Update system timezone
+                const systemTimezoneElement = document.getElementById('systemTimezone');
+                if (systemTimezoneElement && data.system.systemTimezone) {
+                    systemTimezoneElement.textContent = formatTimezoneDisplay(data.system.systemTimezone);
+                }
+            }
+            
+            // Update database timezone
+            const databaseTimezoneElement = document.getElementById('databaseTimezone');
+            if (databaseTimezoneElement && data.databaseTimezone) {
+                databaseTimezoneElement.textContent = formatTimezoneDisplay(data.databaseTimezone);
             }
 
             if (data.sensor1) {
@@ -205,6 +247,11 @@
             setInterval(updateClock, 1000);
             updateClock(); // Initial update
 
+            // Request fresh system information periodically to catch system changes
+            setInterval(() => {
+                socket.emit('getInitialState');
+            }, 30000); // Every 30 seconds
+
             // Timezone update button
             const updateTimezoneButton = document.getElementById('updateTimezone');
             if (updateTimezoneButton) {
@@ -248,6 +295,32 @@
             document.getElementById('macAddress').textContent = data.system.macAddress;
             document.getElementById('hostname').textContent = data.system.hostname;
             document.getElementById('cpuTemp').textContent = data.system.cpuTemp;
+            
+            // Update internet status with color coding
+            const internetStatusElement = document.getElementById('internetStatus');
+            if (internetStatusElement) {
+                internetStatusElement.textContent = data.system.internetStatus;
+                internetStatusElement.style.color = data.system.internetConnected ? 
+                    'var(--success-color)' : 'var(--error-color)';
+            }
+            
+            // Update clock status
+            const clockStatusElement = document.getElementById('clockStatus');
+            if (clockStatusElement) {
+                clockStatusElement.textContent = data.system.timeSinceSync;
+            }
+            
+            // Update system timezone
+            const systemTimezoneElement = document.getElementById('systemTimezone');
+            if (systemTimezoneElement && data.system.systemTimezone) {
+                systemTimezoneElement.textContent = formatTimezoneDisplay(data.system.systemTimezone);
+            }
+            
+            // Update database timezone
+            const databaseTimezoneElement = document.getElementById('databaseTimezone');
+            if (databaseTimezoneElement && data.databaseTimezone) {
+                databaseTimezoneElement.textContent = formatTimezoneDisplay(data.databaseTimezone);
+            }
 
             // Update sensor 1 information
             document.getElementById('sensor1Address').textContent = data.sensor1.address;
@@ -261,8 +334,6 @@
         });
 
         socket.on('systemState', function(data) {
-            console.log('Received system state:', data);
-            
             // Update modes
             document.getElementById('mode-auto').textContent = data.modes.automatic ? '1' : '0';
             document.getElementById('mode-emergency').textContent = data.modes.emergency ? '1' : '0';
@@ -284,9 +355,7 @@
             });
 
             // Update schedule
-            console.log('Schedule data:', data.schedule);
             Object.entries(data.schedule).forEach(([pin, events]) => {
-                console.log(`Processing pin ${pin}:`, events);
                 const element = document.getElementById(`schedule-${pin}`);
                 if (element) {
                     if (events.length === 0) {
