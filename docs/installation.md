@@ -1,5 +1,33 @@
 # Installation Instructions
 
+## Raspberry Pi Imaging
+https://www.raspberrypi.com/software/
+
+## Connecting to Wifi
+# Scan for available networks
+'''bash
+nmcli device wifi list
+'''
+# Connect to Wifi
+'''bash
+nmcli dev wifi connect "iot_24" password "your_password_here"
+'''
+# If "Secrets were required..." error
+'''bash
+nmcli connection add type wifi ifname wlan0 con-name iot_24 ssid iot_24
+nmcli connection modify iot_24 wifi-sec.key-mgmt wpa-psk
+nmcli connection modify iot_24 wifi-sec.psk "your_password_here"
+nmcli connection up iot_24
+'''
+# Verify Connection
+'''bash
+nmcli device status
+ip a show wlan0
+ping -c 3 8.8.8.8
+
+'''
+# 
+
 ## Auto Start with systemctl
 
 ### setup service
