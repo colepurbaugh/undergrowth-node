@@ -118,3 +118,34 @@ sudo /home/willa/.nvm/versions/node/v22.14.0/bin/node ug-node.js
 ```
 
 Note: The server must be run with sudo to access GPIO pins and use port 80. The full path to node is required when using sudo with nvm-installed Node.js.
+
+## SQLite Command-Line Tools (Optional)
+
+For troubleshooting and direct database manipulation, you can install the SQLite command-line tools:
+
+```bash
+# Install SQLite CLI on Debian/Ubuntu/Raspberry Pi OS
+sudo apt-get update
+sudo apt-get install sqlite3
+```
+
+### Basic Usage Examples
+
+```bash
+# Open a database file
+sqlite3 ./database/ug-data.db
+
+# Display tables in the database
+.tables
+
+# View database schema
+.schema
+
+# Run a query
+SELECT * FROM sensor_readings LIMIT 10;
+
+# Exit SQLite CLI
+.exit
+```
+
+Note: These tools are not required for the Node.js application to function, as the sqlite3 npm package provides all necessary database functionality. The command-line tools are useful for manual inspection and troubleshooting only.
