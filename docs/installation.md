@@ -19,7 +19,7 @@ After=network.target
 Type=simple
 User=root
 WorkingDirectory=/home/willa/git/undergrowth-node
-ExecStart=/home/willa/.nvm/versions/node/v22.14.0/bin/node server.js
+ExecStart=/home/willa/.nvm/versions/node/v22.14.0/bin/node ug-node.js
 Environment=NODE_ENV=production
 Environment=PATH=/home/willa/.nvm/versions/node/v22.14.0/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 Environment=PIGPIO_ADDR=localhost
@@ -114,7 +114,7 @@ sudo reboot
 ### 4. Run Server
 ```bash
 # Run with sudo (required for port 80 and GPIO access)
-sudo /home/willa/.nvm/versions/node/v22.14.0/bin/node server.js
+sudo /home/willa/.nvm/versions/node/v22.14.0/bin/node ug-node.js
 ```
 
 Note: The server must be run with sudo to access GPIO pins and use port 80. The full path to node is required when using sudo with nvm-installed Node.js.
