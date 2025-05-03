@@ -1,29 +1,27 @@
+# Description
+set up raspberry pis to act as nodes for greenhouse automation
+web interface with:
+- nodejs, nvm, npm, express, sqlite
+GPIO manipulation with:
+- pigpio on GPIO12, GPIO13, GPIO18, GPIO19
+Github
+- https://github.com/colepurbaugh/undergrowth-node
+
+# Hardware
+- UG-NODES -> Raspberry pi 2 zero w
+-- AHT10, AHT20 temp/humidity
+-- DS3231 RTC
+-- VEML7700 light sensor
+- UG-SERVERS -> Raspberry pi 4, Raspberry pi 5, PC
+
 # Installation Instructions
 
-## Raspberry Pi Imaging
-https://www.raspberrypi.com/software/
+https://dietpi.com/#download
+https://dietpi.com/docs/install/
 
-## Connecting to Wifi
-# Scan for available networks
-'''bash
-nmcli device wifi list
-'''
-# Connect to Wifi
-'''bash
-nmcli dev wifi connect "iot_24" password "your_password_here"
-'''
-# If "Secrets were required..." error
-'''bash
-nmcli connection add type wifi ifname wlan0 con-name iot_24 ssid iot_24
-nmcli connection modify iot_24 wifi-sec.key-mgmt wpa-psk
-nmcli connection modify iot_24 wifi-sec.psk "your_password_here"
-nmcli connection up iot_24
-'''
-# Verify Connection
-'''bash
-nmcli device status
-ip a show wlan0
-ping -c 3 8.8.8.8
+# Ssytem Package Installation
+- git, build-essential, unzip, wget, i2c-tools, htop
+
 
 '''
 # 
