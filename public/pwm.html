@@ -119,6 +119,13 @@
             }
         });
 
+        // Handle PWM state updates
+        socket.on('pwmStateUpdate', (pwmStates) => {
+            console.log('Received PWM state update:', pwmStates);
+            currentPWMState = pwmStates;
+            updatePWMUI();
+        });
+
         // Handle mode updates
         socket.on('modeUpdate', (data) => {
             console.log('Received mode update:', data);
