@@ -11,6 +11,15 @@ echo "Starting undergrowth-node installation..."
 echo "Enabling I2C interface..."
 /boot/dietpi/func/dietpi-set_hardware i2c enable || echo "Failed to enable I2C interface"
 
+# Enable GPIO in config.txt if not already enabled
+echo "Enabling GPIO in config.txt..."
+if ! grep -q "^dtparam=gpio=on" /boot/config.txt; then
+    echo "dtparam=gpio=on" >> /boot/config.txt
+    echo "Added GPIO configuration to config.txt"
+else
+    echo "GPIO already enabled in config.txt"
+fi
+
 # Install required Python packages
 echo "Installing Python dependencies..."
 apt-get update
