@@ -71,11 +71,14 @@ disable_splash=1
 dtparam=audio=off
 
 #-------I2C-------------
-#dtparam=i2c_arm=on
+dtparam=i2c_arm=on
 #dtparam=i2c_arm_baudrate=100000
 
 #-------SPI-------------
-#dtparam=spi=on
+dtparam=spi=on
+
+#-------GPIO------------
+dtparam=gpio=on
 
 #-------Serial/UART-----
 # NB: "enable_uart=1" will enforce "core_freq=250" on RPi models with onboard WiFi.
