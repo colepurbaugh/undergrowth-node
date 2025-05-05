@@ -145,15 +145,16 @@ echo "Setting up systemd service..."
 cat > /etc/systemd/system/ug-node.service << EOL
 [Unit]
 Description=Undergrowth Node.js Server
-After=network.target pigpiod.service
+After=network.target
 
 [Service]
 Type=simple
 User=root
 WorkingDirectory=/root/git/undergrowth-node
+ExecStartPre=/bin/systemctl stop pigpiod.service
 ExecStart=${NODE_PATH} ug-node.js
+ExecStopPost=/bin/systemctl start pigpiod.service
 Environment=NODE_ENV=production
-Environment=PIGPIO_ADDR=localhost
 Environment=PATH=/root/.nvm/versions/node/$(ls -t /root/.nvm/versions/node/ | head -1)/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 Restart=always
 RestartSec=10

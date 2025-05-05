@@ -11,7 +11,7 @@
     <link rel="stylesheet" href="/assets/css/main.css">
     <script src="/assets/js/core.js"></script>
 </head>
-<body>
+<body class="normal-state" style="background-image: url('/assets/backgrounds/undergrowth_logo.png') !important; background-repeat: no-repeat !important; background-position: top center !important; background-size: 90vh auto !important; background-attachment: fixed !important;">
     <div class="container">
         <!-- Header with title and mode toggle -->
         <div class="header-row">
@@ -84,6 +84,7 @@
     <script>
         const socket = io();
         let currentPWMState = {};
+        let currentMode = 1; // Default to manual mode (1)
 
         // Define custom handler for initial state data
         function onInitialState(data) {
@@ -92,12 +93,19 @@
                 const modeToggle = document.getElementById('modeToggle');
                 if (modeToggle && data.mode !== undefined) {
                     modeToggle.checked = data.mode === 0; // 0 is automatic
+                    currentMode = data.mode;
                 }
                 
-                // Update PWM states
+                // Update PWM states - we always show manual mode PWM states in this UI
                 if (data.pwmStates) {
                     console.log('Setting PWM states from initial state:', data.pwmStates);
-                    currentPWMState = data.pwmStates;
+                    // Extract manual PWM states from the nested structure
+                    if (data.pwmStates.manual) {
+                        currentPWMState = data.pwmStates.manual;
+                    } else {
+                        // Fallback for backward compatibility
+                        currentPWMState = data.pwmStates;
+                    }
                     updatePWMUI();
                 }
             }
@@ -108,8 +116,9 @@
             console.log('Received state update:', data);
             // Update mode toggle
             const modeToggle = document.getElementById('modeToggle');
-            if (modeToggle) {
+            if (modeToggle && data.mode !== undefined) {
                 modeToggle.checked = data.mode === 0; // 0 is automatic
+                currentMode = data.mode;
             }
             
             // Update PWM states
@@ -120,10 +129,14 @@
         });
 
         // Handle PWM state updates
-        socket.on('pwmStateUpdate', (pwmStates) => {
-            console.log('Received PWM state update:', pwmStates);
-            currentPWMState = pwmStates;
-            updatePWMUI();
+        socket.on('pwmStateUpdate', (data) => {
+            console.log('Received PWM state update:', data);
+            // Always display manual PWM states
+            if (data.manual) {
+                currentPWMState = data.manual;
+                currentMode = data.mode;
+                updatePWMUI();
+            }
         });
 
         // Handle mode updates
@@ -133,6 +146,7 @@
             const modeToggle = document.getElementById('modeToggle');
             if (modeToggle) {
                 modeToggle.checked = data.mode === 0; // 0 is automatic
+                currentMode = data.mode;
             }
         });
 
@@ -161,11 +175,8 @@
             });
 
             // Log current PWM states with mode
-            const modeToggle = document.getElementById('modeToggle');
-            if (modeToggle) {
-                const mode = modeToggle.checked ? 'automatic' : 'manual';
-                console.log(`Current ${mode} PWM states:`, currentPWMState);
-            }
+            const modeName = currentMode === 0 ? 'automatic' : 'manual';
+            console.log(`Current mode: ${modeName}, PWM states:`, currentPWMState);
         }
 
         // PWM control functions

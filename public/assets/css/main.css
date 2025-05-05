@@ -24,20 +24,25 @@
     padding: 0;
 }
 
+/* Background is now handled by inline styles on each page */
 body {
     font-family: Arial, sans-serif;
     margin: 0;
     padding: 1rem;
     background-color: var(--bg-primary);
-    background-image: url('/assets/backgrounds/undergrowth_logo.png');
-    background-repeat: no-repeat;
-    background-position: top center;
-    background-size: 90vh auto;
-    background-attachment: fixed;
     color: var(--text-primary);
     line-height: 1.5;
     font-size: 1rem;
     min-height: 100vh;
+}
+
+/* Emergency state */
+body.emergency-state {
+    background-color: var(--error-color);
+}
+
+body.normal-state {
+    background-color: var(--bg-primary);
 }
 
 ::selection {

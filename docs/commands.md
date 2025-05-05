@@ -30,30 +30,33 @@ journalctl -u ug-node -f
 ## Database (SQLite3)
 
 ```bash
-# Check PWM values in database
-sqlite3 ./database/ug-config.db "SELECT pin, value, enabled FROM pwm_states"
-
-# Check automatic PWM values
-sqlite3 ./database/ug-config.db "SELECT pin, value, enabled FROM auto_pwm_states"
-
-# Check scheduled events
-sqlite3 ./database/ug-config.db "SELECT id, gpio, time, pwm_value, enabled FROM events ORDER BY time"
-
+# *********************************** modes ***********************************
 # Check system mode (0=automatic, 1=manual)
 sqlite3 ./database/ug-config.db "SELECT key, value FROM system_state WHERE key='mode'"
-
+# Set system mode (0=automatic, 1=manual)
+sqlite3 ./database/ug-config.db "UPDATE system_state SET value = 1 WHERE key = 'mode'"
 # Check safety states
 sqlite3 ./database/ug-config.db "SELECT key, value FROM safety_state"
 
+
+#*********************************** manual ***********************************
+# Check PWM values in database
+sqlite3 ./database/ug-config.db "SELECT pin, value, enabled FROM pwm_states"
 # Set manual PWM values for testing
 sqlite3 ./database/ug-config.db "UPDATE pwm_states SET value = 500, enabled = 1 WHERE pin = 12"
 
-# Set system mode (0=automatic, 1=manual)
-sqlite3 ./database/ug-config.db "UPDATE system_state SET value = 1 WHERE key = 'mode'"
+#********************************** automatic **********************************
+# Check scheduled events
+sqlite3 ./database/ug-config.db "SELECT id, gpio, time, pwm_value, enabled FROM events ORDER BY time"
+# Check automatic PWM values
+sqlite3 ./database/ug-config.db "SELECT pin, value, enabled FROM auto_pwm_states"
+
+
+
+
 
 # Add a test event (format: gpio, time in HH:MM:SS, pwm_value, enabled)
 sqlite3 ./database/ug-config.db "INSERT INTO events (gpio, time, pwm_value, enabled) VALUES (12, '12:00:00', 500, 1)"
-
 # Delete all events (be careful!)
 sqlite3 ./database/ug-config.db "DELETE FROM events"
 ```

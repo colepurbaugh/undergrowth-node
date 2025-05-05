@@ -64,11 +64,13 @@ function updateSafetyUI() {
     if (currentSafetyState.emergency_stop) {
         emergencyButton.textContent = 'Clear Emergency';
         emergencyButton.classList.add('emergency-active');
-        document.body.style.backgroundColor = 'var(--error-color)';
+        document.body.classList.add('emergency-state');
+        document.body.classList.remove('normal-state');
     } else {
         emergencyButton.textContent = 'Emergency Stop';
         emergencyButton.classList.remove('emergency-active');
-        document.body.style.backgroundColor = 'var(--bg-primary)';
+        document.body.classList.remove('emergency-state');
+        document.body.classList.add('normal-state');
     }
 }
 

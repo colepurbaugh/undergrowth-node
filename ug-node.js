@@ -283,33 +283,71 @@ function broadcastSafetyState() {
 function broadcastPWMState() {
     console.log('Server: Broadcasting PWM state...');
     
-    // Get current mode first
-    configDb.get('SELECT value FROM system_state WHERE key = ?', ['mode'], (err, row) => {
-        if (err) {
-            console.error('Server: Error getting mode:', err);
-            return;
-        }
-        
-        const mode = row ? row.value : 1; // Default to manual mode
-        const table = mode === 0 ? 'auto_pwm_states' : 'pwm_states';
-        
-        configDb.all(`SELECT pin, value, enabled FROM ${table}`, [], (err, rows) => {
-            if (err) {
-                console.error('Server: Error fetching PWM states for broadcast:', err);
-                return;
-            }
-            
-            const pwmStates = {};
-            rows.forEach(row => {
-                pwmStates[row.pin] = {
-                    value: row.value,
-                    enabled: row.enabled === 1
-                };
+    // Get both manual and auto PWM states
+    Promise.all([
+        new Promise((resolve, reject) => {
+            configDb.all('SELECT pin, value, enabled FROM pwm_states', [], (err, rows) => {
+                if (err) {
+                    console.error('Server: Error fetching manual PWM states:', err);
+                    resolve({});
+                } else {
+                    const pwmStates = {};
+                    rows.forEach(row => {
+                        pwmStates[row.pin] = {
+                            value: row.value,
+                            enabled: row.enabled === 1
+                        };
+                    });
+                    resolve(pwmStates);
+                }
             });
-            
-            console.log('Server: Broadcasting PWM states:', pwmStates);
-            io.emit('pwmStateUpdate', pwmStates);
+        }),
+        new Promise((resolve, reject) => {
+            configDb.all('SELECT pin, value, enabled FROM auto_pwm_states', [], (err, rows) => {
+                if (err) {
+                    console.error('Server: Error fetching auto PWM states:', err);
+                    resolve({});
+                } else {
+                    const autoPwmStates = {};
+                    rows.forEach(row => {
+                        autoPwmStates[row.pin] = {
+                            value: row.value,
+                            enabled: row.enabled === 1
+                        };
+                    });
+                    resolve(autoPwmStates);
+                }
+            });
+        }),
+        new Promise((resolve, reject) => {
+            configDb.get('SELECT value FROM system_state WHERE key = ?', ['mode'], (err, row) => {
+                if (err) {
+                    console.error('Server: Error getting mode:', err);
+                    resolve(1); // Default to manual mode
+                } else {
+                    resolve(row ? row.value : 1);
+                }
+            });
+        })
+    ]).then(([manualStates, autoStates, mode]) => {
+        // Send both states to clients, plus current mode
+        const currentStates = mode === 0 ? autoStates : manualStates;
+        
+        console.log('Server: Broadcasting PWM states:', {
+            mode,
+            current: currentStates,
+            manual: manualStates,
+            auto: autoStates
         });
+        
+        io.emit('pwmStateUpdate', {
+            mode,
+            current: currentStates,
+            manual: manualStates,
+            auto: autoStates
+        });
+    }).catch(err => {
+        console.error('Server: Error in broadcastPWMState:', err);
     });
 }
 
@@ -346,22 +384,27 @@ async function togglePWM(pin, enabled) {
                     console.error('Error updating PWM state:', err);
                 }
                 
-                // Update hardware
-                if (pwmEnabled && pwmPins[pin]) {
-                    if (enabled) {
-                        const pwmValue = Math.floor((value / 1023) * 255);
-                        pwmPins[pin].pwmWrite(pwmValue);
-                        pwmPins[pin]._pwmValue = value;
-                    } else {
-                        pwmPins[pin].pwmWrite(0);
-                        pwmPins[pin]._pwmValue = 0;
+                // Update hardware only if we're in manual mode - we don't change active outputs in auto mode
+                configDb.get('SELECT value FROM system_state WHERE key = ?', ['mode'], (err, row) => {
+                    const mode = err || !row ? 1 : row.value; // Default to manual mode
+                    
+                    // Only update hardware if we're in manual mode
+                    if (mode === 1 && pwmEnabled && pwmPins[pin]) {
+                        if (enabled) {
+                            const pwmValue = Math.floor((value / 1023) * 255);
+                            pwmPins[pin].pwmWrite(pwmValue);
+                            pwmPins[pin]._pwmValue = value;
+                        } else {
+                            pwmPins[pin].pwmWrite(0);
+                            pwmPins[pin]._pwmValue = 0;
+                        }
                     }
-                }
-                
-                // Broadcast the new state to all clients
-                broadcastPWMState();
-                
-                resolve();
+                    
+                    // Broadcast the new state to all clients
+                    broadcastPWMState();
+                    
+                    resolve();
+                });
             });
         });
     });
@@ -441,8 +484,8 @@ io.on('connection', (socket) => {
             });
             //console.log('Safety states:', safetyStates);
 
-            // Get PWM states from pwm_states table
-            const pwmStates = await new Promise((resolve, reject) => {
+            // Get manual PWM states
+            const manualPwmStates = await new Promise((resolve, reject) => {
                 configDb.all('SELECT pin, value, enabled FROM pwm_states', [], (err, rows) => {
                     if (err) reject(err);
                     else {
@@ -457,13 +500,36 @@ io.on('connection', (socket) => {
                     }
                 });
             });
-            //console.log('PWM states:', pwmStates);
+
+            // Get automatic PWM states
+            const autoPwmStates = await new Promise((resolve, reject) => {
+                configDb.all('SELECT pin, value, enabled FROM auto_pwm_states', [], (err, rows) => {
+                    if (err) reject(err);
+                    else {
+                        const states = {};
+                        rows.forEach(row => {
+                            states[row.pin] = {
+                                value: row.value,
+                                enabled: row.enabled === 1
+                            };
+                        });
+                        resolve(states);
+                    }
+                });
+            });
+
+            // Current PWM states based on mode
+            const currentPwmStates = mode === 0 ? autoPwmStates : manualPwmStates;
 
             const initialState = {
                 mode,
                 events,
                 safetyStates,
-                pwmStates,
+                pwmStates: {
+                    current: currentPwmStates,
+                    manual: manualPwmStates,
+                    auto: autoPwmStates
+                },
                 system: systemInfo.system,
                 databaseTimezone
             };
@@ -516,43 +582,44 @@ io.on('connection', (socket) => {
         console.log('Server: Received pwmSet event:', data);
         const { pin, value } = data;
         
-        // Check if we're in manual mode
-        const mode = await new Promise((resolve, reject) => {
-            configDb.get('SELECT value FROM system_state WHERE key = ?', ['mode'], (err, row) => {
-                if (err) reject(err);
-                else resolve(row ? row.value : 1);
-            });
-        });
-
-        if (mode !== 1) {
-            console.log('Server: Ignoring PWM set in automatic mode');
-            return;
-        }
-
-        if (pwmEnabled && pwmPins[pin]) {
-            try {
-                // Store the original value
-                pwmPins[pin]._pwmValue = value;
-                
-                // Update database
-                console.log('Server: Updating database with value:', { pin, value });
-                configDb.run('UPDATE pwm_states SET value = ? WHERE pin = ?',
-                    [value, pin], (err) => {
-                        if (err) {
-                            console.error('Server: Error saving PWM state:', err);
-                        } else {
-                            console.log('Server: Database update successful, broadcasting state');
+        try {
+            // Always update the database regardless of hardware availability
+            console.log('Server: Updating database with value:', { pin, value });
+            configDb.run('UPDATE pwm_states SET value = ? WHERE pin = ?',
+                [value, pin], (err) => {
+                    if (err) {
+                        console.error('Server: Error saving PWM state:', err);
+                        socket.emit('pwmError', { pin, message: 'Failed to update database' });
+                    } else {
+                        console.log('Server: Database update successful, broadcasting state');
+                        
+                        // If hardware is available, update it (but only in manual mode)
+                        configDb.get('SELECT value FROM system_state WHERE key = ?', ['mode'], (err, row) => {
+                            const mode = err || !row ? 1 : row.value; // Default to manual mode
+                            
+                            // Only update hardware if we're in manual mode and PWM is available
+                            if (mode === 1 && pwmEnabled && pwmPins[pin]) {
+                                // Need to also get the enabled state
+                                configDb.get('SELECT enabled FROM pwm_states WHERE pin = ?', [pin], (err, enabledRow) => {
+                                    if (!err && enabledRow && enabledRow.enabled === 1) {
+                                        const pwmValue = Math.floor((value / 1023) * 255);
+                                        pwmPins[pin].pwmWrite(pwmValue);
+                                    }
+                                    // Store the value in memory for future reference
+                                    if (pwmPins[pin]) {
+                                        pwmPins[pin]._pwmValue = value;
+                                    }
+                                });
+                            }
+                            
                             // Broadcast the new state to all clients
                             broadcastPWMState();
-                        }
-                    });
-            } catch (error) {
-                console.error(`Server: Error setting PWM value for pin ${pin}:`, error);
-                socket.emit('pwmError', { pin, message: 'Failed to set PWM value' });
-            }
-        } else {
-            console.log('Server: PWM not available for pin:', pin);
-            socket.emit('pwmError', { pin, message: 'PWM is not available' });
+                        });
+                    }
+                });
+        } catch (error) {
+            console.error(`Server: Error setting PWM value for pin ${pin}:`, error);
+            socket.emit('pwmError', { pin, message: 'Failed to set PWM value' });
         }
     });
 
