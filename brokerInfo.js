@@ -20,7 +20,6 @@ class BrokerInfo {
             const browser = bonjour.find({ type: 'mqtt' });
             
             browser.on('up', (service) => {
-                console.log('Found MQTT broker:', service);
                 this.brokerAddress = service.addresses[0];
                 this.brokerPort = service.port;
                 browser.stop();

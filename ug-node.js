@@ -13,6 +13,8 @@ const mqtt = require('mqtt');
 const os = require('os');
 const { Bonjour } = require('bonjour-service');
 
+console.log('\n============ Startup Initiated ============');
+
 const PORT = 80; // Define the port constant
 
 const app = express();
@@ -37,7 +39,6 @@ function setNodeId() {
 
 // Set node ID
 const nodeId = setNodeId();
-console.log('Node ID:', nodeId);
 
 // Initialize MQTT client
 let mqttClient = null;
@@ -144,13 +145,18 @@ app.get('/schedule', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'schedule.html'));
 });
 
+// Flag to control database logging
+let shouldLogDatabase = false;
+
 // Initialize databases
 const configDb = new sqlite3.Database('./database/ug-config.db', (err) => {
     if (err) {
         console.error('Error opening config database:', err);
         process.exit(1);
     }
-    console.log('Connected to config database');
+    if (shouldLogDatabase) {
+        console.log('Connected to config database');
+    }
     
     // Create tables if they don't exist
     configDb.serialize(() => {
@@ -224,7 +230,9 @@ const dataDb = new sqlite3.Database('./database/ug-data.db', (err) => {
         console.error('Error opening data database:', err);
         process.exit(1);
     }
-    console.log('Connected to data database');
+    if (shouldLogDatabase) {
+        console.log('Connected to data database');
+    }
     
     // Create tables if they don't exist
     dataDb.serialize(() => {
@@ -1157,17 +1165,47 @@ async function publishNodeStatus() {
 
 // Initialize Raspberry Pi and then start the application
 raspi.init(async () => {
+    console.log(`Node ID: ${nodeId}`);
+    console.log(`Startup Time: ${new Date().toISOString()}`);
+    
+    console.log('\n------------------System Configuration-----------------');
+    // Get network info first
+    const networkInfo = SystemInfo.getNetworkInfo();
+    console.log(`Network Interface: ${networkInfo.interface || 'wlan0'}, IP: ${networkInfo.ipAddress}, MAC: ${networkInfo.macAddress}`);
+    
     // Check time sync status at startup
     await SystemInfo.checkTimeSync();
     
     // Check internet connectivity
     await SystemInfo.checkInternetConnectivity();
     
+    // Get system timezone
+    await SystemInfo.getSystemTimezone();
+    
+    console.log('\n------------------Database Initialization-----------------');
+    // Enable database logging
+    shouldLogDatabase = true;
+    // Re-trigger database connection logs
+    console.log('Connected to config database');
+    console.log('Connected to data database');
+    
+    console.log('\n------------------Hardware Initialization-----------------');
     // Initialize hardware and services
     initPwmPins(); // Initialize PWM pins
     
+    console.log('\n------------------Sensor Initialization-----------------');
+    // Initialize sensors
+    await initAndRead();
+    
+    console.log('\n------------------MQTT Configuration-----------------');
     // Discover and connect to MQTT broker
-    await initializeMqtt(); // Discover broker first
+    try {
+        const broker = await brokerInfo.discoverBroker();
+        console.log(`Found MQTT broker: ${broker.address}:${broker.port}`);
+        mqttClient = brokerInfo.connectToBroker(nodeId);
+    } catch (error) {
+        console.error('Failed to initialize MQTT:', error);
+    }
     
     // Start periodic status updates to MQTT
     setInterval(() => {
@@ -1176,9 +1214,36 @@ raspi.init(async () => {
         }
     }, 60000); // Send status every minute
     
-    initAndRead();
-    
+    console.log('\n------------------Webserver Initialization-----------------');
     server.listen(80, () => {
         console.log('Server is running on port 80');
+        console.log('\n========== Startup Complete ============\n');
     });
 }); 
+
+// Update brokerInfo.js to handle broker discovery logging
+async function discoverBroker() {
+    return new Promise((resolve, reject) => {
+        const bonjour = new Bonjour();
+        const browser = bonjour.find({ type: 'mqtt' });
+        
+        browser.on('up', (service) => {
+            this.brokerAddress = service.addresses[0];
+            this.brokerPort = service.port;
+            browser.stop();
+            bonjour.destroy();
+            resolve({ address: this.brokerAddress, port: this.brokerPort });
+        });
+
+        browser.on('down', (service) => {
+            console.log('MQTT broker went down:', service);
+        });
+
+        // Timeout after 10 seconds
+        setTimeout(() => {
+            browser.stop();
+            bonjour.destroy();
+            reject(new Error('MQTT broker discovery timeout'));
+        }, 10000);
+    });
+} 

@@ -17,7 +17,7 @@
 <body class="normal-state" style="background-image: url('/assets/backgrounds/undergrowth_logo.png') !important; background-repeat: no-repeat !important; background-position: top center !important; background-size: 90vh auto !important; background-attachment: fixed !important;">
     <div class="container">
         <div class="header-row">
-            <h2 class="text-xl font-semibold mb-4 text-[#e8e6e3]">System Information</h2>
+            <h2 class="text-xl font-semibold mb-4 text-[#e8e6e3]" id="nodeHeader">System Information</h2>
             <button id="emergencyButton" class="emergency-button">Emergency Stop</button>
         </div>
         <div class="timezone-section">
@@ -116,37 +116,21 @@
     </div>
 
     <div class="container">
-        <h2>AHT10 Sensor 1</h2>
+        <h2>Sensors</h2>
         <div class="info-section">
             <div class="info-item">
-                <div class="info-label">I2C Address:</div>
-                <div class="info-value" id="sensor1Address">Loading...</div>
+                <h3>AHT10 Sensor <span id="sensor1Address">0x38</span></h3>
+                <div class="sensor-data">
+                    <div>Temperature: <span id="sensor1Temp">Loading...</span></div>
+                    <div>Humidity: <span id="sensor1Humidity">Loading...</span></div>
+                </div>
             </div>
             <div class="info-item">
-                <div class="info-label">Temperature:</div>
-                <div class="info-value" id="sensor1Temp">Loading...</div>
-            </div>
-            <div class="info-item">
-                <div class="info-label">Humidity:</div>
-                <div class="info-value" id="sensor1Humidity">Loading...</div>
-            </div>
-        </div>
-    </div>
-
-    <div class="container">
-        <h2>AHT10 Sensor 2</h2>
-        <div class="info-section">
-            <div class="info-item">
-                <div class="info-label">I2C Address:</div>
-                <div class="info-value" id="sensor2Address">Loading...</div>
-            </div>
-            <div class="info-item">
-                <div class="info-label">Temperature:</div>
-                <div class="info-value" id="sensor2Temp">Loading...</div>
-            </div>
-            <div class="info-item">
-                <div class="info-label">Humidity:</div>
-                <div class="info-value" id="sensor2Humidity">Loading...</div>
+                <h3>AHT10 Sensor <span id="sensor2Address">0x39</span></h3>
+                <div class="sensor-data">
+                    <div>Temperature: <span id="sensor2Temp">Loading...</span></div>
+                    <div>Humidity: <span id="sensor2Humidity">Loading...</span></div>
+                </div>
             </div>
         </div>
     </div>
@@ -204,6 +188,16 @@
                 document.getElementById('macAddress').textContent = data.system.macAddress;
                 document.getElementById('hostname').textContent = data.system.hostname;
                 document.getElementById('cpuTemp').textContent = data.system.cpuTemp;
+                
+                // Update header with hostname and IP address
+                const hostname = data.system.hostname || '';
+                const ipAddress = data.system.ipAddress || '';
+                // Extract the last part of the hostname and the last octet of the IP
+                const hostnameShort = hostname.split('-').pop() || '';
+                const ipOctet = ipAddress.split('.').pop() || '';
+                if (hostnameShort && ipOctet) {
+                    document.getElementById('nodeHeader').textContent = `${hostnameShort}.${ipOctet}`;
+                }
                 
                 // Update internet status with color coding
                 const internetStatusElement = document.getElementById('internetStatus');
@@ -333,6 +327,16 @@
             document.getElementById('macAddress').textContent = data.system.macAddress;
             document.getElementById('hostname').textContent = data.system.hostname;
             document.getElementById('cpuTemp').textContent = data.system.cpuTemp;
+            
+            // Update header with hostname and IP address
+            const hostname = data.system.hostname || '';
+            const ipAddress = data.system.ipAddress || '';
+            // Extract the last part of the hostname and the last octet of the IP
+            const hostnameShort = hostname.split('-').pop() || '';
+            const ipOctet = ipAddress.split('.').pop() || '';
+            if (hostnameShort && ipOctet) {
+                document.getElementById('nodeHeader').textContent = `${hostnameShort}.${ipOctet}`;
+            }
             
             // Update internet status with color coding
             const internetStatusElement = document.getElementById('internetStatus');

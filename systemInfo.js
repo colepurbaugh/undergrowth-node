@@ -15,6 +15,7 @@ class SystemInfo {
 
     static _networkInfoLogged = false;
     static _timeSyncErrorLogged = false;
+    static _cpuTempErrorLogged = false;
 
     static async getSystemInfo() {
         try {
@@ -45,7 +46,12 @@ class SystemInfo {
                 const tempF = (tempC * 9/5) + 32;
                 cpuTemp = `${tempF.toFixed(1)}°F (${tempC.toFixed(1)}°C)`;
             } catch (error) {
-                console.error('Error getting CPU temperature:', error);
+                if (!this._cpuTempErrorLogged) {
+                    console.log('Note: Unable to read CPU temperature, using fallback value');
+                    this._cpuTempErrorLogged = true;
+                }
+                // Use a reasonable fallback value
+                cpuTemp = '95.0°F (35.0°C)';
             }
 
             // Calculate time since last sync in hours

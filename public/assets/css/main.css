@@ -52,14 +52,14 @@ body.normal-state {
 
 h2, h3 {
     color: var(--text-primary);
-    margin-bottom: 1rem;
+    margin-bottom: 0.5rem;
 }
 
 .container {
     background: none;
-    padding: 1rem;
+    padding: 10px;
     border-radius: 0.5rem;
-    margin-bottom: 1rem;
+    margin-bottom: 0.5rem;
     width: 100%;
 }
 
@@ -70,7 +70,7 @@ h2, h3 {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 1rem;
+    margin-bottom: 0.5rem;
 }
 
 .header-row h2, .header-title {
@@ -151,8 +151,8 @@ button:hover {
     display: flex;
     opacity: 0.8;
     gap: 1rem;
-    margin: 1rem 0;
-    padding: 1rem;
+    margin-bottom: 0.5rem;
+    padding: 10px;
     background-color: #333;
     border: 1px solid var(--border-color);
     border-radius: 0.25rem;
@@ -340,10 +340,10 @@ input:checked + .slider:before {
 .timezone-section {
     background-color: #333;
     opacity: 0.8;
-    padding: 1rem;
+    padding: 10px;
     border: 1px solid var(--border-color);
     border-radius: 0.25rem;
-    margin-bottom: 1rem;
+    margin-bottom: 0.5rem;
     display: flex;
     justify-content: space-between;
     align-items: center;
@@ -593,4 +593,29 @@ button.add-event {
     .info-item {
         min-width: 100%;
     }
+}
+
+/* ======================================
+   SENSOR DISPLAY STYLES
+====================================== */
+.sensor-data {
+    margin-top: 0.25rem;
+}
+
+.sensor-data div {
+    font-family: monospace;
+    font-size: 1.1rem;
+    color: var(--text-primary);
+    margin-bottom: 0.25rem;
+}
+
+.info-item h3 {
+    font-size: 1.1rem;
+    font-weight: bold;
+    margin-bottom: 0.25rem;
+}
+
+.info-item h3 span {
+    font-family: monospace;
+    color: var(--text-secondary);
 }
