@@ -4,16 +4,70 @@ const http = require('http');
 const raspi = require('raspi');
 const { I2C } = require('raspi-i2c');
 const AHT10 = require('./public/assets/js/aht10');
-const SystemInfo = require('./public/assets/js/systemInfo');
+const SystemInfo = require('./systemInfo');
+const BrokerInfo = require('./brokerInfo');
 const Gpio = require('pigpio').Gpio;
 const path = require('path');
 const sqlite3 = require('sqlite3').verbose();
+const mqtt = require('mqtt');
+const os = require('os');
+const { Bonjour } = require('bonjour-service');
 
 const PORT = 80; // Define the port constant
 
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
+
+// Initialize system info
+const systemInfo = new SystemInfo();
+const brokerInfo = new BrokerInfo();
+
+// Function to set node ID based on MAC address
+function setNodeId() {
+    const networkInfo = SystemInfo.getNetworkInfo();
+    if (networkInfo.macAddress && networkInfo.macAddress !== 'Not available') {
+        const lastThreeBytes = networkInfo.macAddress.split(':').slice(-3).join('').toUpperCase();
+        return `node-${lastThreeBytes}`;
+    }
+    // Fallback to temporary ID if MAC address not available
+    const tempId = Math.random().toString(16).slice(2, 5).toUpperCase();
+    return `node-TMP${tempId}`;
+}
+
+// Set node ID
+const nodeId = setNodeId();
+console.log('Node ID:', nodeId);
+
+// Initialize MQTT client
+let mqttClient = null;
+
+// Function to discover and connect to MQTT broker
+async function initializeMqtt() {
+    try {
+        const broker = await brokerInfo.discoverBroker();
+        mqttClient = brokerInfo.connectToBroker(nodeId);
+        
+        // Subscribe to topics
+        mqttClient.subscribe(`${nodeId}/#`, (err) => {
+            if (err) {
+                console.error('Error subscribing to topics:', err);
+            } else {
+                brokerInfo.addSubscribedTopic(`${nodeId}/#`);
+            }
+        });
+
+        // Handle incoming messages
+        mqttClient.on('message', (topic, message) => {
+            brokerInfo.updateLastMessageTime();
+            console.log(`Received message on ${topic}:`, message.toString());
+            // Handle message based on topic
+        });
+
+    } catch (error) {
+        console.error('Failed to initialize MQTT:', error);
+    }
+}
 
 // Create a single I2C instance
 const i2c = new I2C();
@@ -251,6 +305,9 @@ async function initAndRead() {
                                 temperature: `${data2.temperature.toFixed(1)}°F (${((data2.temperature - 32) * 5/9).toFixed(1)}°C)`
                             }
                         });
+                        
+                        // Publish sensor data to MQTT broker
+                        publishSensorData(data1, data2);
                     });
                 }
             } catch (error) {
@@ -260,6 +317,30 @@ async function initAndRead() {
     } catch (error) {
         console.error('Error initializing sensors:', error);
     }
+}
+
+// Publish sensor data to MQTT
+function publishSensorData(sensor1Data, sensor2Data) {
+    if (!mqttClient) return;
+    
+    const data = {
+        nodeId,
+        timestamp: new Date().toISOString(),
+        sensors: {
+            sensor1: {
+                address: '0x38',
+                temperature: sensor1Data.temperature,
+                humidity: sensor1Data.humidity
+            },
+            sensor2: {
+                address: '0x39',
+                temperature: sensor2Data.temperature,
+                humidity: sensor2Data.humidity
+            }
+        }
+    };
+    
+    mqttClient.publish(`undergrowth/nodes/${nodeId}/sensors`, JSON.stringify(data), { qos: 1 });
 }
 
 // Function to broadcast safety state to all clients
@@ -410,9 +491,32 @@ async function togglePWM(pin, enabled) {
     });
 }
 
+// Function to emit broker information
+function emitBrokerInfo() {
+    if (!io) return;
+    
+    const info = brokerInfo.getBrokerInfo();
+    io.emit('brokerInfo', {
+        connected: mqttClient ? mqttClient.connected : false,
+        address: info.address,
+        port: info.port,
+        lastConnection: info.lastConnection,
+        connectionDuration: info.connectionDuration,
+        reconnectionAttempts: info.reconnectionAttempts,
+        lastMessage: info.lastMessage,
+        subscribedTopics: info.topicsSubscribed
+    });
+}
+
+// Update broker info every 5 seconds
+setInterval(emitBrokerInfo, 5000);
+
 // Socket.io connection handling
 io.on('connection', (socket) => {
     console.log('Client connected');
+
+    // Emit initial broker info
+    emitBrokerInfo();
 
     // Handle timezone get request
     socket.on('getTimezone', () => {
@@ -979,6 +1083,78 @@ async function controlLoop() {
 // Start control loop
 setInterval(controlLoop, 1000);
 
+// Publish node status to MQTT
+async function publishNodeStatus() {
+    if (!mqttClient) return;
+    
+    try {
+        const [systemInfo, safetyStates, mode, pwmStates] = await Promise.all([
+            // Get system info
+            SystemInfo.getSystemInfo(),
+            
+            // Get safety states
+            new Promise((resolve, reject) => {
+                configDb.all('SELECT key, value FROM safety_state', [], (err, rows) => {
+                    if (err) reject(err);
+                    else resolve(rows.reduce((acc, row) => {
+                        acc[row.key] = row.value === 1;
+                        return acc;
+                    }, {}));
+                });
+            }),
+            
+            // Get current mode
+            new Promise((resolve, reject) => {
+                configDb.get('SELECT value FROM system_state WHERE key = ?', ['mode'], (err, row) => {
+                    if (err) reject(err);
+                    else resolve(row ? row.value : 1);
+                });
+            }),
+            
+            // Get PWM states
+            new Promise((resolve, reject) => {
+                configDb.all('SELECT pin, value, enabled FROM pwm_states', [], (err, rows) => {
+                    if (err) reject(err);
+                    else {
+                        const states = {};
+                        rows.forEach(row => {
+                            states[row.pin] = {
+                                value: row.value,
+                                enabled: row.enabled === 1
+                            };
+                        });
+                        resolve(states);
+                    }
+                });
+            })
+        ]);
+
+        // Get network info directly to ensure we have the latest IP
+        const networkInfo = SystemInfo.getNetworkInfo();
+        console.log('Publishing node status with IP:', networkInfo.ipAddress);
+
+        const status = {
+            nodeId,
+            timestamp: new Date().toISOString(),
+            hostname: os.hostname(),
+            ip: networkInfo.ipAddress,
+            system: {
+                uptime: systemInfo.system.piUptime,
+                cpuTemp: systemInfo.system.cpuTemp,
+                internetConnected: systemInfo.system.internetConnected
+            },
+            safety: safetyStates,
+            mode: mode === 0 ? 'automatic' : 'manual',
+            pwm: pwmStates
+        };
+        
+        console.log('Publishing status:', JSON.stringify(status, null, 2));
+        mqttClient.publish(`undergrowth/nodes/${nodeId}/status`, JSON.stringify(status), { qos: 1, retain: true });
+    } catch (error) {
+        console.error('Error publishing node status:', error);
+    }
+}
+
 // Initialize Raspberry Pi and then start the application
 raspi.init(async () => {
     // Check time sync status at startup
@@ -989,6 +1165,17 @@ raspi.init(async () => {
     
     // Initialize hardware and services
     initPwmPins(); // Initialize PWM pins
+    
+    // Discover and connect to MQTT broker
+    await initializeMqtt(); // Discover broker first
+    
+    // Start periodic status updates to MQTT
+    setInterval(() => {
+        if (mqttClient) {
+            publishNodeStatus();
+        }
+    }, 60000); // Send status every minute
+    
     initAndRead();
     
     server.listen(80, () => {

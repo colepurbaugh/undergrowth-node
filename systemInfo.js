@@ -13,6 +13,8 @@ class SystemInfo {
     static cachedTimezone = null;
     static lastTimezoneCheck = 0;
 
+    static _networkInfoLogged = false;
+
     static async getSystemInfo() {
         try {
             // Check internet connectivity
@@ -155,13 +157,33 @@ class SystemInfo {
             if (name === 'lo') continue; // Skip loopback
 
             for (const iface of interfaces) {
+                // Look for IPv4 addresses that are not internal
                 if (iface.family === 'IPv4' && !iface.internal) {
                     ipAddress = iface.address;
                     macAddress = iface.mac || 'Not available';
+                    // Only log once when finding the interface
+                    if (!this._networkInfoLogged) {
+                        console.log(`Found network interface: ${name}, IP: ${ipAddress}, MAC: ${macAddress}`);
+                        this._networkInfoLogged = true;
+                    }
                     break;
                 }
             }
             if (ipAddress !== 'Not available') break;
+        }
+
+        // If no IP found, try to get it from hostname
+        if (ipAddress === 'Not available') {
+            try {
+                const hostname = os.hostname();
+                ipAddress = hostname;
+                if (!this._networkInfoLogged) {
+                    console.log(`Using hostname as IP: ${ipAddress}`);
+                    this._networkInfoLogged = true;
+                }
+            } catch (error) {
+                console.error('Error getting hostname:', error);
+            }
         }
 
         return { ipAddress, macAddress };

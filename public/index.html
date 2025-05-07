@@ -151,6 +151,44 @@
         </div>
     </div>
 
+    <div class="container">
+        <h2>MQTT Broker Information</h2>
+        <div class="info-section">
+            <div class="info-item">
+                <div class="info-label">Connection Status:</div>
+                <div class="info-value" id="brokerStatus">Loading...</div>
+            </div>
+            <div class="info-item">
+                <div class="info-label">Broker Address:</div>
+                <div class="info-value" id="brokerAddress">Loading...</div>
+            </div>
+            <div class="info-item">
+                <div class="info-label">Broker Port:</div>
+                <div class="info-value" id="brokerPort">Loading...</div>
+            </div>
+            <div class="info-item">
+                <div class="info-label">Last Connection:</div>
+                <div class="info-value" id="brokerLastConnection">Loading...</div>
+            </div>
+            <div class="info-item">
+                <div class="info-label">Connection Duration:</div>
+                <div class="info-value" id="brokerConnectionDuration">Loading...</div>
+            </div>
+            <div class="info-item">
+                <div class="info-label">Reconnection Attempts:</div>
+                <div class="info-value" id="brokerReconnectionAttempts">Loading...</div>
+            </div>
+            <div class="info-item">
+                <div class="info-label">Last Message:</div>
+                <div class="info-value" id="brokerLastMessage">Loading...</div>
+            </div>
+            <div class="info-item">
+                <div class="info-label">Subscribed Topics:</div>
+                <div class="info-value" id="brokerSubscribedTopics">Loading...</div>
+            </div>
+        </div>
+    </div>
+
     <script src="/socket.io/socket.io.js"></script>
     <script>
         const socket = io();
@@ -378,6 +416,51 @@
 
         socket.on('modeUpdate', function() {
             socket.emit('getSystemState');
+        });
+        
+        // Update sensor readings
+        socket.on('sensor1', (data) => {
+            document.getElementById('sensor1Address').textContent = data.address;
+            document.getElementById('sensor1Temp').textContent = data.temperature;
+            document.getElementById('sensor1Humidity').textContent = data.humidity;
+        });
+        
+        socket.on('sensor2', (data) => {
+            document.getElementById('sensor2Address').textContent = data.address;
+            document.getElementById('sensor2Temp').textContent = data.temperature;
+            document.getElementById('sensor2Humidity').textContent = data.humidity;
+        });
+
+        // Update broker information
+        socket.on('brokerInfo', (data) => {
+            const statusElement = document.getElementById('brokerStatus');
+            statusElement.textContent = data.connected ? 'Connected' : 'Disconnected';
+            statusElement.style.color = data.connected ? 'var(--success-color)' : 'var(--error-color)';
+            
+            document.getElementById('brokerAddress').textContent = data.address || 'Not connected';
+            document.getElementById('brokerPort').textContent = data.port || 'Not connected';
+            
+            // Format dates with timezone
+            const formatDate = (date) => {
+                if (!date) return 'Never';
+                return new Date(date).toLocaleString('en-US', {
+                    timeZone: currentTimezone,
+                    year: 'numeric',
+                    month: 'numeric',
+                    day: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    second: '2-digit',
+                    hour12: false,
+                    timeZoneName: 'short'
+                });
+            };
+            
+            document.getElementById('brokerLastConnection').textContent = formatDate(data.lastConnection);
+            document.getElementById('brokerConnectionDuration').textContent = data.connectionDuration;
+            document.getElementById('brokerReconnectionAttempts').textContent = data.reconnectionAttempts || '0';
+            document.getElementById('brokerLastMessage').textContent = formatDate(data.lastMessage);
+            document.getElementById('brokerSubscribedTopics').textContent = data.subscribedTopics ? data.subscribedTopics.join(', ') : 'None';
         });
         
         // Initialize the application
