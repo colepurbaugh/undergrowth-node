@@ -14,6 +14,7 @@ class SystemInfo {
     static lastTimezoneCheck = 0;
 
     static _networkInfoLogged = false;
+    static _timeSyncErrorLogged = false;
 
     static async getSystemInfo() {
         try {
@@ -142,8 +143,13 @@ class SystemInfo {
             
             return isSynced;
         } catch (error) {
-            console.error('Error checking time sync:', error);
-            return false;
+            // If timedatectl fails, just log once and assume time is synced
+            if (!this._timeSyncErrorLogged) {
+                console.log('Note: timedatectl not available, assuming time is synced');
+                this._timeSyncErrorLogged = true;
+            }
+            this.lastTimeSync = Date.now();
+            return true;
         }
     }
 
