@@ -62,7 +62,18 @@ async function initializeMqtt() {
         mqttClient.on('message', (topic, message) => {
             brokerInfo.updateLastMessageTime();
             console.log(`Received message on ${topic}:`, message.toString());
-            // Handle message based on topic
+            
+            // Handle data history requests from server
+            if (topic === `undergrowth/server/requests/${nodeId}/history`) {
+                try {
+                    const request = JSON.parse(message.toString());
+                    handleHistoryRequest(request);
+                } catch (error) {
+                    console.error('Error handling history request:', error);
+                }
+            }
+            
+            // Handle other messages based on topic
         });
 
     } catch (error) {
@@ -1245,5 +1256,65 @@ async function discoverBroker() {
             bonjour.destroy();
             reject(new Error('MQTT broker discovery timeout'));
         }, 10000);
+    });
+}
+
+// Handle historical data requests
+function handleHistoryRequest(request) {
+    console.log('Received history request:', request);
+    
+    // Validate request
+    if (!request.startTime || !request.endTime || !request.requestId) {
+        console.error('Invalid history request, missing required fields');
+        return;
+    }
+    
+    // Query the database for sensor readings in the requested time range
+    const query = `
+        SELECT timestamp, device_id, type, value
+        FROM sensor_readings
+        WHERE timestamp >= ? AND timestamp <= ?
+        ORDER BY timestamp ASC
+    `;
+    
+    dataDb.all(query, [request.startTime, request.endTime], (err, rows) => {
+        if (err) {
+            console.error('Error querying sensor history:', err);
+            
+            // Send error response
+            if (mqttClient) {
+                mqttClient.publish(`undergrowth/nodes/${nodeId}/history/error`, JSON.stringify({
+                    nodeId,
+                    requestId: request.requestId,
+                    error: 'Database query error',
+                    message: err.message
+                }), { qos: 1 });
+            }
+            return;
+        }
+        
+        // Format response
+        const response = {
+            nodeId,
+            requestId: request.requestId,
+            startTime: request.startTime,
+            endTime: request.endTime,
+            dataPoints: rows.map(row => ({
+                timestamp: row.timestamp,
+                sensorId: row.device_id,
+                type: row.type,
+                value: row.value
+            })),
+            recordCount: rows.length
+        };
+        
+        console.log(`Sending history response with ${rows.length} records`);
+        
+        // Send response
+        if (mqttClient) {
+            mqttClient.publish(`undergrowth/nodes/${nodeId}/history`, JSON.stringify(response), { 
+                qos: 1 
+            });
+        }
     });
 } 
