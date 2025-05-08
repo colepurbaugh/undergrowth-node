@@ -5,7 +5,6 @@ const raspi = require('raspi');
 const { I2C } = require('raspi-i2c');
 const AHT10 = require('./public/assets/js/aht10');
 const SystemInfo = require('./systemInfo');
-const BrokerInfo = require('./brokerInfo');
 const Gpio = require('pigpio').Gpio;
 const path = require('path');
 const sqlite3 = require('sqlite3').verbose();
@@ -15,7 +14,8 @@ const { Bonjour } = require('bonjour-service');
 
 console.log('\n============ Startup Initiated ============');
 
-const PORT = 80; // Define the port constant
+// Define the port constant
+const PORT = 80;
 
 const app = express();
 const server = http.createServer(app);
@@ -23,7 +23,21 @@ const io = new Server(server);
 
 // Initialize system info
 const systemInfo = new SystemInfo();
-const brokerInfo = new BrokerInfo();
+
+// MQTT state variables
+let mqttClient = null;
+let brokerDiscoveryActive = false;
+let brokerRetryTimeout = null;
+let mqttState = {
+    brokerAddress: null,
+    brokerPort: null,
+    connectionStatus: 'disconnected',
+    lastConnectionTime: null,
+    connectionDuration: 0,
+    reconnectionAttempts: 0,
+    lastMessageTime: null,
+    topicsSubscribed: []
+};
 
 // Function to set node ID based on MAC address
 function setNodeId() {
@@ -39,47 +53,6 @@ function setNodeId() {
 
 // Set node ID
 const nodeId = setNodeId();
-
-// Initialize MQTT client
-let mqttClient = null;
-
-// Function to discover and connect to MQTT broker
-async function initializeMqtt() {
-    try {
-        const broker = await brokerInfo.discoverBroker();
-        mqttClient = brokerInfo.connectToBroker(nodeId);
-        
-        // Subscribe to topics
-        mqttClient.subscribe(`${nodeId}/#`, (err) => {
-            if (err) {
-                console.error('Error subscribing to topics:', err);
-            } else {
-                brokerInfo.addSubscribedTopic(`${nodeId}/#`);
-            }
-        });
-
-        // Handle incoming messages
-        mqttClient.on('message', (topic, message) => {
-            brokerInfo.updateLastMessageTime();
-            console.log(`Received message on ${topic}:`, message.toString());
-            
-            // Handle data history requests from server
-            if (topic === `undergrowth/server/requests/${nodeId}/history`) {
-                try {
-                    const request = JSON.parse(message.toString());
-                    handleHistoryRequest(request);
-                } catch (error) {
-                    console.error('Error handling history request:', error);
-                }
-            }
-            
-            // Handle other messages based on topic
-        });
-
-    } catch (error) {
-        console.error('Failed to initialize MQTT:', error);
-    }
-}
 
 // Create a single I2C instance
 const i2c = new I2C();
@@ -214,6 +187,23 @@ const configDb = new sqlite3.Database('./database/ug-config.db', (err) => {
             value TEXT DEFAULT 'America/Los_Angeles'
         )`);
         
+        // Create sequence_tracker table
+        configDb.run(`CREATE TABLE IF NOT EXISTS sequence_tracker (
+            key TEXT PRIMARY KEY,
+            value INTEGER DEFAULT 0
+        )`);
+        
+        // Create server_sync table to track server sync status
+        configDb.run(`CREATE TABLE IF NOT EXISTS server_sync (
+            server_id TEXT PRIMARY KEY,
+            last_sync_time DATETIME,
+            last_sequence INTEGER DEFAULT 0,
+            last_seen DATETIME
+        )`);
+        
+        // Initialize sequence counter if not exists
+        configDb.run('INSERT OR IGNORE INTO sequence_tracker (key, value) VALUES (?, ?)', ['last_sequence', 0]);
+        
         // Initialize timezone
         configDb.run('INSERT OR IGNORE INTO timezone (key, value) VALUES (?, ?)', ['timezone', 'America/Los_Angeles']);
         
@@ -247,16 +237,88 @@ const dataDb = new sqlite3.Database('./database/ug-data.db', (err) => {
     
     // Create tables if they don't exist
     dataDb.serialize(() => {
-        // Create sensor_readings table
+        // Create sensor_readings table with sequence_id
         dataDb.run(`CREATE TABLE IF NOT EXISTS sensor_readings (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
             device_id TEXT,
             type TEXT,
-            value REAL
+            value REAL,
+            sequence_id INTEGER
         )`);
+        
+        // Create index on sequence_id for fast lookups
+        dataDb.run(`CREATE INDEX IF NOT EXISTS idx_sequence_id ON sensor_readings(sequence_id)`);
     });
 });
+
+// Function to get next sequence ID
+function getNextSequenceId() {
+    return new Promise((resolve, reject) => {
+        configDb.get('SELECT value FROM sequence_tracker WHERE key = ?', ['last_sequence'], (err, row) => {
+            if (err) {
+                console.error('Error getting last sequence ID:', err);
+                reject(err);
+                return;
+            }
+            
+            const currentValue = row ? row.value : 0;
+            const nextValue = currentValue + 1;
+            
+            configDb.run('UPDATE sequence_tracker SET value = ? WHERE key = ?', [nextValue, 'last_sequence'], (err) => {
+                if (err) {
+                    console.error('Error updating sequence ID:', err);
+                    reject(err);
+                    return;
+                }
+                
+                resolve(nextValue);
+            });
+        });
+    });
+}
+
+// Function to get sequence range
+function getSequenceRange() {
+    return new Promise((resolve, reject) => {
+        dataDb.get('SELECT MIN(sequence_id) as min_seq, MAX(sequence_id) as max_seq, COUNT(*) as count FROM sensor_readings', [], (err, row) => {
+            if (err) {
+                console.error('Error getting sequence range:', err);
+                reject(err);
+                return;
+            }
+            
+            resolve({
+                minSequence: row.min_seq || 0,
+                maxSequence: row.max_seq || 0,
+                count: row.count || 0
+            });
+        });
+    });
+}
+
+// Function to get data for a specific sequence range
+function getDataBySequenceRange(startSequence, endSequence, limit = 1000) {
+    return new Promise((resolve, reject) => {
+        dataDb.all(
+            `SELECT id, timestamp, device_id, type, value, sequence_id 
+             FROM sensor_readings 
+             WHERE sequence_id >= ? AND sequence_id <= ? 
+             ORDER BY sequence_id ASC
+             LIMIT ?`,
+            [startSequence, endSequence, limit],
+            (err, rows) => {
+                if (err) {
+                    console.error('Error getting data by sequence range:', err);
+                    reject(err);
+                    return;
+                }
+                
+                resolve(rows);
+            }
+        );
+    });
+}
 
 // Initialize sensors and start reading
 async function initAndRead() {
@@ -272,7 +334,7 @@ async function initAndRead() {
             return;
         }
         
-        // Read sensors every second
+        // Read sensors every 10 seconds instead of every second
         setInterval(async () => {
             try {
                 const [data1, data2, systemInfo] = await Promise.all([
@@ -282,57 +344,73 @@ async function initAndRead() {
                 ]);
 
                 if (data1 && data2) {
-                    // Store readings in data database
-                    const timestamp = new Date().toISOString();
-                    
-                    // Store temperature readings
-                    dataDb.run(
-                        'INSERT INTO sensor_readings (timestamp, device_id, type, value) VALUES (?, ?, ?, ?)',
-                        [timestamp, 'sensor1', 'temperature', data1.temperature]
-                    );
-                    dataDb.run(
-                        'INSERT INTO sensor_readings (timestamp, device_id, type, value) VALUES (?, ?, ?, ?)',
-                        [timestamp, 'sensor2', 'temperature', data2.temperature]
-                    );
-                    
-                    // Store humidity readings
-                    dataDb.run(
-                        'INSERT INTO sensor_readings (timestamp, device_id, type, value) VALUES (?, ?, ?, ?)',
-                        [timestamp, 'sensor1', 'humidity', data1.humidity]
-                    );
-                    dataDb.run(
-                        'INSERT INTO sensor_readings (timestamp, device_id, type, value) VALUES (?, ?, ?, ?)',
-                        [timestamp, 'sensor2', 'humidity', data2.humidity]
-                    );
+                    // Get next sequence IDs for the readings
+                    try {
+                        const seqId1 = await getNextSequenceId();
+                        const seqId2 = await getNextSequenceId();
+                        const seqId3 = await getNextSequenceId();
+                        const seqId4 = await getNextSequenceId();
+                        
+                        // Store readings in data database
+                        const timestamp = new Date().toISOString();
+                        
+                        // Store temperature readings
+                        if (dataDb) {
+                            dataDb.run(
+                                'INSERT INTO sensor_readings (timestamp, device_id, type, value, sequence_id) VALUES (?, ?, ?, ?, ?)',
+                                [timestamp, 'sensor1', 'temperature', data1.temperature, seqId1]
+                            );
+                            dataDb.run(
+                                'INSERT INTO sensor_readings (timestamp, device_id, type, value, sequence_id) VALUES (?, ?, ?, ?, ?)',
+                                [timestamp, 'sensor2', 'temperature', data2.temperature, seqId2]
+                            );
+                            
+                            // Store humidity readings
+                            dataDb.run(
+                                'INSERT INTO sensor_readings (timestamp, device_id, type, value, sequence_id) VALUES (?, ?, ?, ?, ?)',
+                                [timestamp, 'sensor1', 'humidity', data1.humidity, seqId3]
+                            );
+                            dataDb.run(
+                                'INSERT INTO sensor_readings (timestamp, device_id, type, value, sequence_id) VALUES (?, ?, ?, ?, ?)',
+                                [timestamp, 'sensor2', 'humidity', data2.humidity, seqId4]
+                            );
+                        }
+                    } catch (seqErr) {
+                        console.error('Error getting sequence IDs:', seqErr);
+                    }
 
                     // Get database timezone
-                    configDb.get('SELECT value FROM timezone WHERE key = ?', ['timezone'], (err, row) => {
-                        const databaseTimezone = err || !row ? 'America/Los_Angeles' : row.value;
-                        
-                        // Send sensor data with both system and database timezone
-                        io.emit('sensorData', {
-                            system: systemInfo.system,
-                            databaseTimezone,
-                            sensor1: {
-                                ...data1,
-                                address: '0x38',
-                                temperature: `${data1.temperature.toFixed(1)}°F (${((data1.temperature - 32) * 5/9).toFixed(1)}°C)`
-                            },
-                            sensor2: {
-                                ...data2,
-                                address: '0x39',
-                                temperature: `${data2.temperature.toFixed(1)}°F (${((data2.temperature - 32) * 5/9).toFixed(1)}°C)`
+                    if (configDb) {
+                        configDb.get('SELECT value FROM timezone WHERE key = ?', ['timezone'], (err, row) => {
+                            const databaseTimezone = err || !row ? 'America/Los_Angeles' : row.value;
+                            
+                            // Send sensor data with both system and database timezone
+                            if (io) {
+                                io.emit('sensorData', {
+                                    system: systemInfo.system,
+                                    databaseTimezone,
+                                    sensor1: {
+                                        ...data1,
+                                        address: '0x38',
+                                        temperature: `${data1.temperature.toFixed(1)}°F (${((data1.temperature - 32) * 5/9).toFixed(1)}°C)`
+                                    },
+                                    sensor2: {
+                                        ...data2,
+                                        address: '0x39',
+                                        temperature: `${data2.temperature.toFixed(1)}°F (${((data2.temperature - 32) * 5/9).toFixed(1)}°C)`
+                                    }
+                                });
                             }
+                            
+                            // Publish sensor data to MQTT broker
+                            publishSensorData(data1, data2);
                         });
-                        
-                        // Publish sensor data to MQTT broker
-                        publishSensorData(data1, data2);
-                    });
+                    }
                 }
             } catch (error) {
                 console.error('Error reading sensors:', error);
             }
-        }, 1000);
+        }, 10000); // Changed from 1000 (1 second) to 10000 (10 seconds)
     } catch (error) {
         console.error('Error initializing sensors:', error);
     }
@@ -340,7 +418,7 @@ async function initAndRead() {
 
 // Publish sensor data to MQTT
 function publishSensorData(sensor1Data, sensor2Data) {
-    if (!mqttClient) return;
+    if (!mqttClient || !mqttClient.connected) return;
     
     const data = {
         nodeId,
@@ -510,11 +588,134 @@ async function togglePWM(pin, enabled) {
     });
 }
 
+// ======================================
+// MQTT BROKER FUNCTIONS
+// ======================================
+async function discoverBroker() {
+    if (brokerDiscoveryActive) {
+        return Promise.reject(new Error('Broker discovery already active'));
+    }
+    
+    brokerDiscoveryActive = true;
+    return new Promise((resolve, reject) => {
+        const bonjour = new Bonjour();
+        const browser = bonjour.find({ type: 'mqtt' });
+        
+        browser.on('up', (service) => {
+            mqttState.brokerAddress = service.addresses[0];
+            mqttState.brokerPort = service.port;
+            browser.stop();
+            bonjour.destroy();
+            brokerDiscoveryActive = false;
+            resolve({ address: mqttState.brokerAddress, port: mqttState.brokerPort });
+        });
+
+        browser.on('down', (service) => {
+            console.log('MQTT broker went down:', service);
+        });
+
+        // Timeout after 10 seconds
+        setTimeout(() => {
+            browser.stop();
+            bonjour.destroy();
+            brokerDiscoveryActive = false;
+            reject(new Error('MQTT broker discovery timeout'));
+        }, 10000);
+    });
+}
+
+function connectToBroker(nodeId) {
+    if (!mqttState.brokerAddress || !mqttState.brokerPort) {
+        throw new Error('Broker address not discovered');
+    }
+
+    const brokerUrl = `mqtt://${mqttState.brokerAddress}:${mqttState.brokerPort}`;
+    console.log('Connecting to MQTT broker at:', brokerUrl);
+
+    const client = mqtt.connect(brokerUrl, {
+        clientId: nodeId,
+        clean: true,
+        reconnectPeriod: 5000
+    });
+
+    client.on('connect', () => {
+        console.log('Connected to MQTT broker');
+        mqttState.connectionStatus = 'connected';
+        mqttState.lastConnectionTime = new Date();
+        mqttState.reconnectionAttempts = 0;
+    });
+
+    client.on('disconnect', () => {
+        console.log('Disconnected from MQTT broker');
+        mqttState.connectionStatus = 'disconnected';
+    });
+
+    client.on('reconnect', () => {
+        console.log('Reconnecting to MQTT broker...');
+        mqttState.reconnectionAttempts++;
+    });
+
+    client.on('error', (err) => {
+        console.error('MQTT error:', err);
+    });
+
+    // Update last message time on any message
+    client.on('message', () => {
+        updateLastMessageTime();
+    });
+
+    return client;
+}
+
+function getBrokerInfo() {
+    // Calculate current connection duration if connected
+    if (mqttState.connectionStatus === 'connected' && mqttState.lastConnectionTime) {
+        mqttState.connectionDuration = Date.now() - mqttState.lastConnectionTime;
+    }
+
+    // Format connection duration
+    let durationStr = 'Not connected';
+    if (mqttState.connectionDuration) {
+        const hours = Math.floor(mqttState.connectionDuration / (1000 * 60 * 60));
+        const minutes = Math.floor((mqttState.connectionDuration % (1000 * 60 * 60)) / (1000 * 60));
+        if (hours > 0) {
+            durationStr = `${hours}h ${minutes}m`;
+        } else {
+            durationStr = `${minutes}m`;
+        }
+    }
+
+    return {
+        status: mqttState.connectionStatus,
+        address: mqttState.brokerAddress,
+        port: mqttState.brokerPort,
+        lastConnection: mqttState.lastConnectionTime,
+        connectionDuration: durationStr,
+        reconnectionAttempts: mqttState.reconnectionAttempts,
+        lastMessage: mqttState.lastMessageTime,
+        topicsSubscribed: mqttState.topicsSubscribed
+    };
+}
+
+function updateLastMessageTime() {
+    mqttState.lastMessageTime = new Date();
+}
+
+function addSubscribedTopic(topic) {
+    if (!mqttState.topicsSubscribed.includes(topic)) {
+        mqttState.topicsSubscribed.push(topic);
+    }
+}
+
+function removeSubscribedTopic(topic) {
+    mqttState.topicsSubscribed = mqttState.topicsSubscribed.filter(t => t !== topic);
+}
+
 // Function to emit broker information
 function emitBrokerInfo() {
     if (!io) return;
     
-    const info = brokerInfo.getBrokerInfo();
+    const info = getBrokerInfo();
     io.emit('brokerInfo', {
         connected: mqttClient ? mqttClient.connected : false,
         address: info.address,
@@ -1104,7 +1305,7 @@ setInterval(controlLoop, 1000);
 
 // Publish node status to MQTT
 async function publishNodeStatus() {
-    if (!mqttClient) return;
+    if (!mqttClient || !mqttClient.connected) return;
     
     try {
         const [systemInfo, safetyStates, mode, pwmStates] = await Promise.all([
@@ -1174,6 +1375,114 @@ async function publishNodeStatus() {
     }
 }
 
+// ======================================
+// MQTT CONNECTION MANAGEMENT
+// ======================================
+// Function to try connecting to MQTT broker, with backoff retry
+async function initializeMqtt() {
+    try {
+        // Clear any existing retry timeout
+        if (brokerRetryTimeout) {
+            clearTimeout(brokerRetryTimeout);
+            brokerRetryTimeout = null;
+        }
+        
+        console.log('Attempting to discover MQTT broker...');
+        const broker = await discoverBroker();
+        console.log(`Found MQTT broker: ${broker.address}:${broker.port}`);
+        
+        mqttClient = connectToBroker(nodeId);
+        
+        // Subscribe to topics
+        mqttClient.subscribe(`${nodeId}/#`, (err) => {
+            if (err) {
+                console.error('Error subscribing to topics:', err);
+            } else {
+                addSubscribedTopic(`${nodeId}/#`);
+            }
+        });
+
+        // Handle incoming messages
+        mqttClient.on('message', (topic, message) => {
+            updateLastMessageTime();
+            console.log(`Received message on ${topic}:`, message.toString());
+            
+            // Handle data history requests from server
+            if (topic === `undergrowth/server/requests/${nodeId}/history`) {
+                try {
+                    const request = JSON.parse(message.toString());
+                    handleHistoryRequest(request);
+                } catch (error) {
+                    console.error('Error handling history request:', error);
+                }
+            }
+        });
+
+        return true;
+    } catch (error) {
+        console.log('MQTT broker discovery failed:', error.message);
+        console.log('Node will run in standalone mode. MQTT features disabled.');
+        
+        // Schedule retry with exponential backoff
+        const retryMinutes = Math.min(30, Math.pow(2, mqttState.reconnectionAttempts));
+        mqttState.reconnectionAttempts++;
+        console.log(`Will retry MQTT connection in ${retryMinutes} minutes`);
+        
+        brokerRetryTimeout = setTimeout(() => {
+            initializeMqtt();
+        }, retryMinutes * 60 * 1000);
+        
+        return false;
+    }
+}
+
+// ======================================
+// PORT FALLBACK LOGIC
+// ======================================
+function startServer(port) {
+    return new Promise((resolve, reject) => {
+        // Set up error handler for this attempt
+        const errorHandler = (error) => {
+            if (error.code === 'EADDRINUSE') {
+                console.log(`Port ${port} is already in use, will try next port`);
+                server.removeListener('error', errorHandler);
+                resolve(false);
+            } else {
+                reject(error);
+            }
+        };
+
+        server.once('error', errorHandler);
+
+        server.listen(port, () => {
+            console.log(`Server is running on port ${port}`);
+            server.removeListener('error', errorHandler);
+            resolve(true);
+        });
+    });
+}
+
+async function tryPorts() {
+    for (const port of PORTS_TO_TRY) {
+        console.log(`Attempting to start server on port ${port}...`);
+        try {
+            const success = await startServer(port);
+            if (success) {
+                console.log(`Server successfully started on port ${port}`);
+                return true;
+            }
+        } catch (error) {
+            console.error(`Error starting server on port ${port}:`, error);
+        }
+    }
+    
+    console.error('Failed to start server on any available port');
+    return false;
+}
+
+// ======================================
+// MAIN INIT FUNCTION - MODIFIED
+// ======================================
 // Initialize Raspberry Pi and then start the application
 raspi.init(async () => {
     console.log(`Node ID: ${nodeId}`);
@@ -1209,55 +1518,34 @@ raspi.init(async () => {
     await initAndRead();
     
     console.log('\n------------------MQTT Configuration-----------------');
-    // Discover and connect to MQTT broker
+    // Try to discover and connect to MQTT broker - but don't block startup if it fails
     try {
-        const broker = await brokerInfo.discoverBroker();
-        console.log(`Found MQTT broker: ${broker.address}:${broker.port}`);
-        mqttClient = brokerInfo.connectToBroker(nodeId);
+        const mqttInitialized = await initializeMqtt();
+        if (mqttInitialized) {
+            console.log('MQTT successfully initialized');
+            // Start periodic status updates to MQTT
+            setInterval(() => {
+                if (mqttClient && mqttClient.connected) {
+                    publishNodeStatus();
+                }
+            }, 60000); // Send status every minute
+        } else {
+            console.log('MQTT initialization skipped. Node running in standalone mode.');
+        }
     } catch (error) {
-        console.error('Failed to initialize MQTT:', error);
+        console.error('Error during MQTT initialization:', error);
+        console.log('Continuing without MQTT support');
     }
     
-    // Start periodic status updates to MQTT
-    setInterval(() => {
-        if (mqttClient) {
-            publishNodeStatus();
-        }
-    }, 60000); // Send status every minute
-    
     console.log('\n------------------Webserver Initialization-----------------');
-    server.listen(80, () => {
-        console.log('Server is running on port 80');
-        console.log('\n========== Startup Complete ============\n');
+    // Start server on port 80 only
+    server.listen(PORT, () => {
+        console.log(`Server is running on port ${PORT}`);
+        console.log('\n========== Startup Complete ============');
+        console.log(`Web UI accessible at: http://${networkInfo.ipAddress}:${PORT}`);
+        console.log('\n========================================\n');
     });
-}); 
-
-// Update brokerInfo.js to handle broker discovery logging
-async function discoverBroker() {
-    return new Promise((resolve, reject) => {
-        const bonjour = new Bonjour();
-        const browser = bonjour.find({ type: 'mqtt' });
-        
-        browser.on('up', (service) => {
-            this.brokerAddress = service.addresses[0];
-            this.brokerPort = service.port;
-            browser.stop();
-            bonjour.destroy();
-            resolve({ address: this.brokerAddress, port: this.brokerPort });
-        });
-
-        browser.on('down', (service) => {
-            console.log('MQTT broker went down:', service);
-        });
-
-        // Timeout after 10 seconds
-        setTimeout(() => {
-            browser.stop();
-            bonjour.destroy();
-            reject(new Error('MQTT broker discovery timeout'));
-        }, 10000);
-    });
-}
+});
 
 // Handle historical data requests
 function handleHistoryRequest(request) {
@@ -1282,7 +1570,7 @@ function handleHistoryRequest(request) {
             console.error('Error querying sensor history:', err);
             
             // Send error response
-            if (mqttClient) {
+            if (mqttClient && mqttClient.connected) {
                 mqttClient.publish(`undergrowth/nodes/${nodeId}/history/error`, JSON.stringify({
                     nodeId,
                     requestId: request.requestId,
@@ -1311,10 +1599,133 @@ function handleHistoryRequest(request) {
         console.log(`Sending history response with ${rows.length} records`);
         
         // Send response
-        if (mqttClient) {
+        if (mqttClient && mqttClient.connected) {
             mqttClient.publish(`undergrowth/nodes/${nodeId}/history`, JSON.stringify(response), { 
                 qos: 1 
             });
+        } else {
+            console.log('MQTT client not connected, history response could not be sent');
         }
     });
-} 
+}
+
+// API endpoint for sequence information 
+app.get('/api/sequence-info', async (req, res) => {
+    try {
+        // Get sequence range from database
+        const sequenceRange = await getSequenceRange();
+        
+        // Get first and last timestamps
+        let firstTimestamp = null;
+        let lastTimestamp = null;
+        
+        if (sequenceRange.minSequence > 0) {
+            // Get first record timestamp
+            const firstRecord = await new Promise((resolve, reject) => {
+                dataDb.get(
+                    'SELECT timestamp FROM sensor_readings WHERE sequence_id = ? LIMIT 1',
+                    [sequenceRange.minSequence],
+                    (err, row) => {
+                        if (err) reject(err);
+                        else resolve(row);
+                    }
+                );
+            });
+            
+            if (firstRecord) {
+                firstTimestamp = firstRecord.timestamp;
+            }
+        }
+        
+        if (sequenceRange.maxSequence > 0) {
+            // Get latest record timestamp
+            const lastRecord = await new Promise((resolve, reject) => {
+                dataDb.get(
+                    'SELECT timestamp FROM sensor_readings WHERE sequence_id = ? LIMIT 1',
+                    [sequenceRange.maxSequence],
+                    (err, row) => {
+                        if (err) reject(err);
+                        else resolve(row);
+                    }
+                );
+            });
+            
+            if (lastRecord) {
+                lastTimestamp = lastRecord.timestamp;
+            }
+        }
+        
+        // Get server sync information
+        const serverSync = await new Promise((resolve, reject) => {
+            configDb.get(
+                'SELECT * FROM server_sync ORDER BY last_seen DESC LIMIT 1',
+                [],
+                (err, row) => {
+                    if (err) reject(err);
+                    else resolve(row || null);
+                }
+            );
+        });
+        
+        // Calculate sync gap
+        let syncGap = 0;
+        if (serverSync && sequenceRange.maxSequence > 0) {
+            syncGap = sequenceRange.maxSequence - (serverSync.last_sequence || 0);
+        }
+        
+        // Get server sync status with more details
+        let serverSyncDetails = null;
+        if (serverSync) {
+            // Get the timestamp of the last synced record
+            let lastSyncedTimestamp = null;
+            if (serverSync.last_sequence > 0) {
+                const syncedRecord = await new Promise((resolve, reject) => {
+                    dataDb.get(
+                        'SELECT timestamp FROM sensor_readings WHERE sequence_id = ? LIMIT 1',
+                        [serverSync.last_sequence],
+                        (err, row) => {
+                            if (err) reject(err);
+                            else resolve(row);
+                        }
+                    );
+                });
+                
+                if (syncedRecord) {
+                    lastSyncedTimestamp = syncedRecord.timestamp;
+                }
+            }
+            
+            // Count how many records have been sent to server
+            const sentCount = await new Promise((resolve, reject) => {
+                dataDb.get(
+                    'SELECT COUNT(*) as count FROM sensor_readings WHERE sequence_id <= ?',
+                    [serverSync.last_sequence || 0],
+                    (err, row) => {
+                        if (err) reject(err);
+                        else resolve(row.count || 0);
+                    }
+                );
+            });
+            
+            serverSyncDetails = {
+                ...serverSync,
+                sentCount,
+                lastSyncedTimestamp,
+                syncGap
+            };
+        }
+        
+        // Send response
+        res.json({
+            nodeSequence: {
+                ...sequenceRange,
+                firstTimestamp,
+                lastTimestamp
+            },
+            serverSync: serverSyncDetails || null
+        });
+    } catch (error) {
+        console.error('Error getting sequence info:', error);
+        res.status(500).json({ error: 'Failed to get sequence information' });
+    }
+}); 

@@ -136,47 +136,98 @@
     </div>
 
     <div class="container">
-        <h2>MQTT Broker Information</h2>
+        <h2>Data Synchronization</h2>
         <div class="info-section">
             <div class="info-item">
-                <div class="info-label">Connection Status:</div>
-                <div class="info-value" id="brokerStatus">Loading...</div>
+                <div class="sync-header">Local Node <span id="nodeIdDisplay">--</span> Values</div>
+                <div class="sync-details">
+                    <div>First Value: <span id="nodeFirstValueTime">--/--/-- --:--:--</span> (<span id="nodeFirstSequence">0</span>)</div>
+                    <div>Latest Value: <span id="nodeLatestValueTime">--/--/-- --:--:--</span> (<span id="nodeLatestSequence">0</span>)</div>
+                    <div>Total Records: <span id="nodeTotalRecords">0</span></div>
+                </div>
             </div>
-            <div class="info-item">
-                <div class="info-label">Broker Address:</div>
-                <div class="info-value" id="brokerAddress">Loading...</div>
+            
+            <!-- Data flow arrow -->
+            <div class="data-flow-arrow">
+                <div class="arrow-shaft"></div>
+                <div class="arrow-head"></div>
             </div>
+            
             <div class="info-item">
-                <div class="info-label">Broker Port:</div>
-                <div class="info-value" id="brokerPort">Loading...</div>
-            </div>
-            <div class="info-item">
-                <div class="info-label">Last Connection:</div>
-                <div class="info-value" id="brokerLastConnection">Loading...</div>
-            </div>
-            <div class="info-item">
-                <div class="info-label">Connection Duration:</div>
-                <div class="info-value" id="brokerConnectionDuration">Loading...</div>
-            </div>
-            <div class="info-item">
-                <div class="info-label">Reconnection Attempts:</div>
-                <div class="info-value" id="brokerReconnectionAttempts">Loading...</div>
-            </div>
-            <div class="info-item">
-                <div class="info-label">Last Message:</div>
-                <div class="info-value" id="brokerLastMessage">Loading...</div>
-            </div>
-            <div class="info-item">
-                <div class="info-label">Subscribed Topics:</div>
-                <div class="info-value" id="brokerSubscribedTopics">Loading...</div>
+                <div id="serverConnectionHeader" class="sync-header">Server Disconnected</div>
+                <div id="serverSyncStatus" class="sync-details">
+                    <!-- Server connection details will be displayed here -->
+                </div>
+                <div id="serverBrokerInfo" class="sync-details" style="margin-top: 8px;">
+                    <!-- Server broker details will be displayed here -->
+                </div>
             </div>
         </div>
     </div>
+
+    <style>
+        /* Data flow arrow styles */
+        .data-flow-arrow {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 40px;
+            margin: 0 10px;
+            position: relative;
+        }
+        
+        .arrow-shaft {
+            width: 30px;
+            height: 8px;
+            background-color: var(--success-color);
+            position: relative;
+        }
+        
+        .arrow-head {
+            width: 0;
+            height: 0;
+            border-top: 14px solid transparent;
+            border-bottom: 14px solid transparent;
+            border-left: 14px solid var(--success-color);
+            position: absolute;
+            right: -4px;
+        }
+        
+        /* On mobile screens, adjust arrow to be vertical */
+        @media (max-width: 600px) {
+            .data-flow-arrow {
+                width: 100%;
+                height: 30px;
+                margin: 10px 0;
+            }
+            
+            .arrow-shaft {
+                width: 8px;
+                height: 20px;
+            }
+            
+            .arrow-head {
+                border-left: 14px solid transparent;
+                border-right: 14px solid transparent;
+                border-top: 14px solid var(--success-color);
+                border-bottom: none;
+                bottom: -4px;
+                right: auto;
+                top: auto;
+                left: -10px;
+            }
+        }
+    </style>
 
     <script src="/socket.io/socket.io.js"></script>
     <script>
         const socket = io();
         let currentTimezone = 'America/Los_Angeles';
+        let brokerInfo = {
+            address: null,
+            port: null,
+            subscribedTopics: []
+        };
         
         // Define custom handler for initial state data
         function onInitialState(data) {
@@ -197,6 +248,7 @@
                 const ipOctet = ipAddress.split('.').pop() || '';
                 if (hostnameShort && ipOctet) {
                     document.getElementById('nodeHeader').textContent = `${hostnameShort}.${ipOctet}`;
+                    document.getElementById('nodeIdDisplay').textContent = hostnameShort;
                 }
                 
                 // Update internet status with color coding
@@ -239,6 +291,117 @@
             }
         }
         
+        // Function to fetch and update sequence data
+        function fetchSequenceData() {
+            fetch('/api/sequence-info')
+                .then(response => response.json())
+                .then(data => {
+                    // Update node sequence information
+                    if (data.nodeSequence) {
+                        document.getElementById('nodeFirstSequence').textContent = data.nodeSequence.minSequence;
+                        document.getElementById('nodeLatestSequence').textContent = data.nodeSequence.maxSequence;
+                        document.getElementById('nodeTotalRecords').textContent = data.nodeSequence.count.toLocaleString();
+                        
+                        if (data.nodeSequence.firstTimestamp) {
+                            document.getElementById('nodeFirstValueTime').textContent = formatDateTime(data.nodeSequence.firstTimestamp);
+                        }
+                        if (data.nodeSequence.lastTimestamp) {
+                            document.getElementById('nodeLatestValueTime').textContent = formatDateTime(data.nodeSequence.lastTimestamp);
+                        }
+                    }
+                    
+                    // Update server sync information (but don't change the connection status)
+                    const serverSyncStatus = document.getElementById('serverSyncStatus');
+                    
+                    if (data.serverSync && data.serverSync.server_id) {
+                        // Calculate connection duration
+                        let connectionDuration = 'Unknown';
+                        if (data.serverSync.last_seen) {
+                            const lastSeen = new Date(data.serverSync.last_seen);
+                            const now = new Date();
+                            const diffMs = now - lastSeen;
+                            
+                            // Format duration
+                            const diffMins = Math.floor(diffMs / (1000 * 60));
+                            if (diffMins < 60) {
+                                connectionDuration = `${diffMins}m`;
+                            } else {
+                                const diffHours = Math.floor(diffMins / 60);
+                                const remainingMins = diffMins % 60;
+                                connectionDuration = `${diffHours}h ${remainingMins}m`;
+                            }
+                        }
+                        
+                        // Create or update server sync information
+                        let serverInfoHtml = `
+                            <div>Server <span style="color: var(--success-color)">${data.serverSync.server_id}</span></div>
+                            <div>Connection Duration: ${connectionDuration}</div>
+                            <div>Sent Values: ${data.serverSync.sentCount ? data.serverSync.sentCount.toLocaleString() : '0'}</div>
+                            <div>Latest Value: ${formatDateTime(data.serverSync.lastSyncedTimestamp || 'Never')} (${data.serverSync.last_sequence || 0})</div>
+                            <div class="sync-gap ${data.serverSync.syncGap > 0 ? 'sync-gap-behind' : ''}">
+                                ${data.serverSync.syncGap > 0 
+                                    ? `Server is ${data.serverSync.syncGap.toLocaleString()} records behind` 
+                                    : 'Server is up to date'}
+                            </div>
+                        `;
+                        serverSyncStatus.innerHTML = serverInfoHtml;
+                    } else {
+                        serverSyncStatus.innerHTML = ''; // Clear any previous content
+                    }
+                })
+                .catch(error => {
+                    console.error('Error fetching sequence data:', error);
+                    document.getElementById('serverSyncStatus').innerHTML = '';
+                });
+        }
+        
+        // Helper function to update broker info display
+        function updateBrokerInfoDisplay() {
+            const serverBrokerInfo = document.getElementById('serverBrokerInfo');
+            
+            // Always show the MQTT info with placeholders when values aren't available
+            serverBrokerInfo.innerHTML = `
+                <div>MQTT: ${brokerInfo.address ? `${brokerInfo.address}:${brokerInfo.port || '1883'}` : '-'}</div>
+                <div>Topics: ${brokerInfo.subscribedTopics && brokerInfo.subscribedTopics.length > 0 ? brokerInfo.subscribedTopics.join(', ') : '-'}</div>
+            `;
+        }
+        
+        // Update broker information
+        socket.on('brokerInfo', (data) => {
+            // Update server connection status based on broker connection
+            const serverConnectionHeader = document.getElementById('serverConnectionHeader');
+            if (data.connected) {
+                serverConnectionHeader.textContent = 'Server Connected';
+                serverConnectionHeader.style.color = 'var(--success-color)';
+            }
+            
+            // Store broker information for display
+            brokerInfo = {
+                address: data.address || null,
+                port: data.port || '1883',
+                subscribedTopics: data.subscribedTopics || []
+            };
+            
+            // Update the display
+            updateBrokerInfoDisplay();
+        });
+        
+        // Helper function to format date/time
+        function formatDateTime(timestamp) {
+            if (!timestamp || timestamp === 'Never') return 'Never';
+            
+            const date = new Date(timestamp);
+            return date.toLocaleString('en-US', {
+                year: '2-digit',
+                month: '2-digit',
+                day: '2-digit',
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit',
+                hour12: false
+            });
+        }
+        
         function updateClock() {
             const now = new Date();
             const formatter = new Intl.DateTimeFormat('en-US', {
@@ -279,6 +442,13 @@
             setInterval(updateClock, 1000);
             updateClock(); // Initial update
 
+            // Initialize broker info display to ensure fields are always visible
+            updateBrokerInfoDisplay();
+            
+            // Fetch sequence data every second
+            fetchSequenceData(); // Initial fetch
+            setInterval(fetchSequenceData, 1000); // Update every second
+
             // Request fresh system information periodically to catch system changes
             setInterval(() => {
                 socket.emit('getInitialState');
@@ -293,14 +463,6 @@
                         const timezone = timezoneSelect.value;
                         socket.emit('setTimezone', { timezone });
                     }
-                });
-            }
-
-            // Retrieve values button
-            const retrieveValuesBtn = document.getElementById('retrieve-values-btn');
-            if (retrieveValuesBtn) {
-                retrieveValuesBtn.addEventListener('click', function() {
-                    socket.emit('getSystemState');
                 });
             }
             
@@ -336,6 +498,7 @@
             const ipOctet = ipAddress.split('.').pop() || '';
             if (hostnameShort && ipOctet) {
                 document.getElementById('nodeHeader').textContent = `${hostnameShort}.${ipOctet}`;
+                document.getElementById('nodeIdDisplay').textContent = hostnameShort;
             }
             
             // Update internet status with color coding
@@ -435,38 +598,6 @@
             document.getElementById('sensor2Humidity').textContent = data.humidity;
         });
 
-        // Update broker information
-        socket.on('brokerInfo', (data) => {
-            const statusElement = document.getElementById('brokerStatus');
-            statusElement.textContent = data.connected ? 'Connected' : 'Disconnected';
-            statusElement.style.color = data.connected ? 'var(--success-color)' : 'var(--error-color)';
-            
-            document.getElementById('brokerAddress').textContent = data.address || 'Not connected';
-            document.getElementById('brokerPort').textContent = data.port || 'Not connected';
-            
-            // Format dates with timezone
-            const formatDate = (date) => {
-                if (!date) return 'Never';
-                return new Date(date).toLocaleString('en-US', {
-                    timeZone: currentTimezone,
-                    year: 'numeric',
-                    month: 'numeric',
-                    day: 'numeric',
-                    hour: '2-digit',
-                    minute: '2-digit',
-                    second: '2-digit',
-                    hour12: false,
-                    timeZoneName: 'short'
-                });
-            };
-            
-            document.getElementById('brokerLastConnection').textContent = formatDate(data.lastConnection);
-            document.getElementById('brokerConnectionDuration').textContent = data.connectionDuration;
-            document.getElementById('brokerReconnectionAttempts').textContent = data.reconnectionAttempts || '0';
-            document.getElementById('brokerLastMessage').textContent = formatDate(data.lastMessage);
-            document.getElementById('brokerSubscribedTopics').textContent = data.subscribedTopics ? data.subscribedTopics.join(', ') : 'None';
-        });
-        
         // Initialize the application
         initializeApp(socket, customInit);
     </script>
