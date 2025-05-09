@@ -143,7 +143,7 @@
                 <div class="sync-details">
                     <div>First Value: <span id="nodeFirstValueTime">--/--/-- --:--:--</span> (<span id="nodeFirstSequence">0</span>)</div>
                     <div>Latest Value: <span id="nodeLatestValueTime">--/--/-- --:--:--</span> (<span id="nodeLatestSequence">0</span>)</div>
-                    <div>Total Records: <span id="nodeTotalRecords">0</span></div>
+                    <div>Total Values: <span id="nodeTotalRecords">0</span></div>
                 </div>
             </div>
             
@@ -312,8 +312,9 @@
                     
                     // Update server sync information (but don't change the connection status)
                     const serverSyncStatus = document.getElementById('serverSyncStatus');
+                    const serverBrokerInfo = document.getElementById('serverBrokerInfo');
                     
-                    if (data.serverSync && data.serverSync.server_id) {
+                    if (data.serverSync) {
                         // Calculate connection duration
                         let connectionDuration = 'Unknown';
                         if (data.serverSync.last_seen) {
@@ -332,26 +333,76 @@
                             }
                         }
                         
-                        // Create or update server sync information
-                        let serverInfoHtml = `
-                            <div>Server <span style="color: var(--success-color)">${data.serverSync.server_id}</span></div>
-                            <div>Connection Duration: ${connectionDuration}</div>
-                            <div>Sent Values: ${data.serverSync.sentCount ? data.serverSync.sentCount.toLocaleString() : '0'}</div>
-                            <div>Latest Value: ${formatDateTime(data.serverSync.lastSyncedTimestamp || 'Never')} (${data.serverSync.last_sequence || 0})</div>
-                            <div class="sync-gap ${data.serverSync.syncGap > 0 ? 'sync-gap-behind' : ''}">
-                                ${data.serverSync.syncGap > 0 
-                                    ? `Server is ${data.serverSync.syncGap.toLocaleString()} records behind` 
-                                    : 'Server is up to date'}
-                            </div>
+                        // Get last synced value timestamp and sequence
+                        const lastSyncedTimestamp = formatDateTime(data.serverSync.lastSyncedTimestamp || 'Never');
+                        const lastSequence = data.serverSync.last_sequence || 0;
+                        const synchedValues = data.serverSync.sentCount ? data.serverSync.sentCount.toLocaleString() : '0';
+                        
+                        // Get local latest sequence for comparison
+                        const latestLocalSequence = data.nodeSequence ? data.nodeSequence.maxSequence : 0;
+                        const syncGap = latestLocalSequence - lastSequence;
+                        
+                        // Move Last Value and Synched Values to broker info section
+                        // to ensure they're always visible
+                        const mqttAddress = brokerInfo.address ? `${brokerInfo.address}:${brokerInfo.port || '1883'}` : '-';
+                        const topics = brokerInfo.subscribedTopics && brokerInfo.subscribedTopics.length > 0 ? 
+                            brokerInfo.subscribedTopics.join(', ') : '-';
+                        
+                        serverBrokerInfo.innerHTML = `
+                            <div>MQTT: ${mqttAddress}</div>
+                            <div>Last Value: ${lastSyncedTimestamp}</div>
+                            <div>Synched Values: ${synchedValues}</div>
+                            <div>Topics: ${topics}</div>
                         `;
+                        
+                        // Create or update remaining server sync information
+                        let serverInfoHtml = '';
+                        
+                        if (data.serverSync.server_id) {
+                            serverInfoHtml = `
+                                <div>Server <span style="color: var(--success-color)">${data.serverSync.server_id}</span></div>
+                                <div>Connection Duration: ${connectionDuration}</div>
+                                <div class="sync-gap ${syncGap > 0 ? 'sync-gap-behind' : ''}">
+                                    ${syncGap > 0 
+                                        ? `Server is ${syncGap.toLocaleString()} values behind` 
+                                        : 'Server is up to date'}
+                                </div>
+                            `;
+                        }
+                        
                         serverSyncStatus.innerHTML = serverInfoHtml;
                     } else {
                         serverSyncStatus.innerHTML = ''; // Clear any previous content
+                        
+                        // Keep broker info even if server sync data is missing
+                        const mqttAddress = brokerInfo.address ? `${brokerInfo.address}:${brokerInfo.port || '1883'}` : '-';
+                        const topics = brokerInfo.subscribedTopics && brokerInfo.subscribedTopics.length > 0 ? 
+                            brokerInfo.subscribedTopics.join(', ') : '-';
+                        
+                        serverBrokerInfo.innerHTML = `
+                            <div>MQTT: ${mqttAddress}</div>
+                            <div>Last Value: -</div>
+                            <div>Synched Values: -</div>
+                            <div>Topics: ${topics}</div>
+                        `;
                     }
                 })
                 .catch(error => {
                     console.error('Error fetching sequence data:', error);
                     document.getElementById('serverSyncStatus').innerHTML = '';
+                    
+                    // Keep broker info even on error
+                    const serverBrokerInfo = document.getElementById('serverBrokerInfo');
+                    const mqttAddress = brokerInfo.address ? `${brokerInfo.address}:${brokerInfo.port || '1883'}` : '-';
+                    const topics = brokerInfo.subscribedTopics && brokerInfo.subscribedTopics.length > 0 ? 
+                        brokerInfo.subscribedTopics.join(', ') : '-';
+                    
+                    serverBrokerInfo.innerHTML = `
+                        <div>MQTT: ${mqttAddress}</div>
+                        <div>Last Value: -</div>
+                        <div>Synched Values: -</div>
+                        <div>Topics: ${topics}</div>
+                    `;
                 });
         }
         
@@ -359,9 +410,12 @@
         function updateBrokerInfoDisplay() {
             const serverBrokerInfo = document.getElementById('serverBrokerInfo');
             
-            // Always show the MQTT info with placeholders when values aren't available
+            // Always show the MQTT info with placeholders for values
+            // Last Value and Synched Values will be updated by fetchSequenceData
             serverBrokerInfo.innerHTML = `
                 <div>MQTT: ${brokerInfo.address ? `${brokerInfo.address}:${brokerInfo.port || '1883'}` : '-'}</div>
+                <div>Last Value: -</div>
+                <div>Synched Values: -</div>
                 <div>Topics: ${brokerInfo.subscribedTopics && brokerInfo.subscribedTopics.length > 0 ? brokerInfo.subscribedTopics.join(', ') : '-'}</div>
             `;
         }

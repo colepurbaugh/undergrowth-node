@@ -1402,6 +1402,16 @@ async function initializeMqtt() {
             }
         });
 
+        // Subscribe to server requests topics
+        mqttClient.subscribe(`undergrowth/server/requests/${nodeId}/#`, (err) => {
+            if (err) {
+                console.error('Error subscribing to server requests topics:', err);
+            } else {
+                console.log(`Subscribed to topic: undergrowth/server/requests/${nodeId}/#`);
+                addSubscribedTopic(`undergrowth/server/requests/${nodeId}/#`);
+            }
+        });
+
         // Handle incoming messages
         mqttClient.on('message', (topic, message) => {
             updateLastMessageTime();
@@ -1411,6 +1421,10 @@ async function initializeMqtt() {
             if (topic === `undergrowth/server/requests/${nodeId}/history`) {
                 try {
                     const request = JSON.parse(message.toString());
+                    console.log(`Processing server history request:`, 
+                        request.startSequence !== undefined ? 
+                        `sequence-based (${request.startSequence} to ${request.endSequence || 'latest'})` : 
+                        `time-based (${request.startTime} to ${request.endTime})`);
                     handleHistoryRequest(request);
                 } catch (error) {
                     console.error('Error handling history request:', error);
@@ -1551,62 +1565,186 @@ raspi.init(async () => {
 function handleHistoryRequest(request) {
     console.log('Received history request:', request);
     
-    // Validate request
-    if (!request.startTime || !request.endTime || !request.requestId) {
-        console.error('Invalid history request, missing required fields');
-        return;
-    }
+    // Check if this is a sequence-based or time-based request
+    const isSequenceBased = request.startSequence !== undefined;
     
-    // Query the database for sensor readings in the requested time range
-    const query = `
-        SELECT timestamp, device_id, type, value
-        FROM sensor_readings
-        WHERE timestamp >= ? AND timestamp <= ?
-        ORDER BY timestamp ASC
-    `;
-    
-    dataDb.all(query, [request.startTime, request.endTime], (err, rows) => {
-        if (err) {
-            console.error('Error querying sensor history:', err);
-            
-            // Send error response
-            if (mqttClient && mqttClient.connected) {
-                mqttClient.publish(`undergrowth/nodes/${nodeId}/history/error`, JSON.stringify({
-                    nodeId,
-                    requestId: request.requestId,
-                    error: 'Database query error',
-                    message: err.message
-                }), { qos: 1 });
-            }
+    if (isSequenceBased) {
+        // Handle sequence-based request
+        if (!request.requestId) {
+            console.error('Invalid sequence-based request, missing requestId');
             return;
         }
         
-        // Format response
-        const response = {
-            nodeId,
-            requestId: request.requestId,
-            startTime: request.startTime,
-            endTime: request.endTime,
-            dataPoints: rows.map(row => ({
-                timestamp: row.timestamp,
-                sensorId: row.device_id,
-                type: row.type,
-                value: row.value
-            })),
-            recordCount: rows.length
-        };
+        // Use the getDataBySequenceRange function that already exists
+        const startSequence = request.startSequence;
+        const endSequence = request.endSequence || Number.MAX_SAFE_INTEGER;
+        const limit = request.limit || 1000;
         
-        console.log(`Sending history response with ${rows.length} records`);
-        
-        // Send response
-        if (mqttClient && mqttClient.connected) {
-            mqttClient.publish(`undergrowth/nodes/${nodeId}/history`, JSON.stringify(response), { 
-                qos: 1 
+        getDataBySequenceRange(startSequence, endSequence, limit)
+            .then(rows => {
+                // Get the actual max sequence from the database
+                return getSequenceRange()
+                    .then(sequenceRange => {
+                        // Format response
+                        const response = {
+                            nodeId,
+                            requestId: request.requestId,
+                            startSequence: startSequence,
+                            endSequence: rows.length > 0 ? rows[rows.length - 1].sequence_id : startSequence,
+                            maxSequence: sequenceRange.maxSequence, // Use the actual max sequence from the database
+                            dataPoints: rows.map(row => ({
+                                timestamp: row.timestamp,
+                                sensorId: row.device_id,
+                                type: row.type,
+                                value: row.value,
+                                sequence_id: row.sequence_id
+                            })),
+                            recordCount: rows.length
+                        };
+                        
+                        console.log(`Sending sequence-based history response with ${rows.length} records (max sequence: ${sequenceRange.maxSequence})`);
+                        
+                        // Send response
+                        if (mqttClient && mqttClient.connected) {
+                            mqttClient.publish(`undergrowth/nodes/${nodeId}/history`, JSON.stringify(response), { 
+                                qos: 1 
+                            });
+                            
+                            // Update server_sync table to track sync progress
+                            const now = new Date().toISOString();
+                            configDb.run(
+                                'INSERT OR REPLACE INTO server_sync (server_id, last_sync_time, last_sequence, last_seen) VALUES (?, ?, ?, ?)',
+                                ['server', now, response.endSequence, now],
+                                (err) => {
+                                    if (err) {
+                                        console.error('Error updating server_sync table:', err);
+                                    } else {
+                                        console.log(`Updated server sync record to sequence ${response.endSequence}`);
+                                    }
+                                }
+                            );
+                        } else {
+                            console.log('MQTT client not connected, history response could not be sent');
+                        }
+                    });
+            })
+            .catch(err => {
+                console.error('Error querying sequence-based sensor history:', err);
+                
+                // Send error response
+                if (mqttClient && mqttClient.connected) {
+                    mqttClient.publish(`undergrowth/nodes/${nodeId}/history/error`, JSON.stringify({
+                        nodeId,
+                        requestId: request.requestId,
+                        error: 'Database query error',
+                        message: err.message
+                    }), { qos: 1 });
+                }
             });
-        } else {
-            console.log('MQTT client not connected, history response could not be sent');
+    } else {
+        // Handle time-based request (existing code)
+        if (!request.startTime || !request.endTime || !request.requestId) {
+            console.error('Invalid time-based request, missing required fields');
+            return;
         }
-    });
+        
+        // Query the database for sensor readings in the requested time range
+        const query = `
+            SELECT timestamp, device_id, type, value
+            FROM sensor_readings
+            WHERE timestamp >= ? AND timestamp <= ?
+            ORDER BY timestamp ASC
+        `;
+        
+        dataDb.all(query, [request.startTime, request.endTime], (err, rows) => {
+            if (err) {
+                console.error('Error querying sensor history:', err);
+                
+                // Send error response
+                if (mqttClient && mqttClient.connected) {
+                    mqttClient.publish(`undergrowth/nodes/${nodeId}/history/error`, JSON.stringify({
+                        nodeId,
+                        requestId: request.requestId,
+                        error: 'Database query error',
+                        message: err.message
+                    }), { qos: 1 });
+                }
+                return;
+            }
+            
+            // Get max sequence information if available
+            getSequenceRange()
+                .then(sequenceRange => {
+                    // Format response
+                    const response = {
+                        nodeId,
+                        requestId: request.requestId,
+                        startTime: request.startTime,
+                        endTime: request.endTime,
+                        // Include sequence info if available
+                        maxSequence: sequenceRange.maxSequence,
+                        dataPoints: rows.map(row => ({
+                            timestamp: row.timestamp,
+                            sensorId: row.device_id,
+                            type: row.type,
+                            value: row.value
+                        })),
+                        recordCount: rows.length
+                    };
+                    
+                    console.log(`Sending time-based history response with ${rows.length} records (max sequence: ${sequenceRange.maxSequence})`);
+                    
+                    // Send response
+                    if (mqttClient && mqttClient.connected) {
+                        mqttClient.publish(`undergrowth/nodes/${nodeId}/history`, JSON.stringify(response), { 
+                            qos: 1 
+                        });
+                        
+                        // Update server_sync table to track last contact, but not sequence since this was time-based
+                        const now = new Date().toISOString();
+                        configDb.run(
+                            'INSERT OR REPLACE INTO server_sync (server_id, last_sync_time, last_seen) VALUES (?, ?, ?)',
+                            ['server', now, now],
+                            (err) => {
+                                if (err) {
+                                    console.error('Error updating server_sync table:', err);
+                                }
+                            }
+                        );
+                    } else {
+                        console.log('MQTT client not connected, history response could not be sent');
+                    }
+                })
+                .catch(err => {
+                    console.error('Error getting sequence range:', err);
+                    
+                    // Fall back to response without sequence information
+                    const response = {
+                        nodeId,
+                        requestId: request.requestId,
+                        startTime: request.startTime,
+                        endTime: request.endTime,
+                        dataPoints: rows.map(row => ({
+                            timestamp: row.timestamp,
+                            sensorId: row.device_id,
+                            type: row.type,
+                            value: row.value
+                        })),
+                        recordCount: rows.length
+                    };
+                    
+                    console.log(`Sending time-based history response with ${rows.length} records (without sequence info)`);
+                    
+                    if (mqttClient && mqttClient.connected) {
+                        mqttClient.publish(`undergrowth/nodes/${nodeId}/history`, JSON.stringify(response), { 
+                            qos: 1 
+                        });
+                    } else {
+                        console.log('MQTT client not connected, history response could not be sent');
+                    }
+                });
+        });
+    }
 }
 
 // API endpoint for sequence information 
