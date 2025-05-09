@@ -114,6 +114,11 @@ function loadPwmStates(db) {
 // Serve static files from public directory
 app.use(express.static('public'));
 
+// Serve node-index.html for root path
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'node-index.html'));
+});
+
 // Route for PWM interface
 app.get('/pwm', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'pwm.html'));
