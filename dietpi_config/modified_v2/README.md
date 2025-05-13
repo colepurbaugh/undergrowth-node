@@ -17,10 +17,6 @@ Before flashing your SD card with DietPi, you must modify these files with your 
 1. In `dietpi.txt`:
    - Change `AUTO_SETUP_GLOBAL_PASSWORD=undergrowth` to your desired password
 
-2. In `dietpi-wifi.txt`:
-   - Change `aWIFI_SSID[0]='SPUTNICK'` to your WiFi network name
-   - Change `aWIFI_KEY[0]='goldfish123!'` to your WiFi password
-
 ## Installation Process
 
 1. Modify the credential files as mentioned above
