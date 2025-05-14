@@ -8,7 +8,11 @@
     <link rel="icon" type="image/png" sizes="32x32" href="/assets/icons/favicon-32x32.png">
     <link rel="icon" type="image/png" sizes="16x16" href="/assets/icons/favicon-16x16.png">
     <link rel="manifest" href="/assets/icons/site.webmanifest">
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- First load Chart.js without adapter -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
+    <!-- Then load Luxon and the adapter separately -->
+    <script src="https://cdn.jsdelivr.net/npm/luxon@3.3.0/build/global/luxon.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-luxon@1.3.1/dist/chartjs-adapter-luxon.umd.min.js"></script>
     <script src="/socket.io/socket.io.js"></script>
     <link rel="stylesheet" href="/assets/css/main.css">
     <script src="/assets/js/core.js"></script>
@@ -49,6 +53,20 @@
                 </button>
             </div>
         </div>
+        
+        <!-- Sensor Selection -->
+        <div class="controls sensor-selection-panel">
+            <h3 class="section-title">Sensor Selection</h3>
+            <div class="sensor-selection-container" id="sensorSelectionContainer">
+                <!-- Sensor checkboxes will be populated here -->
+                <div class="loading-message">Loading sensors...</div>
+            </div>
+            <div class="sensor-selection-actions">
+                <button id="selectAllSensors" class="sensor-button">Select All</button>
+                <button id="deselectAllSensors" class="sensor-button">Deselect All</button>
+                <button id="averageSensors" class="sensor-button">Show Average</button>
+            </div>
+        </div>
 
         <!-- Temperature Chart -->
         <div class="chart-container">
@@ -72,6 +90,20 @@
         let humidityChart = null;
         let autoUpdateInterval = null;
         let currentTimezone = 'America/Los_Angeles'; // Default, will be updated from server
+        let availableSensors = []; // To store available sensors
+        let selectedSensors = []; // To store selected sensors
+        let showAverage = false; // Whether to show average of selected sensors
+        
+        // Chart colors for different sensors (can add more as needed)
+        const chartColors = [
+            { border: 'rgb(255, 99, 132)', background: 'rgba(255, 99, 132, 0.1)' },  // Red
+            { border: 'rgb(54, 162, 235)', background: 'rgba(54, 162, 235, 0.1)' },  // Blue
+            { border: 'rgb(255, 206, 86)', background: 'rgba(255, 206, 86, 0.1)' },  // Yellow
+            { border: 'rgb(75, 192, 192)', background: 'rgba(75, 192, 192, 0.1)' },  // Green
+            { border: 'rgb(153, 102, 255)', background: 'rgba(153, 102, 255, 0.1)' }, // Purple
+            { border: 'rgb(255, 159, 64)', background: 'rgba(255, 159, 64, 0.1)' },  // Orange
+            { border: 'rgb(199, 199, 199)', background: 'rgba(199, 199, 199, 0.1)' }  // Gray
+        ];
 
         // Initialize socket connection
         const socket = io();
@@ -102,81 +134,524 @@
             document.getElementById('currentTime').textContent = `${timeString} ${timezoneAbbr}`;
         }
 
-        function fetchAndUpdateChart(url, type) {
-            fetch(url)
-                .then(response => response.json())
+        // Fetch available sensors from the server
+        function fetchSensors() {
+            console.log('Fetching sensors from server...');
+            fetch('/api/sensors')
+                .then(response => {
+                    console.log('Sensor API response status:', response.status);
+                    if (!response.ok) {
+                        throw new Error(`Server returned ${response.status}: ${response.statusText}`);
+                    }
+                    return response.json();
+                })
                 .then(data => {
-                    const formattedData = data.map(row => ({
-                        ...row,
-                        timestamp: new Date(row.timestamp).toLocaleString('en-US', { timeZone: currentTimezone })
-                    }));
+                    console.log('Sensors loaded successfully:', data);
+                    availableSensors = data;
+                    
+                    // Select all by default
+                    selectedSensors = availableSensors.map(s => s.id.toString());
+                    
+                    // Render sensor selection UI
+                    renderSensorSelection();
+                    
+                    // Update charts with the newly selected sensors
+                    updateCharts();
+                })
+                .catch(error => {
+                    console.error('Error fetching sensors:', error);
+                    document.getElementById('sensorSelectionContainer').innerHTML = 
+                        `<div class="error-message">Error loading sensors: ${error.message}. Please refresh the page to try again.</div>`;
+                    
+                    // Try to continue with default sensors to prevent complete failure
+                    console.log('Falling back to default sensors');
+                    availableSensors = [
+                        { id: 1, address: '0x38', type: 'AHT10', name: 'AHT10 0x38' },
+                        { id: 2, address: '0x39', type: 'AHT10', name: 'AHT10 0x39' }
+                    ];
+                    selectedSensors = availableSensors.map(s => s.id.toString());
+                    renderSensorSelection();
+                    updateCharts();
+                });
+        }
+
+        // Render the sensor selection checkboxes
+        function renderSensorSelection() {
+            const container = document.getElementById('sensorSelectionContainer');
+            container.innerHTML = ''; // Clear container
+            
+            if (availableSensors.length === 0) {
+                container.innerHTML = '<div class="empty-state">No sensors configured yet.</div>';
+                return;
+            }
+            
+            availableSensors.forEach((sensor, index) => {
+                const isSelected = selectedSensors.includes(sensor.id.toString());
+                const colorIndex = index % chartColors.length;
+                const color = chartColors[colorIndex].border;
+                
+                const wrapper = document.createElement('div');
+                wrapper.className = 'sensor-checkbox-wrapper';
+                
+                wrapper.innerHTML = `
+                    <input type="checkbox" id="sensor-${sensor.id}" class="sensor-checkbox" 
+                           ${isSelected ? 'checked' : ''} data-sensor-id="${sensor.id}"
+                           style="accent-color: ${color};">
+                    <label for="sensor-${sensor.id}" class="sensor-label">
+                        ${sensor.name || `${sensor.type} ${sensor.address}`}
+                    </label>
+                `;
+                
+                const checkbox = wrapper.querySelector('.sensor-checkbox');
+                checkbox.addEventListener('change', function() {
+                    if (this.checked) {
+                        selectedSensors.push(sensor.id.toString());
+                    } else {
+                        selectedSensors = selectedSensors.filter(id => id !== sensor.id.toString());
+                    }
+                    updateCharts();
+                });
+                
+                container.appendChild(wrapper);
+            });
+        }
+
+        // Function to handle "Select All" button
+        function selectAllSensors() {
+            selectedSensors = availableSensors.map(s => s.id.toString());
+            document.querySelectorAll('.sensor-checkbox').forEach(checkbox => {
+                checkbox.checked = true;
+            });
+            updateCharts();
+        }
+
+        // Function to handle "Deselect All" button
+        function deselectAllSensors() {
+            selectedSensors = [];
+            document.querySelectorAll('.sensor-checkbox').forEach(checkbox => {
+                checkbox.checked = false;
+            });
+            updateCharts();
+        }
+
+        // Function to toggle average mode
+        function toggleAverageMode() {
+            showAverage = !showAverage;
+            console.log(`Toggle average mode: ${showAverage ? 'ON' : 'OFF'}`);
+            document.getElementById('averageSensors').textContent = showAverage ? 'Show Individual' : 'Show Average';
+            
+            // Clear and regenerate charts with new mode
+            updateCharts();
+        }
+        
+        // Helper function to create chart
+        function createChart(ctx, type) {
+            // Determine appropriate time unit based on selected time range
+            const timeRange = parseInt(document.getElementById('timeRange').value);
+            let timeUnit = 'minute';
+            let unitStepSize = 5;
+            
+            if (timeRange >= 168) { // Week
+                timeUnit = 'hour';
+                unitStepSize = 6;
+            } else if (timeRange >= 48) { // 2+ days
+                timeUnit = 'hour';
+                unitStepSize = 4;
+            } else if (timeRange >= 24) { // Day
+                timeUnit = 'hour';
+                unitStepSize = 2;
+            } else if (timeRange >= 6) { // Several hours
+                timeUnit = 'minute';
+                unitStepSize = 30;
+            } else { // Hour or less
+                timeUnit = 'minute';
+                unitStepSize = 5;
+            }
+            
+            console.log(`Chart timeUnit: ${timeUnit}, stepSize: ${unitStepSize}`);
+            
+            const config = {
+                type: 'line',
+                data: {
+                    datasets: []
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    parsing: false,
+                    spanGaps: false,
+                    interaction: {
+                        mode: 'nearest',
+                        intersect: false
+                    },
+                    elements: {
+                        point: {
+                            radius: 3,
+                            hoverRadius: 5
+                        },
+                        line: {
+                            tension: 0.1,
+                            borderWidth: 2
+                        }
+                    },
+                    scales: {
+                        x: {
+                            type: 'time',
+                            time: {
+                                unit: timeUnit,
+                                stepSize: unitStepSize,
+                                displayFormats: {
+                                    millisecond: 'h:mm:ss.SSS a',
+                                    second: 'h:mm:ss a',
+                                    minute: 'h:mm a',
+                                    hour: 'MMM d, h:mm a',
+                                    day: 'MMM d',
+                                    week: 'MMM d',
+                                    month: 'MMM yyyy',
+                                    quarter: 'MMM yyyy',
+                                    year: 'yyyy'
+                                },
+                                tooltipFormat: 'MMM d, yyyy, h:mm:ss a'
+                            },
+                            adapters: {
+                                date: {
+                                  locale: 'en-US'
+                                }
+                            },
+                            distribution: 'linear',
+                            bounds: 'data',
+                            offset: false,
+                            grid: {
+                                color: 'rgba(255, 255, 255, 0.1)'
+                            },
+                            ticks: {
+                                color: '#e8e6e3',
+                                maxRotation: 45,
+                                minRotation: 45,
+                                autoSkip: false,
+                                maxTicksLimit: 30,
+                                callback: function(value, index, values) {
+                                    // Show every n-th label to avoid overcrowding
+                                    // The frequency depends on the total number of ticks
+                                    if (values.length <= 10) return value;
+                                    if (values.length <= 20) return index % 2 === 0 ? value : '';
+                                    if (values.length <= 40) return index % 3 === 0 ? value : '';
+                                    return index % 4 === 0 ? value : '';
+                                },
+                                source: 'data',
+                                major: {
+                                    enabled: true
+                                },
+                                font: {
+                                    size: 10
+                                }
+                            }
+                        },
+                        y: {
+                            grid: {
+                                color: 'rgba(255, 255, 255, 0.1)'
+                            },
+                            ticks: {
+                                color: '#e8e6e3'
+                            },
+                            title: {
+                                display: true,
+                                text: type === 'temperature' ? 'Temperature (°F)' : 'Humidity (%)',
+                                color: '#e8e6e3'
+                            },
+                            min: type === 'temperature' ? 50 : 0,
+                            max: 100,
+                            beginAtZero: type === 'humidity'
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            labels: {
+                                color: '#e8e6e3',
+                                padding: 10,
+                                usePointStyle: true,
+                                pointStyle: 'circle'
+                            },
+                            position: 'top'
+                        },
+                        tooltip: {
+                            mode: 'index',
+                            intersect: false,
+                            backgroundColor: 'rgba(0, 0, 0, 0.7)',
+                            titleColor: '#fff',
+                            bodyColor: '#fff',
+                            borderColor: 'rgba(255, 255, 255, 0.2)',
+                            borderWidth: 1
+                        }
+                    }
+                }
+            };
+            
+            return new Chart(ctx, config);
+        }
+
+        // Function to fetch and display data for a chart
+        function fetchAndUpdateChart(url, type, startDateMs, endDateMs) {
+            if (selectedSensors.length === 0) {
+                // Clear chart if no sensors selected
+                if (type === 'temperature' && tempChart) {
+                    tempChart.destroy();
+                    tempChart = null;
+                    const container = document.getElementById('tempChart').parentNode;
+                    container.innerHTML = '<canvas id="tempChart"></canvas>';
+                } else if (type === 'humidity' && humidityChart) {
+                    humidityChart.destroy();
+                    humidityChart = null;
+                    const container = document.getElementById('humidityChart').parentNode;
+                    container.innerHTML = '<canvas id="humidityChart"></canvas>';
+                }
+                return;
+            }
+            
+            // Add selected sensors to URL
+            const sensorIds = selectedSensors.join(',');
+            url.searchParams.set('sensors', sensorIds);
+            
+            // Add average flag if needed
+            if (showAverage) {
+                url.searchParams.set('average', 'true');
+            }
+
+            fetch(url)
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error(`API returned ${response.status}: ${response.statusText}`);
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    console.log('API Response:', data);
                     
                     // Destroy existing chart if it exists
                     if (type === 'temperature' && tempChart) {
                         tempChart.destroy();
+                        tempChart = null;
                     } else if (type === 'humidity' && humidityChart) {
                         humidityChart.destroy();
+                        humidityChart = null;
                     }
-
+                    
+                    // Recreate canvas to avoid reuse issues
+                    const canvasId = type === 'temperature' ? 'tempChart' : 'humidityChart';
+                    const container = document.getElementById(canvasId).parentNode;
+                    container.innerHTML = `<canvas id="${canvasId}"></canvas>`;
+                    const ctx = document.getElementById(canvasId).getContext('2d');
+                    
                     // Create new chart
-                    const ctx = document.getElementById(type === 'temperature' ? 'tempChart' : 'humidityChart').getContext('2d');
-                    const chart = new Chart(ctx, {
-                        type: 'line',
-                        data: {
-                            labels: formattedData.map(row => row.timestamp),
-                            datasets: [{
-                                label: type === 'temperature' ? 'Temperature (°F)' : 'Humidity (%)',
-                                data: formattedData.map(row => row.value),
-                                borderColor: type === 'temperature' ? 'rgb(255, 99, 132)' : 'rgb(54, 162, 235)',
-                                backgroundColor: type === 'temperature' ? 'rgba(255, 99, 132, 0.1)' : 'rgba(54, 162, 235, 0.1)',
-                                tension: 0.1,
-                                fill: true
-                            }]
-                        },
-                        options: {
-                            responsive: true,
-                            maintainAspectRatio: false,
-                            plugins: {
-                                legend: {
-                                    labels: {
-                                        color: '#e8e6e3'
-                                    }
-                                }
-                            },
-                            scales: {
-                                x: {
-                                    grid: {
-                                        color: 'rgba(255, 255, 255, 0.1)'
-                                    },
-                                    ticks: {
-                                        color: '#e8e6e3'
-                                    }
-                                },
-                                y: {
-                                    grid: {
-                                        color: 'rgba(255, 255, 255, 0.1)'
-                                    },
-                                    ticks: {
-                                        color: '#e8e6e3'
-                                    },
-                                    title: {
-                                        display: true,
-                                        text: type === 'temperature' ? 'Temperature (°F)' : 'Humidity (%)',
-                                        color: '#e8e6e3'
-                                    }
-                                }
-                            }
-                        }
-                    });
-
-                    // Store reference to the new chart
+                    const chart = createChart(ctx, type);
+                    
                     if (type === 'temperature') {
                         tempChart = chart;
                     } else {
                         humidityChart = chart;
                     }
+                    
+                    // No data case
+                    if (!data || data.length === 0) {
+                        // Even with no data, set the time range to show a complete axis
+                        if (startDateMs && endDateMs) {
+                            chart.options.scales.x.min = startDateMs;
+                            chart.options.scales.x.max = endDateMs;
+                            chart.update();
+                        }
+                        
+                        // Display "No data" message
+                        ctx.font = '16px Arial';
+                        ctx.fillStyle = '#e8e6e3';
+                        ctx.textAlign = 'center';
+                        ctx.fillText('No data available for selected sensors', container.clientWidth / 2, container.clientHeight / 2);
+                        return;
+                    }
+                    
+                    // Process data based on mode
+                    if (showAverage) {
+                        // Average mode - single dataset
+                        const dataPoints = data.map(point => ({
+                            x: new Date(point.timestamp).valueOf(),
+                            y: point.value
+                        })).filter(p => p.y !== null);
+                        
+                        // Only add dataset if we have points
+                        if (dataPoints.length > 0) {
+                            // Calculate min/max for better y-axis scaling
+                            const values = dataPoints.map(p => p.y);
+                            const min = Math.min(...values);
+                            const max = Math.max(...values);
+                            const padding = (max - min) * 0.1;
+                            
+                            // Update y-axis scale
+                            chart.options.scales.y.min = type === 'humidity' ? Math.max(0, min - padding) : Math.max(50, min - padding);
+                            chart.options.scales.y.max = type === 'humidity' ? Math.min(100, max + padding) : max + padding;
+                        
+                            chart.data.datasets.push({
+                                label: `Average ${type === 'temperature' ? 'Temperature (°F)' : 'Humidity (%)'}`,
+                                data: dataPoints,
+                                borderColor: 'rgb(255, 255, 255)',
+                                backgroundColor: 'rgba(255, 255, 255, 0.1)',
+                                tension: 0.1,
+                                fill: true
+                            });
+                            
+                            // Set min/max on x-axis with a small margin
+                            if (dataPoints.length > 0) {
+                                const sortedPoints = [...dataPoints].sort((a, b) => a.x - b.x);
+                                
+                                // If we have actual data points, use those for min/max
+                                // but ensure they're within the requested range
+                                const dataMin = Math.max(startDateMs, sortedPoints[0].x);
+                                const dataMax = Math.min(endDateMs, sortedPoints[sortedPoints.length - 1].x);
+                                
+                                // Use the full time range to ensure consistent x-axis
+                                chart.options.scales.x.min = startDateMs;
+                                chart.options.scales.x.max = endDateMs;
+                            } else {
+                                // If no data points, use the full requested range
+                                chart.options.scales.x.min = startDateMs;
+                                chart.options.scales.x.max = endDateMs;
+                            }
+                        } else {
+                            // Use the full time range even with no data
+                            chart.options.scales.x.min = startDateMs;
+                            chart.options.scales.x.max = endDateMs;
+                        }
+                    } else {
+                        // Individual sensor mode
+                        // Group data by sensor
+                        const sensorGroups = {};
+                        
+                        data.forEach(item => {
+                            if (!sensorGroups[item.sensorId]) {
+                                sensorGroups[item.sensorId] = [];
+                            }
+                            
+                            // Only add valid values
+                            if (item.value !== null) {
+                                sensorGroups[item.sensorId].push({
+                                    x: new Date(item.timestamp).valueOf(),
+                                    y: item.value
+                                });
+                            }
+                        });
+                        
+                        // Calculate overall min/max for better scaling
+                        let allValues = [];
+                        let allTimestamps = [];
+                        Object.values(sensorGroups).forEach(points => {
+                            allValues = allValues.concat(points.map(p => p.y));
+                            allTimestamps = allTimestamps.concat(points.map(p => p.x));
+                        });
+                        
+                        if (allValues.length > 0) {
+                            const min = Math.min(...allValues);
+                            const max = Math.max(...allValues);
+                            const padding = (max - min) * 0.1;
+                            
+                            // Update y-axis scale with padding
+                            chart.options.scales.y.min = type === 'humidity' ? Math.max(0, min - padding) : Math.max(50, min - padding);
+                            chart.options.scales.y.max = type === 'humidity' ? Math.min(100, max + padding) : max + padding;
+                            
+                            // Add a small margin for better display
+                            // But still use the full time range
+                            chart.options.scales.x.min = startDateMs;
+                            chart.options.scales.x.max = endDateMs;
+                        } else {
+                            // Use the full time range even with no data
+                            chart.options.scales.x.min = startDateMs;
+                            chart.options.scales.x.max = endDateMs;
+                        }
+                        
+                        // Create datasets for each sensor
+                        Object.keys(sensorGroups).forEach((sensorId, index) => {
+                            const sensor = availableSensors.find(s => s.id.toString() === sensorId.toString()) || 
+                                        { name: `Sensor ${sensorId}`, type: 'unknown' };
+                            
+                            const colorIndex = index % chartColors.length;
+                            
+                            // Sort data points by timestamp
+                            const sortedData = sensorGroups[sensorId].sort((a, b) => a.x - b.x);
+                            
+                            // Split data into segments where there are gaps
+                            const segments = [];
+                            let currentSegment = [];
+                            
+                            for (let i = 0; i < sortedData.length; i++) {
+                                const current = sortedData[i];
+                                
+                                // Add to current segment
+                                currentSegment.push(current);
+                                
+                                // If this is last point or there's a gap to the next point, end segment
+                                if (i === sortedData.length - 1) {
+                                    // Last point, add segment if it has points
+                                    if (currentSegment.length > 0) segments.push([...currentSegment]);
+                                } else {
+                                    const next = sortedData[i + 1];
+                                    const gapMinutes = (next.x - current.x) / (1000 * 60);
+                                    
+                                    // Use different gap thresholds based on time range
+                                    let gapThreshold = 10; // Default 10 minutes for hour view
+                                    
+                                    // Get current time range setting
+                                    const currentTimeRange = parseInt(document.getElementById('timeRange').value);
+                                    if (currentTimeRange >= 168) { // Week view
+                                        gapThreshold = 120; // 2 hours for week view
+                                    } else if (currentTimeRange >= 24) { // Day view
+                                        gapThreshold = 60; // 1 hour for day view
+                                    } else if (currentTimeRange >= 6) { // Several hours
+                                        gapThreshold = 30; // 30 minutes
+                                    }
+                                    
+                                    // Consider it a gap if more than the threshold between points
+                                    if (gapMinutes > gapThreshold) {
+                                        if (currentSegment.length > 0) segments.push([...currentSegment]);
+                                        currentSegment = [];
+                                    }
+                                }
+                            }
+                            
+                            // Display each segment as a separate dataset for better gap visualization
+                            segments.forEach((segment, segIndex) => {
+                                // Only add dataset if we have points
+                                if (segment.length > 0) {
+                                    const segmentSuffix = segments.length > 1 ? ` (segment ${segIndex+1})` : '';
+                                    
+                                    chart.data.datasets.push({
+                                        label: `${sensor.name || `${sensor.type} ${sensor.address}`}${segmentSuffix} ${type === 'temperature' ? 'Temperature (°F)' : 'Humidity (%)'}`,
+                                        data: segment,
+                                        borderColor: chartColors[colorIndex].border,
+                                        backgroundColor: chartColors[colorIndex].background,
+                                        tension: 0.1,
+                                        borderWidth: 2,
+                                        pointRadius: 3,
+                                        fill: false,
+                                        spanGaps: false // Important: don't span gaps within a segment
+                                    });
+                                }
+                            });
+                        });
+                    }
+                    
+                    // Update the chart
+                    chart.update();
                 })
-                .catch(error => console.error(`Error fetching ${type} data:`, error));
+                .catch(error => {
+                    console.error(`Error fetching ${type} data:`, error);
+                    
+                    // Clear the chart area and show error
+                    const canvasId = type === 'temperature' ? 'tempChart' : 'humidityChart';
+                    const canvas = document.getElementById(canvasId);
+                    const ctx = canvas.getContext('2d');
+                    ctx.clearRect(0, 0, canvas.width, canvas.height);
+                    ctx.font = '16px Arial';
+                    ctx.fillStyle = '#e8e6e3';
+                    ctx.textAlign = 'center';
+                    ctx.fillText(`Error loading data: ${error.message}`, canvas.width / 2, canvas.height / 2);
+                });
         }
 
         function updateCharts() {
@@ -184,37 +659,83 @@
             const points = document.getElementById('points').value;
             const now = new Date();
             const startDate = new Date(now.getTime() - (timeRange * 3600 * 1000)).toISOString();
+            
+            console.log(`Updating charts for timeRange: ${timeRange} hours, points: ${points}`);
+            
+            // Important: Get the time range in milliseconds for chart min/max calculation
+            const timeRangeMs = timeRange * 3600 * 1000;
+            const endDateMs = now.getTime();
+            const startDateMs = endDateMs - timeRangeMs;
 
-            // Build URLs for both charts
+            // Create URLs for API calls
             const tempUrl = new URL('/api/readings/binned', window.location.origin);
             tempUrl.searchParams.set('startDate', startDate);
             tempUrl.searchParams.set('hours', timeRange);
             tempUrl.searchParams.set('points', points);
             tempUrl.searchParams.set('type', 'temperature');
-
+            
             const humidityUrl = new URL('/api/readings/binned', window.location.origin);
             humidityUrl.searchParams.set('startDate', startDate);
             humidityUrl.searchParams.set('hours', timeRange);
             humidityUrl.searchParams.set('points', points);
             humidityUrl.searchParams.set('type', 'humidity');
-
+            
             // Fetch and update both charts
-            fetchAndUpdateChart(tempUrl, 'temperature');
-            fetchAndUpdateChart(humidityUrl, 'humidity');
+            fetchAndUpdateChart(tempUrl, 'temperature', startDateMs, endDateMs);
+            fetchAndUpdateChart(humidityUrl, 'humidity', startDateMs, endDateMs);
         }
 
         // Custom initialization for this page
         function customInit() {
+            console.log('Initializing graph page...');
+            
+            // Set default global options for Chart.js time axis
+            Chart.defaults.scales.time.parser = function(value) {
+                // Parse timestamp values (either number or string)
+                if (typeof value === 'number') {
+                    return value;
+                } else if (typeof value === 'string') {
+                    return new Date(value).valueOf();
+                } else {
+                    return value; // For Date objects
+                }
+            };
+            
             // Initial update
             updateTime();
             setInterval(updateTime, 1000);
-            updateCharts();
+            
+            // Initialize showAverage button text
+            document.getElementById('averageSensors').textContent = showAverage ? 'Show Individual' : 'Show Average';
+            
+            // Fetch available sensors
+            fetchSensors();
 
-            // Add click handler for Update button
-            document.getElementById('updateButton').addEventListener('click', updateCharts);
+            // Add click handlers for buttons
+            document.getElementById('updateButton').addEventListener('click', () => {
+                console.log('Update button clicked');
+                updateCharts();
+            });
+            
+            document.getElementById('selectAllSensors').addEventListener('click', () => {
+                console.log('Select All button clicked');
+                selectAllSensors();
+            });
+            
+            document.getElementById('deselectAllSensors').addEventListener('click', () => {
+                console.log('Deselect All button clicked');
+                deselectAllSensors();
+            });
+            
+            document.getElementById('averageSensors').addEventListener('click', () => {
+                console.log('Average button clicked');
+                toggleAverageMode();
+            });
             
             // Request timezone
             socket.emit('getTimezone');
+            
+            console.log('Graph page initialized');
         }
 
         // Initialize the application

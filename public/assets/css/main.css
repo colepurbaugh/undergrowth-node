@@ -651,3 +651,232 @@ button.add-event {
 .sync-gap-behind {
     color: var(--active-color);
 }
+
+/* ======================================
+   SENSOR MANAGEMENT STYLES
+====================================== */
+.sensor-controls {
+    display: flex;
+    gap: 10px;
+    margin-top: 15px;
+    padding: 10px;
+    background-color: #333;
+    opacity: 0.8;
+    border-radius: 5px;
+}
+
+.sensor-select {
+    flex-grow: 1;
+    padding: 8px;
+    background-color: var(--bg-primary);
+    color: var(--text-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+}
+
+.add-sensor-button {
+    padding: 8px 15px;
+    background-color: var(--success-color);
+    color: #fff;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.add-sensor-button:hover {
+    background-color: #2a9d57;
+}
+
+.sensor-card {
+    display: flex;
+    flex-wrap: wrap;
+    padding: 12px;
+    margin-bottom: 10px;
+    background-color: #333;
+    opacity: 0.8;
+    border-radius: 5px;
+    position: relative;
+}
+
+.sensor-card.disabled {
+    opacity: 0.7;
+}
+
+.sensor-header {
+    width: 100%;
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 8px;
+}
+
+.sensor-title {
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.sensor-toggle {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.sensor-value {
+    display: flex;
+    justify-content: space-between;
+}
+
+.sensor-actions {
+    display: flex;
+    gap: 10px;
+    margin-top: 8px;
+    width: 100%;
+    justify-content: flex-end;
+}
+
+.delete-sensor {
+    padding: 0.5rem 1rem;
+    background-color: var(--error-color);
+    color: var(--text-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 0.25rem;
+    cursor: pointer;
+    font-weight: bold;
+}
+
+.delete-sensor:hover {
+    background-color: #c0110b;
+}
+
+/* Layout for sensor cards */
+#sensors-container {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 15px;
+}
+
+.sensor-card {
+    flex: 1 1 300px;
+    min-width: 250px;
+}
+
+.empty-state {
+    width: 100%;
+    padding: 20px;
+    text-align: center;
+    color: var(--text-secondary);
+    font-style: italic;
+}
+
+@media (max-width: 768px) {
+    .sensor-card {
+        flex: 1 1 100%;
+    }
+}
+
+#add-sensor-card {
+    flex: 1 1 300px;
+    min-width: 250px;
+}
+
+#add-sensor-card .sensor-controls {
+    background-color: transparent;
+    padding: 0;
+    margin-top: 0;
+}
+
+#add-sensor-card .sensor-controls.vertical {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+#add-sensor-card .sensor-select {
+    width: 100%;
+}
+
+.add-sensor-button {
+    padding: 8px 15px;
+    background-color: var(--success-color);
+    color: #fff;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.add-sensor-button:hover {
+    background-color: #2a9d57;
+}
+
+/* ======================================
+   GRAPH PAGE - SENSOR SELECTION STYLES
+====================================== */
+.sensor-selection-panel {
+    margin-bottom: 1rem;
+}
+
+.section-title {
+    font-size: 1.1rem;
+    font-weight: 600;
+    margin-bottom: 0.75rem;
+    color: var(--text-primary);
+}
+
+.sensor-selection-container {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+    margin-bottom: 1rem;
+}
+
+.sensor-checkbox-wrapper {
+    flex: 0 0 200px;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem;
+    background-color: rgba(255, 255, 255, 0.05);
+    border-radius: 0.25rem;
+}
+
+.sensor-checkbox {
+    margin: 0;
+    width: 1.1rem;
+    height: 1.1rem;
+    cursor: pointer;
+}
+
+.sensor-label {
+    color: var(--text-primary);
+    font-size: 0.9rem;
+    cursor: pointer;
+}
+
+.sensor-selection-actions {
+    display: flex;
+    gap: 0.75rem;
+    justify-content: flex-start;
+}
+
+.sensor-button {
+    padding: 0.4rem 0.75rem;
+    background-color: var(--inactive-color);
+    color: var(--text-primary);
+    border: none;
+    border-radius: 0.25rem;
+    cursor: pointer;
+    font-size: 0.85rem;
+}
+
+.sensor-button:hover {
+    background-color: var(--active-color);
+}
+
+.loading-message {
+    color: var(--text-secondary);
+    font-style: italic;
+    width: 100%;
+    text-align: center;
+    padding: 1rem;
+}

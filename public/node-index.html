@@ -117,21 +117,26 @@
 
     <div class="container">
         <h2>Sensors</h2>
-        <div class="info-section">
-            <div class="info-item">
-                <h3>AHT10 Sensor <span id="sensor1Address">0x38</span></h3>
-                <div class="sensor-data">
-                    <div>Temperature: <span id="sensor1Temp">Loading...</span></div>
-                    <div>Humidity: <span id="sensor1Humidity">Loading...</span></div>
+        <div class="info-section" id="sensors-container">
+            <!-- Add New Sensor card fixed at beginning -->
+            <div class="sensor-card" id="add-sensor-card">
+                <div class="sensor-header">
+                    <div class="sensor-title">Add New Sensor</div>
+                </div>
+                <div class="sensor-controls vertical">
+                    <select id="sensorTypeSelect" class="sensor-select">
+                        <option value="" disabled selected>Select sensor type</option>
+                        <option value="0x38-AHT10">0x38-AHT10</option>
+                        <option value="0x39-AHT10">0x39-AHT10</option>
+                        <option value="0x38-AHT20">0x38-AHT20</option>
+                        <option value="0x77-BME688">0x77-BME688</option>
+                        <option value="0x76-BME688">0x76-BME688</option>
+                        <option value="0x28-CC2A33">0x28-CC2A33</option>
+                    </select>
+                    <button id="addSensorButton" class="add-sensor-button">+ Add Sensor</button>
                 </div>
             </div>
-            <div class="info-item">
-                <h3>AHT10 Sensor <span id="sensor2Address">0x39</span></h3>
-                <div class="sensor-data">
-                    <div>Temperature: <span id="sensor2Temp">Loading...</span></div>
-                    <div>Humidity: <span id="sensor2Humidity">Loading...</span></div>
-                </div>
-            </div>
+            <!-- Dynamic sensor content will be loaded here -->
         </div>
     </div>
 
@@ -228,6 +233,8 @@
             port: null,
             subscribedTopics: []
         };
+        let sensors = []; // Store sensor configurations
+        let sensorData = {}; // Store the latest sensor readings
         
         // Define custom handler for initial state data
         function onInitialState(data) {
@@ -278,17 +285,25 @@
                 databaseTimezoneElement.textContent = formatTimezoneDisplay(data.databaseTimezone);
             }
 
+            // Store sensor data for legacy sensors (0x38 and 0x39) to support existing code
             if (data.sensor1) {
-                document.getElementById('sensor1Address').textContent = data.sensor1.address;
-                document.getElementById('sensor1Temp').textContent = data.sensor1.temperature;
-                document.getElementById('sensor1Humidity').textContent = `${data.sensor1.humidity.toFixed(1)}%`;
+                sensorData['0x38'] = {
+                    address: data.sensor1.address,
+                    temperature: data.sensor1.temperature,
+                    humidity: data.sensor1.humidity
+                };
             }
 
             if (data.sensor2) {
-                document.getElementById('sensor2Address').textContent = data.sensor2.address;
-                document.getElementById('sensor2Temp').textContent = data.sensor2.temperature;
-                document.getElementById('sensor2Humidity').textContent = `${data.sensor2.humidity.toFixed(1)}%`;
+                sensorData['0x39'] = {
+                    address: data.sensor2.address,
+                    temperature: data.sensor2.temperature,
+                    humidity: data.sensor2.humidity
+                };
             }
+            
+            // After receiving initial state, request configured sensors
+            socket.emit('getSensors');
         }
         
         // Function to fetch and update sequence data
@@ -490,6 +505,163 @@
             }
         }
 
+        // Sensor management functions
+        function renderSensors() {
+            const container = document.getElementById('sensors-container');
+            
+            // Keep the add sensor card and remove everything else
+            const addSensorCard = document.getElementById('add-sensor-card');
+            container.innerHTML = '';
+            container.appendChild(addSensorCard);
+            
+            if (sensors.length === 0) {
+                container.appendChild(document.createElement('div')).className = 'empty-state';
+                container.lastChild.textContent = 'No sensors configured yet. Add a sensor to get started.';
+                return;
+            }
+            
+            // Sort sensors by ID for consistent ordering
+            sensors.sort((a, b) => a.id - b.id);
+            
+            sensors.forEach(sensor => {
+                // Get sensor data if available
+                const data = sensorData[sensor.address] || {};
+                
+                // Create sensor card
+                const card = document.createElement('div');
+                card.className = `sensor-card ${sensor.enabled ? '' : 'disabled'}`;
+                card.dataset.id = sensor.id;
+                card.dataset.address = sensor.address;
+                
+                // Parse type and address from sensor type field
+                const [address, type] = sensor.address.includes('-') ? 
+                    [sensor.address.split('-')[0], sensor.address.split('-')[1]] : 
+                    [sensor.address, sensor.type];
+                
+                card.innerHTML = `
+                    <div class="sensor-header">
+                        <div class="sensor-title">${type} ${address}</div>
+                        <div class="sensor-toggle">
+                            <span>${sensor.enabled ? 'Enabled' : 'Disabled'}</span>
+                            <label class="switch">
+                                <input type="checkbox" class="toggle-sensor" ${sensor.enabled ? 'checked' : ''}>
+                                <span class="slider"></span>
+                            </label>
+                        </div>
+                    </div>
+                    <div class="sensor-data">
+                        <div class="sensor-value">
+                            <span>Temperature:</span>
+                            <span class="temp-value" data-address="${sensor.address}">
+                                ${data.temperature || 'Waiting...'}
+                            </span>
+                        </div>
+                        <div class="sensor-value">
+                            <span>Humidity:</span>
+                            <span class="humidity-value" data-address="${sensor.address}">
+                                ${data.humidity ? `${data.humidity.toFixed(1)}%` : 'Waiting...'}
+                            </span>
+                        </div>
+                    </div>
+                    <div class="sensor-actions">
+                        <button class="delete-sensor">Remove</button>
+                    </div>
+                `;
+                
+                // Add event listeners
+                const toggleBtn = card.querySelector('.toggle-sensor');
+                if (toggleBtn) {
+                    toggleBtn.addEventListener('change', function() {
+                        toggleSensor(sensor.id, this.checked);
+                    });
+                }
+                
+                const deleteBtn = card.querySelector('.delete-sensor');
+                if (deleteBtn) {
+                    deleteBtn.addEventListener('click', function() {
+                        if (confirm(`Are you sure you want to remove ${type} ${address}?`)) {
+                            deleteSensor(sensor.id);
+                        }
+                    });
+                }
+                
+                container.appendChild(card);
+            });
+        }
+        
+        function addSensor() {
+            const select = document.getElementById('sensorTypeSelect');
+            const sensorTypeValue = select.value;
+            
+            if (!sensorTypeValue) {
+                alert('Please select a sensor type');
+                return;
+            }
+            
+            // Check if this sensor already exists
+            const [address, type] = sensorTypeValue.split('-');
+            const existing = sensors.find(s => s.address === address && s.type === type);
+            
+            if (existing) {
+                alert(`A sensor with address ${address} is already configured`);
+                return;
+            }
+            
+            // Add the sensor via socket
+            socket.emit('addSensor', {
+                address,
+                type,
+                name: `${type} ${address}`
+            });
+            
+            // Reset the select
+            select.value = '';
+        }
+        
+        function toggleSensor(id, enabled) {
+            socket.emit('updateSensor', {
+                id,
+                enabled
+            });
+        }
+        
+        function deleteSensor(id) {
+            socket.emit('deleteSensor', { id });
+        }
+        
+        // Socket event handlers for sensors
+        socket.on('sensorsUpdated', (data) => {
+            sensors = data;
+            renderSensors();
+        });
+        
+        socket.on('sensorAdded', (sensor) => {
+            // Add to local array if not exists
+            if (!sensors.find(s => s.id === sensor.id)) {
+                sensors.push(sensor);
+            }
+            renderSensors();
+        });
+        
+        socket.on('sensorUpdated', (sensor) => {
+            // Update in local array
+            const index = sensors.findIndex(s => s.id === sensor.id);
+            if (index !== -1) {
+                sensors[index] = sensor;
+            }
+            renderSensors();
+        });
+        
+        socket.on('sensorDeleted', (data) => {
+            // Remove from local array
+            sensors = sensors.filter(s => s.id !== data.id);
+            renderSensors();
+        });
+        
+        socket.on('sensorError', (data) => {
+            alert(`Sensor error: ${data.message}`);
+        });
+
         // Custom initialization for this page
         function customInit() {
             // Update clock every second
@@ -522,6 +694,30 @@
             
             // Request timezone
             socket.emit('getTimezone');
+            
+            // Setup "Add Sensor" button
+            function setupAddSensorButton() {
+                const addSensorButton = document.getElementById('addSensorButton');
+                if (addSensorButton) {
+                    // Remove any existing event listeners by cloning and replacing
+                    const newButton = addSensorButton.cloneNode(true);
+                    addSensorButton.parentNode.replaceChild(newButton, addSensorButton);
+                    newButton.addEventListener('click', addSensor);
+                }
+            }
+            
+            // Setup button initially
+            setupAddSensorButton();
+            
+            // Re-setup button after sensors are rendered
+            const originalRenderSensors = renderSensors;
+            renderSensors = function() {
+                originalRenderSensors();
+                setupAddSensorButton();
+            };
+            
+            // Initial load of sensors
+            socket.emit('getSensors');
         }
 
         // Handle timezone updates
@@ -581,15 +777,46 @@
                 databaseTimezoneElement.textContent = formatTimezoneDisplay(data.databaseTimezone);
             }
 
-            // Update sensor 1 information
-            document.getElementById('sensor1Address').textContent = data.sensor1.address;
-            document.getElementById('sensor1Temp').textContent = data.sensor1.temperature;
-            document.getElementById('sensor1Humidity').textContent = `${data.sensor1.humidity.toFixed(1)}%`;
+            // Update sensor data cache
+            if (data.sensor1) {
+                sensorData['0x38'] = {
+                    address: data.sensor1.address,
+                    temperature: data.sensor1.temperature,
+                    humidity: data.sensor1.humidity
+                };
+                
+                // Update UI for this sensor if it exists
+                const tempElements = document.querySelectorAll('.temp-value[data-address="0x38"]');
+                const humidityElements = document.querySelectorAll('.humidity-value[data-address="0x38"]');
+                
+                tempElements.forEach(el => {
+                    el.textContent = data.sensor1.temperature;
+                });
+                
+                humidityElements.forEach(el => {
+                    el.textContent = `${data.sensor1.humidity.toFixed(1)}%`;
+                });
+            }
 
-            // Update sensor 2 information
-            document.getElementById('sensor2Address').textContent = data.sensor2.address;
-            document.getElementById('sensor2Temp').textContent = data.sensor2.temperature;
-            document.getElementById('sensor2Humidity').textContent = `${data.sensor2.humidity.toFixed(1)}%`;
+            if (data.sensor2) {
+                sensorData['0x39'] = {
+                    address: data.sensor2.address,
+                    temperature: data.sensor2.temperature,
+                    humidity: data.sensor2.humidity
+                };
+                
+                // Update UI for this sensor if it exists
+                const tempElements = document.querySelectorAll('.temp-value[data-address="0x39"]');
+                const humidityElements = document.querySelectorAll('.humidity-value[data-address="0x39"]');
+                
+                tempElements.forEach(el => {
+                    el.textContent = data.sensor2.temperature;
+                });
+                
+                humidityElements.forEach(el => {
+                    el.textContent = `${data.sensor2.humidity.toFixed(1)}%`;
+                });
+            }
         });
 
         socket.on('systemState', function(data) {
@@ -637,19 +864,6 @@
 
         socket.on('modeUpdate', function() {
             socket.emit('getSystemState');
-        });
-        
-        // Update sensor readings
-        socket.on('sensor1', (data) => {
-            document.getElementById('sensor1Address').textContent = data.address;
-            document.getElementById('sensor1Temp').textContent = data.temperature;
-            document.getElementById('sensor1Humidity').textContent = data.humidity;
-        });
-        
-        socket.on('sensor2', (data) => {
-            document.getElementById('sensor2Address').textContent = data.address;
-            document.getElementById('sensor2Temp').textContent = data.temperature;
-            document.getElementById('sensor2Humidity').textContent = data.humidity;
         });
 
         // Initialize the application

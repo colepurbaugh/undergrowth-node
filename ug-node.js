@@ -57,7 +57,79 @@ const nodeId = setNodeId();
 // Create a single I2C instance
 const i2c = new I2C();
 
+// Store sensor instances
+const sensors = {};
+
+// Function to initialize a sensor based on its type
+function createSensor(address, type) {
+    // Convert string address to number if needed
+    const addrHex = address.startsWith('0x') ? parseInt(address, 16) : parseInt(address);
+    
+    // Create the appropriate sensor based on type
+    switch(type) {
+        case 'AHT10':
+            return new AHT10(i2c, addrHex);
+        case 'AHT20':
+            return new AHT10(i2c, addrHex); // Using AHT10 driver for now, can be extended
+        // Add other sensor types here as needed
+        default:
+            console.warn(`Unknown sensor type: ${type}`);
+            return null;
+    }
+}
+
+// Function to load configured sensors from database
+function loadSensors() {
+    return new Promise((resolve, reject) => {
+        configDb.all('SELECT * FROM sensor_config WHERE enabled = 1', [], async (err, rows) => {
+            if (err) {
+                console.error('Error loading sensor configurations:', err);
+                reject(err);
+                return;
+            }
+            
+            console.log(`Found ${rows.length} enabled sensors in database`);
+            
+            // Clear existing sensors
+            Object.keys(sensors).forEach(key => {
+                delete sensors[key];
+            });
+            
+            // Create sensor instances for each enabled sensor
+            for (const row of rows) {
+                try {
+                    // If address contains type info (e.g. 0x38-AHT10), parse it
+                    let address = row.address;
+                    let type = row.type;
+                    
+                    if (address.includes('-')) {
+                        const parts = address.split('-');
+                        address = parts[0];
+                        type = parts[1] || type;
+                    }
+                    
+                    const sensor = createSensor(address, type);
+                    if (sensor) {
+                        // Store with the full address as key
+                        sensors[row.address] = {
+                            instance: sensor,
+                            config: row,
+                            lastReading: null
+                        };
+                        console.log(`Initialized sensor ${type} at ${address}`);
+                    }
+                } catch (error) {
+                    console.error(`Error initializing sensor ${row.type} at ${row.address}:`, error);
+                }
+            }
+            
+            resolve(sensors);
+        });
+    });
+}
+
 // Create two sensor instances with different addresses, sharing the same I2C instance
+// These are kept for backward compatibility
 const sensor1 = new AHT10(i2c, 0x38); // First sensor
 const sensor2 = new AHT10(i2c, 0x39); // Second sensor
 
@@ -113,6 +185,7 @@ function loadPwmStates(db) {
 
 // Serve static files from public directory
 app.use(express.static('public'));
+app.use(express.json()); // Add JSON body parser
 
 // Serve node-index.html for root path
 app.get('/', (req, res) => {
@@ -132,6 +205,123 @@ app.get('/graph', (req, res) => {
 // Route for schedule interface
 app.get('/schedule', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'schedule.html'));
+});
+
+// API Endpoint to get sensor configurations
+app.get('/api/sensors', (req, res) => {
+    configDb.all('SELECT * FROM sensor_config ORDER BY created_at ASC', [], (err, rows) => {
+        if (err) {
+            console.error('Error fetching sensors:', err);
+            return res.status(500).json({ error: 'Failed to fetch sensors' });
+        }
+        res.json(rows);
+    });
+});
+
+// API Endpoint to add a new sensor
+app.post('/api/sensors', (req, res) => {
+    const { address, type, name } = req.body;
+    
+    if (!address || !type) {
+        return res.status(400).json({ error: 'Address and type are required' });
+    }
+    
+    configDb.run(
+        'INSERT INTO sensor_config (address, type, name) VALUES (?, ?, ?)',
+        [address, type, name || null],
+        function(err) {
+            if (err) {
+                console.error('Error adding sensor:', err);
+                return res.status(500).json({ error: 'Failed to add sensor' });
+            }
+            
+            const id = this.lastID;
+            res.status(201).json({ 
+                id, 
+                address, 
+                type, 
+                name, 
+                enabled: 1,
+                calibration_offset: 0.0,
+                calibration_scale: 1.0
+            });
+        }
+    );
+});
+
+// API Endpoint to update a sensor
+app.put('/api/sensors/:id', (req, res) => {
+    const { id } = req.params;
+    const { name, enabled, calibration_offset, calibration_scale } = req.body;
+    
+    const updateFields = [];
+    const params = [];
+    
+    if (name !== undefined) {
+        updateFields.push('name = ?');
+        params.push(name);
+    }
+    
+    if (enabled !== undefined) {
+        updateFields.push('enabled = ?');
+        params.push(enabled ? 1 : 0);
+    }
+    
+    if (calibration_offset !== undefined) {
+        updateFields.push('calibration_offset = ?');
+        params.push(calibration_offset);
+    }
+    
+    if (calibration_scale !== undefined) {
+        updateFields.push('calibration_scale = ?');
+        params.push(calibration_scale);
+    }
+    
+    if (updateFields.length === 0) {
+        return res.status(400).json({ error: 'No fields to update' });
+    }
+    
+    updateFields.push('last_updated = CURRENT_TIMESTAMP');
+    params.push(id);
+    
+    const query = `UPDATE sensor_config SET ${updateFields.join(', ')} WHERE id = ?`;
+    
+    configDb.run(query, params, function(err) {
+        if (err) {
+            console.error('Error updating sensor:', err);
+            return res.status(500).json({ error: 'Failed to update sensor' });
+        }
+        
+        if (this.changes === 0) {
+            return res.status(404).json({ error: 'Sensor not found' });
+        }
+        
+        // Get the updated sensor
+        configDb.get('SELECT * FROM sensor_config WHERE id = ?', [id], (err, row) => {
+            if (err) {
+                return res.status(500).json({ error: 'Failed to fetch updated sensor' });
+            }
+            res.json(row);
+        });
+    });
+});
+
+// API Endpoint to delete a sensor
+app.delete('/api/sensors/:id', (req, res) => {
+    const { id } = req.params;
+    
+    configDb.run('DELETE FROM sensor_config WHERE id = ?', [id], function(err) {
+        if (err) {
+            console.error('Error deleting sensor:', err);
+            return res.status(500).json({ error: 'Failed to delete sensor' });
+        }
+        
+        if (this.changes === 0) {
+            return res.status(404).json({ error: 'Sensor not found' });
+        }
+        
+        res.status(204).send();
+    });
 });
 
 // Flag to control database logging
@@ -172,6 +362,20 @@ const configDb = new sqlite3.Database('./database/ug-config.db', (err) => {
             value INTEGER DEFAULT 0,
             enabled INTEGER DEFAULT 0,
             last_modified DATETIME DEFAULT CURRENT_TIMESTAMP
+        )`);
+        
+        // Create sensor_config table for storing sensor configurations
+        configDb.run(`CREATE TABLE IF NOT EXISTS sensor_config (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            address TEXT NOT NULL,
+            type TEXT NOT NULL,
+            name TEXT,
+            enabled INTEGER DEFAULT 1,
+            calibration_offset REAL DEFAULT 0.0,
+            calibration_scale REAL DEFAULT 1.0,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            last_updated DATETIME DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(address)
         )`);
         
         // Create safety_state table
@@ -328,26 +532,69 @@ function getDataBySequenceRange(startSequence, endSequence, limit = 1000) {
 // Initialize sensors and start reading
 async function initAndRead() {
     try {
-        // Initialize both sensors
+        // Initialize legacy sensors (for backward compatibility)
         const [init1, init2] = await Promise.all([
             sensor1.initSensor(),
             sensor2.initSensor()
         ]);
 
         if (!init1 || !init2) {
-            console.error('Failed to initialize one or both sensors');
-            return;
+            console.error('Failed to initialize one or both legacy sensors');
+        }
+
+        // Load configured sensors from database
+        await loadSensors();
+        
+        // Initialize all configured sensors
+        for (const key of Object.keys(sensors)) {
+            const sensorObj = sensors[key];
+            try {
+                const initialized = await sensorObj.instance.initSensor();
+                if (!initialized) {
+                    console.error(`Failed to initialize sensor ${sensorObj.config.type} at address ${sensorObj.config.address}`);
+                }
+            } catch (err) {
+                console.error(`Error initializing sensor ${sensorObj.config.type} at address ${sensorObj.config.address}:`, err);
+            }
         }
         
         // Read sensors every 10 seconds instead of every second
         setInterval(async () => {
             try {
+                // For backward compatibility, always read the legacy sensors
                 const [data1, data2, systemInfo] = await Promise.all([
                     sensor1.readTemperatureAndHumidity(),
                     sensor2.readTemperatureAndHumidity(),
                     SystemInfo.getSystemInfo()
                 ]);
 
+                // Read data from all configured sensors
+                const sensorReadings = {};
+                const sensorReadPromises = [];
+                
+                // Collect all reading promises
+                for (const key of Object.keys(sensors)) {
+                    const sensorObj = sensors[key];
+                    sensorReadPromises.push(
+                        sensorObj.instance.readTemperatureAndHumidity()
+                            .then(data => {
+                                if (data) {
+                                    sensorReadings[key] = data;
+                                    sensors[key].lastReading = data;
+                                }
+                                return data;
+                            })
+                            .catch(err => {
+                                console.error(`Error reading sensor ${sensorObj.config.type} at address ${sensorObj.config.address}:`, err);
+                                return null;
+                            })
+                    );
+                }
+                
+                // Wait for all sensors to be read
+                await Promise.all(sensorReadPromises);
+
+                // Process legacy sensor data (for backward compatibility)
                 if (data1 && data2) {
                     // Get next sequence IDs for the readings
                     try {
@@ -381,36 +628,105 @@ async function initAndRead() {
                             );
                         }
                     } catch (seqErr) {
-                        console.error('Error getting sequence IDs:', seqErr);
+                        console.error('Error getting sequence IDs for legacy sensors:', seqErr);
                     }
+                }
+                
+                // Process readings from configured sensors
+                for (const [address, data] of Object.entries(sensorReadings)) {
+                    try {
+                        const sensorConfig = sensors[address].config;
+                        const sensorId = `sensor_${sensorConfig.id}`;
+                        
+                        // Get sequence IDs
+                        const tempSeqId = await getNextSequenceId();
+                        const humiditySeqId = await getNextSequenceId();
+                        
+                        const timestamp = new Date().toISOString();
+                        
+                        // Store readings in database
+                        if (dataDb) {
+                            // Apply calibration if configured
+                            const tempValue = (data.temperature * (sensorConfig.calibration_scale || 1)) + 
+                                             (sensorConfig.calibration_offset || 0);
+                            
+                            const humidityValue = data.humidity;
+                            
+                            // Store temperature reading
+                            dataDb.run(
+                                'INSERT INTO sensor_readings (timestamp, device_id, type, value, sequence_id) VALUES (?, ?, ?, ?, ?)',
+                                [timestamp, sensorId, 'temperature', tempValue, tempSeqId]
+                            );
+                            
+                            // Store humidity reading
+                            dataDb.run(
+                                'INSERT INTO sensor_readings (timestamp, device_id, type, value, sequence_id) VALUES (?, ?, ?, ?, ?)',
+                                [timestamp, sensorId, 'humidity', humidityValue, humiditySeqId]
+                            );
+                        }
+                    } catch (seqErr) {
+                        console.error(`Error processing readings for sensor ${address}:`, seqErr);
+                    }
+                }
 
-                    // Get database timezone
-                    if (configDb) {
-                        configDb.get('SELECT value FROM timezone WHERE key = ?', ['timezone'], (err, row) => {
-                            const databaseTimezone = err || !row ? 'America/Los_Angeles' : row.value;
-                            
-                            // Send sensor data with both system and database timezone
-                            if (io) {
-                                io.emit('sensorData', {
-                                    system: systemInfo.system,
-                                    databaseTimezone,
-                                    sensor1: {
-                                        ...data1,
-                                        address: '0x38',
-                                        temperature: `${data1.temperature.toFixed(1)}°F (${((data1.temperature - 32) * 5/9).toFixed(1)}°C)`
-                                    },
-                                    sensor2: {
-                                        ...data2,
-                                        address: '0x39',
-                                        temperature: `${data2.temperature.toFixed(1)}°F (${((data2.temperature - 32) * 5/9).toFixed(1)}°C)`
-                                    }
-                                });
+                // Get database timezone
+                if (configDb) {
+                    configDb.get('SELECT value FROM timezone WHERE key = ?', ['timezone'], (err, row) => {
+                        const databaseTimezone = err || !row ? 'America/Los_Angeles' : row.value;
+                        
+                        // Prepare data to send to clients
+                        const sensorDataForClients = {};
+                        
+                        // Add legacy sensors
+                        if (data1) {
+                            sensorDataForClients.sensor1 = {
+                                ...data1,
+                                address: '0x38',
+                                temperature: `${data1.temperature.toFixed(1)}°F (${((data1.temperature - 32) * 5/9).toFixed(1)}°C)`
+                            };
+                        }
+                        
+                        if (data2) {
+                            sensorDataForClients.sensor2 = {
+                                ...data2,
+                                address: '0x39',
+                                temperature: `${data2.temperature.toFixed(1)}°F (${((data2.temperature - 32) * 5/9).toFixed(1)}°C)`
+                            };
+                        }
+                        
+                        // Add all configured sensors
+                        for (const [address, sensorObj] of Object.entries(sensors)) {
+                            const reading = sensorObj.lastReading;
+                            if (reading) {
+                                // Generate a sensor ID
+                                const sensorId = `sensor_${sensorObj.config.id}`;
+                                
+                                // Apply calibration if configured
+                                const tempValue = (reading.temperature * (sensorObj.config.calibration_scale || 1)) + 
+                                                 (sensorObj.config.calibration_offset || 0);
+                                
+                                sensorDataForClients[sensorId] = {
+                                    ...reading,
+                                    address: address,
+                                    temperature: `${tempValue.toFixed(1)}°F (${((tempValue - 32) * 5/9).toFixed(1)}°C)`,
+                                    raw_temperature: tempValue,
+                                    config: sensorObj.config
+                                };
                             }
-                            
-                            // Publish sensor data to MQTT broker
-                            publishSensorData(data1, data2);
-                        });
-                    }
+                        }
+                        
+                        // Send all sensor data with both system and database timezone
+                        if (io) {
+                            io.emit('sensorData', {
+                                system: systemInfo.system,
+                                databaseTimezone,
+                                ...sensorDataForClients
+                            });
+                        }
+                        
+                        // Publish sensor data to MQTT broker
+                        publishSensorData(data1, data2, sensorReadings);
+                    });
                 }
             } catch (error) {
                 console.error('Error reading sensors:', error);
@@ -422,24 +738,53 @@ async function initAndRead() {
 }
 
 // Publish sensor data to MQTT
-function publishSensorData(sensor1Data, sensor2Data) {
+function publishSensorData(sensor1Data, sensor2Data, configuredSensorData = {}) {
     if (!mqttClient || !mqttClient.connected) return;
+    
+    const sensors = {};
+    
+    // Add legacy sensors for backward compatibility
+    if (sensor1Data) {
+        sensors.sensor1 = {
+            address: '0x38',
+            temperature: sensor1Data.temperature,
+            humidity: sensor1Data.humidity
+        };
+    }
+    
+    if (sensor2Data) {
+        sensors.sensor2 = {
+            address: '0x39',
+            temperature: sensor2Data.temperature,
+            humidity: sensor2Data.humidity
+        };
+    }
+    
+    // Add configured sensors
+    for (const [address, sensorObj] of Object.entries(sensors)) {
+        if (configuredSensorData[address]) {
+            const reading = configuredSensorData[address];
+            const config = sensorObj.config || {};
+            
+            // Apply calibration if configured
+            const tempValue = (reading.temperature * (config.calibration_scale || 1)) + 
+                             (config.calibration_offset || 0);
+            
+            sensors[`sensor_${config.id || address}`] = {
+                id: config.id,
+                address: address,
+                type: config.type || 'unknown',
+                name: config.name,
+                temperature: tempValue,
+                humidity: reading.humidity
+            };
+        }
+    }
     
     const data = {
         nodeId,
         timestamp: new Date().toISOString(),
-        sensors: {
-            sensor1: {
-                address: '0x38',
-                temperature: sensor1Data.temperature,
-                humidity: sensor1Data.humidity
-            },
-            sensor2: {
-                address: '0x39',
-                temperature: sensor2Data.temperature,
-                humidity: sensor2Data.humidity
-            }
-        }
+        sensors
     };
     
     mqttClient.publish(`undergrowth/nodes/${nodeId}/sensors`, JSON.stringify(data), { qos: 1 });
@@ -1047,6 +1392,143 @@ io.on('connection', (socket) => {
             console.error('Error setting mode:', error);
         }
     });
+
+    // Handle sensor configuration related events
+    socket.on('getSensors', () => {
+        configDb.all('SELECT * FROM sensor_config ORDER BY created_at ASC', [], (err, rows) => {
+            if (err) {
+                console.error('Error fetching sensors:', err);
+                socket.emit('sensorError', { message: 'Failed to fetch sensors' });
+            } else {
+                socket.emit('sensorsUpdated', rows);
+            }
+        });
+    });
+    
+    socket.on('addSensor', (data) => {
+        const { address, type, name } = data;
+        
+        if (!address || !type) {
+            socket.emit('sensorError', { message: 'Address and type are required' });
+            return;
+        }
+        
+        configDb.run(
+            'INSERT INTO sensor_config (address, type, name) VALUES (?, ?, ?)',
+            [address, type, name || null],
+            function(err) {
+                if (err) {
+                    console.error('Error adding sensor:', err);
+                    socket.emit('sensorError', { message: 'Failed to add sensor' });
+                    return;
+                }
+                
+                const id = this.lastID;
+                const newSensor = { 
+                    id, 
+                    address, 
+                    type, 
+                    name, 
+                    enabled: 1,
+                    calibration_offset: 0.0,
+                    calibration_scale: 1.0
+                };
+                
+                socket.emit('sensorAdded', newSensor);
+                socket.broadcast.emit('sensorAdded', newSensor);
+            }
+        );
+    });
+    
+    socket.on('updateSensor', (data) => {
+        const { id, name, enabled, calibration_offset, calibration_scale } = data;
+        
+        if (!id) {
+            socket.emit('sensorError', { message: 'Sensor ID is required' });
+            return;
+        }
+        
+        const updateFields = [];
+        const params = [];
+        
+        if (name !== undefined) {
+            updateFields.push('name = ?');
+            params.push(name);
+        }
+        
+        if (enabled !== undefined) {
+            updateFields.push('enabled = ?');
+            params.push(enabled ? 1 : 0);
+        }
+        
+        if (calibration_offset !== undefined) {
+            updateFields.push('calibration_offset = ?');
+            params.push(calibration_offset);
+        }
+        
+        if (calibration_scale !== undefined) {
+            updateFields.push('calibration_scale = ?');
+            params.push(calibration_scale);
+        }
+        
+        if (updateFields.length === 0) {
+            socket.emit('sensorError', { message: 'No fields to update' });
+            return;
+        }
+        
+        updateFields.push('last_updated = CURRENT_TIMESTAMP');
+        params.push(id);
+        
+        const query = `UPDATE sensor_config SET ${updateFields.join(', ')} WHERE id = ?`;
+        
+        configDb.run(query, params, function(err) {
+            if (err) {
+                console.error('Error updating sensor:', err);
+                socket.emit('sensorError', { message: 'Failed to update sensor' });
+                return;
+            }
+            
+            if (this.changes === 0) {
+                socket.emit('sensorError', { message: 'Sensor not found' });
+                return;
+            }
+            
+            configDb.get('SELECT * FROM sensor_config WHERE id = ?', [id], (err, row) => {
+                if (err) {
+                    socket.emit('sensorError', { message: 'Failed to fetch updated sensor' });
+                    return;
+                }
+                
+                socket.emit('sensorUpdated', row);
+                socket.broadcast.emit('sensorUpdated', row);
+            });
+        });
+    });
+    
+    socket.on('deleteSensor', (data) => {
+        const { id } = data;
+        
+        if (!id) {
+            socket.emit('sensorError', { message: 'Sensor ID is required' });
+            return;
+        }
+        
+        configDb.run('DELETE FROM sensor_config WHERE id = ?', [id], function(err) {
+            if (err) {
+                console.error('Error deleting sensor:', err);
+                socket.emit('sensorError', { message: 'Failed to delete sensor' });
+                return;
+            }
+            
+            if (this.changes === 0) {
+                socket.emit('sensorError', { message: 'Sensor not found' });
+                return;
+            }
+            
+            socket.emit('sensorDeleted', { id });
+            socket.broadcast.emit('sensorDeleted', { id });
+        });
+    });
 });
 
 // Function to broadcast events to all connected clients
@@ -1067,6 +1549,10 @@ app.get('/api/readings/binned', async (req, res) => {
     const hours = parseInt(req.query.hours, 10);
     const binCount = parseInt(req.query.points, 10);
     const type = req.query.type;
+    const sensors = req.query.sensors ? req.query.sensors.split(',') : null;
+    const showAverage = req.query.average === 'true';
+
+    console.log(`Binned readings request: type=${type}, sensors=${req.query.sensors}, average=${showAverage}`);
 
     // Validate
     if (!startDateParam || !hours || !binCount || !type) {
@@ -1086,52 +1572,151 @@ app.get('/api/readings/binned', async (req, res) => {
     const startIso = new Date(startMs).toISOString();
     const endIso = new Date(endMs).toISOString();
 
+    console.log(`Date range: ${startIso} to ${endIso}`);
+
+    // Build SQL query with optional sensor filter
+    let sql = `
+      SELECT timestamp, device_id, value
+      FROM sensor_readings
+      WHERE type = ?
+        AND timestamp >= ?
+        AND timestamp < ?
+    `;
+    
+    const params = [type, startIso, endIso];
+    
+    // Add sensor filter if provided
+    if (sensors && sensors.length > 0) {
+      // Map numeric IDs to possible device_id values
+      const deviceIdMatches = [];
+      
+      // For each sensor ID, add both the ID itself and 'sensor_ID' format
+      sensors.forEach(id => {
+        if (id === 'legacy1') {
+          deviceIdMatches.push('sensor1');
+        } else if (id === 'legacy2') {
+          deviceIdMatches.push('sensor2');
+        } else {
+          deviceIdMatches.push(`sensor_${id}`);
+        }
+      });
+      
+      if (deviceIdMatches.length > 0) {
+        sql += ` AND device_id IN (${deviceIdMatches.map(() => '?').join(',')})`;
+        params.push(...deviceIdMatches);
+      }
+    }
+    
+    sql += ' ORDER BY timestamp ASC';
+    
+    console.log('SQL Query:', sql);
+    console.log('Params:', params);
+
     // 1) Fetch raw rows from DB
     const rawRows = await new Promise((resolve, reject) => {
-      const sql = `
-        SELECT timestamp, value
-        FROM sensor_readings
-        WHERE type = ?
-          AND timestamp >= ?
-          AND timestamp < ?
-        ORDER BY timestamp ASC
-      `;
-      dataDb.all(sql, [type, startIso, endIso], (err, rows) => {
+      dataDb.all(sql, params, (err, rows) => {
         if (err) return reject(err);
+        console.log(`Retrieved ${rows.length} raw rows from database`);
         resolve(rows);
       });
     });
 
     if (!rawRows || rawRows.length === 0) {
+      console.log('No data found in the specified range');
       return res.json([]); // no data in that range => return empty
     }
 
-    // 2) Create bins
-    const bins = new Array(binCount).fill(null).map(() => ({ sum: 0, count: 0 }));
-    const totalMs = endMs - startMs;
-    const binSizeMs = totalMs / binCount; // ms per bin
-
-    // 3) Distribute each raw row into the correct bin
-    for (const row of rawRows) {
-      const tMs = Date.parse(row.timestamp);
-      const offset = tMs - startMs; // ms since start
-      const index = Math.floor(offset / binSizeMs);
-      if (index >= 0 && index < binCount) {
-        bins[index].sum += row.value;
-        bins[index].count += 1;
+    // Log data summary
+    const sensorCounts = {};
+    rawRows.forEach(row => {
+      if (!sensorCounts[row.device_id]) {
+        sensorCounts[row.device_id] = 0;
       }
-    }
-
-    // 4) Build final output array
-    const result = bins.map((b, i) => {
-      const binStartMs = startMs + (i * binSizeMs);
-      return {
-        timestamp: new Date(binStartMs).toISOString(),
-        value: (b.count === 0) ? null : (b.sum / b.count)
-      };
+      sensorCounts[row.device_id]++;
     });
+    console.log('Data counts by sensor:', sensorCounts);
 
-    res.json(result);
+    // If showing average across all sensors
+    if (showAverage) {
+      // ... existing average code ...
+      // 2) Create bins
+      const bins = new Array(binCount).fill(null).map(() => ({ sum: 0, count: 0 }));
+      const totalMs = endMs - startMs;
+      const binSizeMs = totalMs / binCount; // ms per bin
+
+      // 3) Distribute each raw row into the correct bin
+      for (const row of rawRows) {
+        const tMs = Date.parse(row.timestamp);
+        const offset = tMs - startMs; // ms since start
+        const index = Math.floor(offset / binSizeMs);
+        if (index >= 0 && index < binCount) {
+          bins[index].sum += row.value;
+          bins[index].count += 1;
+        }
+      }
+
+      // 4) Build final output array for average
+      const result = bins.map((b, i) => {
+        const binStartMs = startMs + (i * binSizeMs);
+        return {
+          timestamp: new Date(binStartMs).toISOString(),
+          value: (b.count === 0) ? null : (b.sum / b.count)
+        };
+      });
+
+      console.log(`Returning ${result.length} averaged data points`);
+      res.json(result);
+    } else {
+      // Handle multiple sensors with separate data series
+      // Group by sensor first
+      const sensorData = {};
+      
+      // For each sensor, get all of its readings
+      rawRows.forEach(row => {
+        if (!sensorData[row.device_id]) {
+          sensorData[row.device_id] = [];
+        }
+        sensorData[row.device_id].push(row);
+      });
+      
+      console.log(`Grouped data into ${Object.keys(sensorData).length} sensors`);
+      
+      // Process each sensor's data into bins
+      const result = [];
+      
+      Object.entries(sensorData).forEach(([sensorId, rows]) => {
+        // Create bins for this sensor
+        const bins = new Array(binCount).fill(null).map(() => ({ sum: 0, count: 0 }));
+        const totalMs = endMs - startMs;
+        const binSizeMs = totalMs / binCount;
+        
+        // Distribute this sensor's data into bins
+        for (const row of rows) {
+          const tMs = Date.parse(row.timestamp);
+          const offset = tMs - startMs;
+          const index = Math.floor(offset / binSizeMs);
+          if (index >= 0 && index < binCount) {
+            bins[index].sum += row.value;
+            bins[index].count += 1;
+          }
+        }
+        
+        // Build this sensor's result array
+        bins.forEach((b, i) => {
+          const binStartMs = startMs + (i * binSizeMs);
+          if (b.count > 0) { // Only include bins with actual data
+            result.push({
+              timestamp: new Date(binStartMs).toISOString(),
+              sensorId: sensorId,
+              value: b.sum / b.count
+            });
+          }
+        });
+      });
+      
+      console.log(`Returning ${result.length} data points across all sensors`);
+      res.json(result);
+    }
   } catch (error) {
     console.error('Error in binned readings:', error);
     res.status(500).json({ error: 'Failed to fetch binned readings' });
@@ -1533,8 +2118,42 @@ raspi.init(async () => {
     initPwmPins(); // Initialize PWM pins
     
     console.log('\n------------------Sensor Initialization-----------------');
-    // Initialize sensors
+    // Initialize sensors and start data collection
     await initAndRead();
+    
+    // Add default sensors to config if database is empty
+    configDb.get('SELECT COUNT(*) as count FROM sensor_config', [], (err, row) => {
+        if (err) {
+            console.error('Error checking sensor config:', err);
+            return;
+        }
+        
+        if (row.count === 0) {
+            console.log('No sensors configured, adding default AHT10 sensors');
+            
+            // Add the two default AHT10 sensors
+            configDb.run(
+                'INSERT INTO sensor_config (address, type, name, enabled) VALUES (?, ?, ?, ?)',
+                ['0x38-AHT10', 'AHT10', 'AHT10 Sensor 1', 1],
+                (err) => {
+                    if (err) console.error('Error adding default sensor 1:', err);
+                    else console.log('Added default sensor 1 (0x38-AHT10)');
+                }
+            );
+            
+            configDb.run(
+                'INSERT INTO sensor_config (address, type, name, enabled) VALUES (?, ?, ?, ?)',
+                ['0x39-AHT10', 'AHT10', 'AHT10 Sensor 2', 1],
+                (err) => {
+                    if (err) console.error('Error adding default sensor 2:', err);
+                    else console.log('Added default sensor 2 (0x39-AHT10)');
+                    
+                    // Reload sensors after adding defaults
+                    loadSensors().catch(err => console.error('Error loading sensors after adding defaults:', err));
+                }
+            );
+        }
+    });
     
     console.log('\n------------------MQTT Configuration-----------------');
     // Try to discover and connect to MQTT broker - but don't block startup if it fails
