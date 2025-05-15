@@ -1898,7 +1898,7 @@ async function publishNodeStatus() {
     if (!mqttClient || !mqttClient.connected) return;
     
     try {
-        const [systemInfo, safetyStates, mode, pwmStates] = await Promise.all([
+        const [systemInfo, safetyStates, mode, pwmStates, sequenceRange] = await Promise.all([
             // Get system info
             SystemInfo.getSystemInfo(),
             
@@ -1936,8 +1936,90 @@ async function publishNodeStatus() {
                         resolve(states);
                     }
                 });
-            })
+            }),
+            
+            // Get sequence range
+            getSequenceRange()
         ]);
+        
+        // Get sensor statistics
+        const sensorStats = await new Promise((resolve, reject) => {
+            // Get all sensors from config
+            configDb.all('SELECT * FROM sensor_config', [], async (err, rows) => {
+                if (err) {
+                    reject(err);
+                    return;
+                }
+                
+                const sensors = rows || [];
+                // Add legacy sensors
+                const allSensors = [
+                    ...sensors,
+                    { id: 'legacy1', address: '0x38', type: 'AHT10', name: 'Legacy AHT10 (0x38)' },
+                    { id: 'legacy2', address: '0x39', type: 'AHT10', name: 'Legacy AHT10 (0x39)' }
+                ];
+                
+                // Get stats for each sensor
+                const sensorStats = [];
+                let totalRecordCount = 0;
+                
+                for (const sensor of allSensors) {
+                    // Determine device_id format
+                    let deviceId;
+                    if (sensor.id === 'legacy1') {
+                        deviceId = 'sensor1';
+                    } else if (sensor.id === 'legacy2') {
+                        deviceId = 'sensor2';
+                    } else {
+                        deviceId = `sensor_${sensor.id}`;
+                    }
+                    
+                    // Get temperature record count
+                    const tempCount = await new Promise((resolve, reject) => {
+                        dataDb.get(
+                            'SELECT COUNT(*) as count FROM sensor_readings WHERE device_id = ? AND type = ?',
+                            [deviceId, 'temperature'],
+                            (err, row) => {
+                                if (err) reject(err);
+                                else resolve(row ? row.count : 0);
+                            }
+                        );
+                    });
+                    
+                    // Get humidity record count
+                    const humidityCount = await new Promise((resolve, reject) => {
+                        dataDb.get(
+                            'SELECT COUNT(*) as count FROM sensor_readings WHERE device_id = ? AND type = ?',
+                            [deviceId, 'humidity'],
+                            (err, row) => {
+                                if (err) reject(err);
+                                else resolve(row ? row.count : 0);
+                            }
+                        );
+                    });
+                    
+                    // Calculate total for this sensor
+                    const sensorTotal = tempCount + humidityCount;
+                    totalRecordCount += sensorTotal;
+                    
+                    sensorStats.push({
+                        id: sensor.id,
+                        deviceId: deviceId,
+                        name: sensor.name || `${sensor.type} ${sensor.address}`,
+                        address: sensor.address,
+                        type: sensor.type,
+                        temperatureCount: tempCount,
+                        humidityCount: humidityCount,
+                        totalCount: sensorTotal
+                    });
+                }
+                
+                resolve({
+                    sensors: sensorStats,
+                    totalRecordCount
+                });
+            });
+        });
 
         // Get network info directly to ensure we have the latest IP
         const networkInfo = SystemInfo.getNetworkInfo();
@@ -1955,7 +2037,13 @@ async function publishNodeStatus() {
             },
             safety: safetyStates,
             mode: mode === 0 ? 'automatic' : 'manual',
-            pwm: pwmStates
+            pwm: pwmStates,
+            // Add sequence range and sensor stats information
+            data: {
+                sequenceRange,
+                sensorStats: sensorStats.sensors,
+                totalRecords: sensorStats.totalRecordCount
+            }
         };
         
         console.log('Publishing status:', JSON.stringify(status, null, 2));
@@ -2373,121 +2461,299 @@ function handleHistoryRequest(request) {
 
 // API endpoint for sequence information 
 app.get('/api/sequence-info', async (req, res) => {
-    try {
-        // Get sequence range from database
-        const sequenceRange = await getSequenceRange();
-        
-        // Get first and last timestamps
-        let firstTimestamp = null;
-        let lastTimestamp = null;
-        
-        if (sequenceRange.minSequence > 0) {
-            // Get first record timestamp
-            const firstRecord = await new Promise((resolve, reject) => {
-                dataDb.get(
-                    'SELECT timestamp FROM sensor_readings WHERE sequence_id = ? LIMIT 1',
-                    [sequenceRange.minSequence],
-                    (err, row) => {
-                        if (err) reject(err);
-                        else resolve(row);
-                    }
-                );
-            });
-            
-            if (firstRecord) {
-                firstTimestamp = firstRecord.timestamp;
-            }
-        }
-        
-        if (sequenceRange.maxSequence > 0) {
-            // Get latest record timestamp
-            const lastRecord = await new Promise((resolve, reject) => {
-                dataDb.get(
-                    'SELECT timestamp FROM sensor_readings WHERE sequence_id = ? LIMIT 1',
-                    [sequenceRange.maxSequence],
-                    (err, row) => {
-                        if (err) reject(err);
-                        else resolve(row);
-                    }
-                );
-            });
-            
-            if (lastRecord) {
-                lastTimestamp = lastRecord.timestamp;
-            }
-        }
-        
-        // Get server sync information
-        const serverSync = await new Promise((resolve, reject) => {
-            configDb.get(
-                'SELECT * FROM server_sync ORDER BY last_seen DESC LIMIT 1',
-                [],
-                (err, row) => {
-                    if (err) reject(err);
-                    else resolve(row || null);
-                }
-            );
-        });
-        
-        // Calculate sync gap
-        let syncGap = 0;
-        if (serverSync && sequenceRange.maxSequence > 0) {
-            syncGap = sequenceRange.maxSequence - (serverSync.last_sequence || 0);
-        }
-        
-        // Get server sync status with more details
-        let serverSyncDetails = null;
-        if (serverSync) {
-            // Get the timestamp of the last synced record
-            let lastSyncedTimestamp = null;
-            if (serverSync.last_sequence > 0) {
-                const syncedRecord = await new Promise((resolve, reject) => {
-                    dataDb.get(
-                        'SELECT timestamp FROM sensor_readings WHERE sequence_id = ? LIMIT 1',
-                        [serverSync.last_sequence],
-                        (err, row) => {
-                            if (err) reject(err);
-                            else resolve(row);
-                        }
-                    );
-                });
-                
-                if (syncedRecord) {
-                    lastSyncedTimestamp = syncedRecord.timestamp;
-                }
-            }
-            
-            // Count how many records have been sent to server
-            const sentCount = await new Promise((resolve, reject) => {
-                dataDb.get(
-                    'SELECT COUNT(*) as count FROM sensor_readings WHERE sequence_id <= ?',
-                    [serverSync.last_sequence || 0],
-                    (err, row) => {
-                        if (err) reject(err);
-                        else resolve(row.count || 0);
-                    }
-                );
-            });
-            
-            serverSyncDetails = {
-                ...serverSync,
-                sentCount,
-                lastSyncedTimestamp,
-                syncGap
-            };
-        }
-        
-        // Send response
-        res.json({
-            nodeSequence: {
-                ...sequenceRange,
-                firstTimestamp,
-                lastTimestamp
-            },
-            serverSync: serverSyncDetails || null
-        });
-    } catch (error) {
-        console.error('Error getting sequence info:', error);
-        res.status(500).json({ error: 'Failed to get sequence information' });
+  try {
+    // Get sequence range from database
+    const sequenceRange = await getSequenceRange();
+    
+    // Get first and last timestamps
+    let firstTimestamp = null;
+    let lastTimestamp = null;
+    
+    if (sequenceRange.minSequence > 0) {
+      // Get first record timestamp
+      const firstRecord = await new Promise((resolve, reject) => {
+        dataDb.get(
+          'SELECT timestamp FROM sensor_readings WHERE sequence_id = ? LIMIT 1',
+          [sequenceRange.minSequence],
+          (err, row) => {
+            if (err) reject(err);
+            else resolve(row);
+          }
+        );
+      });
+      
+      if (firstRecord) {
+        firstTimestamp = firstRecord.timestamp;
+      }
     }
+    
+    if (sequenceRange.maxSequence > 0) {
+      // Get latest record timestamp
+      const lastRecord = await new Promise((resolve, reject) => {
+        dataDb.get(
+          'SELECT timestamp FROM sensor_readings WHERE sequence_id = ? LIMIT 1',
+          [sequenceRange.maxSequence],
+          (err, row) => {
+            if (err) reject(err);
+            else resolve(row);
+          }
+        );
+      });
+      
+      if (lastRecord) {
+        lastTimestamp = lastRecord.timestamp;
+      }
+    }
+    
+    // Get server sync information
+    const serverSync = await new Promise((resolve, reject) => {
+      configDb.get(
+        'SELECT * FROM server_sync ORDER BY last_seen DESC LIMIT 1',
+        [],
+        (err, row) => {
+          if (err) reject(err);
+          else resolve(row || null);
+        }
+      );
+    });
+    
+    // Calculate sync gap
+    let syncGap = 0;
+    if (serverSync && sequenceRange.maxSequence > 0) {
+      syncGap = sequenceRange.maxSequence - (serverSync.last_sequence || 0);
+    }
+    
+    // Get server sync status with more details
+    let serverSyncDetails = null;
+    if (serverSync) {
+      // Get the timestamp of the last synced record
+      let lastSyncedTimestamp = null;
+      if (serverSync.last_sequence > 0) {
+        const syncedRecord = await new Promise((resolve, reject) => {
+          dataDb.get(
+            'SELECT timestamp FROM sensor_readings WHERE sequence_id = ? LIMIT 1',
+            [serverSync.last_sequence],
+            (err, row) => {
+              if (err) reject(err);
+              else resolve(row);
+            }
+          );
+        });
+        
+        if (syncedRecord) {
+          lastSyncedTimestamp = syncedRecord.timestamp;
+        }
+      }
+      
+      // Count how many records have been sent to server
+      const sentCount = await new Promise((resolve, reject) => {
+        dataDb.get(
+          'SELECT COUNT(*) as count FROM sensor_readings WHERE sequence_id <= ?',
+          [serverSync.last_sequence || 0],
+          (err, row) => {
+            if (err) reject(err);
+            else resolve(row.count || 0);
+          }
+        );
+      });
+      
+      serverSyncDetails = {
+        ...serverSync,
+        sentCount,
+        lastSyncedTimestamp,
+        syncGap
+      };
+    }
+    
+    // Send response
+    res.json({
+      nodeSequence: {
+        ...sequenceRange,
+        firstTimestamp,
+        lastTimestamp
+      },
+      serverSync: serverSyncDetails || null
+    });
+  } catch (error) {
+    console.error('Error getting sequence info:', error);
+    res.status(500).json({ error: 'Failed to get sequence information' });
+  }
+});
+
+// API endpoint for individual sensor statistics
+app.get('/api/sensor-stats/:sensorId', async (req, res) => {
+  try {
+    const sensorId = req.params.sensorId;
+    
+    // Get sensor details first
+    const sensor = await new Promise((resolve, reject) => {
+      configDb.get('SELECT * FROM sensor_config WHERE id = ?', [sensorId], (err, row) => {
+        if (err) reject(err);
+        else resolve(row);
+      });
+    });
+    
+    if (!sensor) {
+      return res.status(404).json({ error: 'Sensor not found' });
+    }
+    
+    // Convert sensor ID to device_id format for query
+    const deviceId = `sensor_${sensorId}`;
+    
+    // Get total record count
+    const recordCount = await new Promise((resolve, reject) => {
+      dataDb.get(
+        'SELECT COUNT(*) as count FROM sensor_readings WHERE device_id = ?',
+        [deviceId],
+        (err, row) => {
+          if (err) reject(err);
+          else resolve(row ? row.count : 0);
+        }
+      );
+    });
+    
+    // Get first timestamp
+    const firstRecord = await new Promise((resolve, reject) => {
+      dataDb.get(
+        'SELECT timestamp FROM sensor_readings WHERE device_id = ? ORDER BY timestamp ASC LIMIT 1',
+        [deviceId],
+        (err, row) => {
+          if (err) reject(err);
+          else resolve(row);
+        }
+      );
+    });
+    
+    // Get last timestamp
+    const lastRecord = await new Promise((resolve, reject) => {
+      dataDb.get(
+        'SELECT timestamp FROM sensor_readings WHERE device_id = ? ORDER BY timestamp DESC LIMIT 1',
+        [deviceId],
+        (err, row) => {
+          if (err) reject(err);
+          else resolve(row);
+        }
+      );
+    });
+    
+    // Send response
+    res.json({
+      sensorId,
+      address: sensor.address,
+      type: sensor.type,
+      recordCount,
+      firstTimestamp: firstRecord ? firstRecord.timestamp : null,
+      lastTimestamp: lastRecord ? lastRecord.timestamp : null
+    });
+  } catch (error) {
+    console.error(`Error getting sensor stats for sensor ${req.params.sensorId}:`, error);
+    res.status(500).json({ error: 'Failed to get sensor statistics' });
+  }
+});
+
+// New API endpoint for sensor statistics summary
+app.get('/api/sensor-stats/summary', async (req, res) => {
+  try {
+    // Get all sensors from config
+    const sensors = await new Promise((resolve, reject) => {
+      configDb.all('SELECT * FROM sensor_config', [], (err, rows) => {
+        if (err) reject(err);
+        else resolve(rows || []);
+      });
+    });
+    
+    // Add legacy sensors (always include in stats)
+    const allSensors = [
+      ...sensors,
+      { id: 'legacy1', address: '0x38', type: 'AHT10', name: 'Legacy AHT10 (0x38)', deviceId: 'sensor1' },
+      { id: 'legacy2', address: '0x39', type: 'AHT10', name: 'Legacy AHT10 (0x39)', deviceId: 'sensor2' }
+    ];
+    
+    // Log what we're doing for debugging
+    console.log(`Processing statistics for ${allSensors.length} sensors`);
+    
+    // Get stats for each sensor
+    const sensorStats = [];
+    let totalRecordCount = 0;
+    
+    for (const sensor of allSensors) {
+      // Determine device_id format
+      let deviceId;
+      if (sensor.deviceId) {
+        deviceId = sensor.deviceId; // Use predefined deviceId if available (for legacy sensors)
+      } else if (sensor.id === 'legacy1') {
+        deviceId = 'sensor1';
+      } else if (sensor.id === 'legacy2') {
+        deviceId = 'sensor2';
+      } else {
+        deviceId = `sensor_${sensor.id}`;
+      }
+      
+      console.log(`Fetching stats for sensor ${sensor.id} (${sensor.address}) using deviceId: ${deviceId}`);
+      
+      // Get temperature record count
+      const tempCount = await new Promise((resolve, reject) => {
+        dataDb.get(
+          'SELECT COUNT(*) as count FROM sensor_readings WHERE device_id = ? AND type = ?',
+          [deviceId, 'temperature'],
+          (err, row) => {
+            if (err) reject(err);
+            else resolve(row ? row.count : 0);
+          }
+        );
+      });
+      
+      // Get humidity record count
+      const humidityCount = await new Promise((resolve, reject) => {
+        dataDb.get(
+          'SELECT COUNT(*) as count FROM sensor_readings WHERE device_id = ? AND type = ?',
+          [deviceId, 'humidity'],
+          (err, row) => {
+            if (err) reject(err);
+            else resolve(row ? row.count : 0);
+          }
+        );
+      });
+      
+      // Get first timestamp
+      const firstRecord = await new Promise((resolve, reject) => {
+        dataDb.get(
+          'SELECT timestamp FROM sensor_readings WHERE device_id = ? ORDER BY timestamp ASC LIMIT 1',
+          [deviceId],
+          (err, row) => {
+            if (err) reject(err);
+            else resolve(row);
+          }
+        );
+      });
+      
+      // Calculate total for this sensor
+      const sensorTotal = tempCount + humidityCount;
+      totalRecordCount += sensorTotal;
+      
+      console.log(`Sensor ${sensor.id} (${sensor.address}): temp=${tempCount}, humid=${humidityCount}, total=${sensorTotal}, first=${firstRecord?.timestamp || 'none'}`);
+      
+      sensorStats.push({
+        id: sensor.id,
+        deviceId: deviceId,
+        name: sensor.name || `${sensor.type} ${sensor.address}`,
+        address: sensor.address,
+        type: sensor.type,
+        temperatureCount: tempCount,
+        humidityCount: humidityCount,
+        totalCount: sensorTotal,
+        firstTimestamp: firstRecord ? firstRecord.timestamp : null
+      });
+    }
+    
+    // Send response
+    res.json({
+      sensors: sensorStats,
+      totalRecordCount,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('Error getting sensor statistics summary:', error);
+    res.status(500).json({ error: 'Failed to get sensor statistics summary' });
+  }
 }); 

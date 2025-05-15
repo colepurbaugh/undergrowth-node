@@ -880,3 +880,27 @@ button.add-event {
     text-align: center;
     padding: 1rem;
 }
+
+.command-box code {
+    font-family: monospace;
+    color: var(--text-primary);
+    white-space: nowrap;
+}
+
+/* Database statistics display */
+.database-stats {
+    font-family: monospace;
+    background-color: #222;
+    padding: 8px;
+    border-radius: 4px;
+    margin-bottom: 8px;
+}
+
+.database-stats div {
+    margin-bottom: 4px;
+}
+
+.database-stats span {
+    font-weight: bold;
+    color: var(--success-color);
+}
