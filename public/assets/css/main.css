@@ -73,6 +73,16 @@ h2, h3 {
     margin-bottom: 0.5rem;
 }
 
+/* Standardize spacing for all section headers */
+.header-row {
+    margin-top: 30px;
+    margin-bottom: 20px;
+}
+
+.header-row:first-child {
+    margin-top: 0;
+}
+
 .header-row h2, .header-title {
     margin-bottom: 0;
     font-size: 1.5rem;
@@ -269,6 +279,11 @@ input:checked + .slider:before {
     gap: 0.5rem;
 }
 
+/* PWM toggle width adjustment */
+.pwm-toggle {
+    width: auto;
+}
+
 /* Mode toggle styles - consistent across pages */
 .switch.pwm-mode-toggle input:not(:checked) + .slider, 
 .pwm-mode-toggle input:not(:checked) + .pwm-mode-slider {
@@ -325,6 +340,7 @@ input:checked + .slider:before {
     font-family: monospace;
     font-size: 1.2rem;
     color: var(--text-primary);
+    margin-right: 15px;
 }
 
 .clock-display {
@@ -463,6 +479,10 @@ input:checked + .slider:before {
     background-color: var(--active-color) !important;
 }
 
+#eventList {
+    margin-bottom: 30px;
+}
+
 .event-gpio {
     font-family: monospace;
     font-size: 1.2rem;
@@ -500,6 +520,8 @@ button.delete {
     margin-left: auto;
     background-color: var(--error-color);
     padding: 0.4rem 0.75rem;
+    border: none;
+    width: 62px;
 }
 
 .event-enabled {
@@ -571,11 +593,28 @@ button.add-event {
 
 /* Right-justify set buttons and enable sliders in pwm.html */
 .pwm-control .pwm-set {
-    margin-left: auto;
+    margin-left: 0;
 }
 
 .pwm-control .switch {
-    margin-left: 0.5rem;
+    margin-left: auto;
+    margin-right: 0.5rem;
+}
+
+/* Style for Set buttons to match Delete buttons */
+.pwm-set {
+    background-color: var(--success-color);
+    color: white;
+    border: none;
+    border-radius: 4px;
+    padding: 0.4rem 0.75rem;
+    cursor: pointer;
+    font-size: 14px;
+    width: 62px;
+}
+
+.pwm-set:hover {
+    background-color: #45a049;
 }
 
 /* ======================================

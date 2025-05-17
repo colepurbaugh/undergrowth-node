@@ -13,79 +13,115 @@
 </head>
 <body class="normal-state" style="background-image: url('/assets/backgrounds/undergrowth_logo.png') !important; background-repeat: no-repeat !important; background-position: top center !important; background-size: 90vh auto !important; background-attachment: fixed !important;">
     <div class="container">
-        <!-- Header with title and mode toggle -->
+        <!-- Header with title, clock, mode toggle, and emergency stop -->
         <div class="header-row">
-            <h2 class="text-xl font-semibold mb-4 text-[#e8e6e3]">Manual PWM Control</h2>
+            <h2 class="header-title">PWM Control</h2>
+            <div class="clock" id="clock">00:00:00</div>
             <div class="toggle-container">
                 <span class="mode-label">manual</span>
-                <label class="switch pwm-mode-toggle">
+                <label class="toggle pwm-mode-toggle">
                     <input type="checkbox" id="modeToggle">
                     <span class="slider pwm-mode-slider"></span>
                 </label>
                 <span class="mode-label">automatic</span>
-                <button id="emergencyButton" class="emergency-button">Emergency Stop</button>
+                <button class="emergency-button" id="emergencyButton">Emergency Stop</button>
             </div>
+        </div>
+
+        <!-- ============= SCHEDULE SECTION ============= -->
+        
+        <!-- Add New Event Form -->
+        <div class="event-control">
+            <span class="gpio-title">GPIO:</span>
+            <select id="gpio">
+                <option value="12">12</option>
+                <option value="13">13</option>
+                <option value="18">18</option>
+                <option value="19">19</option>
+            </select>
+            <span class="gpio-title">Time:</span>
+            <input type="text" id="triggerTime" pattern="[0-9]{2}:[0-9]{2}:[0-9]{2}" placeholder="HH:MM:SS">
+            <span class="gpio-title">PWM:</span>
+            <input type="number" id="pwmValue" min="0" max="1023" value="0">
+            <span class="pwm-value">/1024</span>
+            <button class="add-event" onclick="addEvent()">Add Event</button>
+        </div>
+
+        <!-- Active Events List -->
+        <div class="header-row">
+            <h2 class="text-xl font-semibold mb-4 text-[#e8e6e3]">Active Events</h2>
+        </div>
+        <div id="eventList">
+            <!-- Events will be dynamically populated here -->
+        </div>
+
+        <!-- ============= MANUAL PWM CONTROL SECTION ============= -->
+        <div class="header-row">
+            <h2 class="text-xl font-semibold mb-4 text-[#e8e6e3]">Manual PWM Control</h2>
         </div>
 
         <div class="pwm-control">
             <span class="gpio-title gpio-title-12">GPIO12</span>
-            <input type="number" class="pwm-input" data-pin="12" min="0" max="1023" value="0" onchange="setPWM(12, this.value)">
+            <input type="number" class="pwm-input" data-pin="12" min="0" max="1023" value="0">
             <span class="pwm-value" data-pin="12"></span>
             <span class="pwm-max">/1024</span>
             <span class="pwm-percentage" data-pin="12">0%</span>
-            <button class="pwm-set" onclick="setPWM(12, document.querySelector('.pwm-input[data-pin=\'12\']').value)">Set</button>
-            <label class="switch pwm-toggle">
+            <label class="switch">
                 <input type="checkbox" class="pwm-toggle" data-pin="12" onchange="togglePWM(12, this.checked)">
                 <span class="slider"></span>
             </label>
+            <button class="pwm-set" onclick="setPWM(12, document.querySelector('.pwm-input[data-pin=\'12\']').value)">Set</button>
         </div>
 
         <div class="pwm-control">
             <span class="gpio-title gpio-title-13">GPIO13</span>
-            <input type="number" class="pwm-input" data-pin="13" min="0" max="1023" value="0" onchange="setPWM(13, this.value)">
+            <input type="number" class="pwm-input" data-pin="13" min="0" max="1023" value="0">
             <span class="pwm-value" data-pin="13"></span>
             <span class="pwm-max">/1024</span>
             <span class="pwm-percentage" data-pin="13">0%</span>
-            <button class="pwm-set" onclick="setPWM(13, document.querySelector('.pwm-input[data-pin=\'13\']').value)">Set</button>
-            <label class="switch pwm-toggle">
+            <label class="switch">
                 <input type="checkbox" class="pwm-toggle" data-pin="13" onchange="togglePWM(13, this.checked)">
                 <span class="slider"></span>
             </label>
+            <button class="pwm-set" onclick="setPWM(13, document.querySelector('.pwm-input[data-pin=\'13\']').value)">Set</button>
         </div>
 
         <div class="pwm-control">
             <span class="gpio-title gpio-title-18">GPIO18</span>
-            <input type="number" class="pwm-input" data-pin="18" min="0" max="1023" value="0" onchange="setPWM(18, this.value)">
+            <input type="number" class="pwm-input" data-pin="18" min="0" max="1023" value="0">
             <span class="pwm-value" data-pin="18"></span>
             <span class="pwm-max">/1024</span>
             <span class="pwm-percentage" data-pin="18">0%</span>
-            <button class="pwm-set" onclick="setPWM(18, document.querySelector('.pwm-input[data-pin=\'18\']').value)">Set</button>
-            <label class="switch pwm-toggle">
+            <label class="switch">
                 <input type="checkbox" class="pwm-toggle" data-pin="18" onchange="togglePWM(18, this.checked)">
                 <span class="slider"></span>
             </label>
+            <button class="pwm-set" onclick="setPWM(18, document.querySelector('.pwm-input[data-pin=\'18\']').value)">Set</button>
         </div>
 
         <div class="pwm-control">
             <span class="gpio-title gpio-title-19">GPIO19</span>
-            <input type="number" class="pwm-input" data-pin="19" min="0" max="1023" value="0" onchange="setPWM(19, this.value)">
+            <input type="number" class="pwm-input" data-pin="19" min="0" max="1023" value="0">
             <span class="pwm-value" data-pin="19"></span>
             <span class="pwm-max">/1024</span>
             <span class="pwm-percentage" data-pin="19">0%</span>
-            <button class="pwm-set" onclick="setPWM(19, document.querySelector('.pwm-input[data-pin=\'19\']').value)">Set</button>
-            <label class="switch pwm-toggle">
+            <label class="switch">
                 <input type="checkbox" class="pwm-toggle" data-pin="19" onchange="togglePWM(19, this.checked)">
                 <span class="slider"></span>
             </label>
+            <button class="pwm-set" onclick="setPWM(19, document.querySelector('.pwm-input[data-pin=\'19\']').value)">Set</button>
         </div>
     </div>
 
     <script src="/socket.io/socket.io.js"></script>
     <script>
         const socket = io();
-        let currentPWMState = {};
+        let currentTimezone = 'America/Los_Angeles'; // Default, will be updated from server
         let currentMode = 1; // Default to manual mode (1)
-
+        let currentPWMState = {}; // Store PWM state
+        
+        // ==== SHARED FUNCTIONALITY ====
+        
         // Define custom handler for initial state data
         function onInitialState(data) {
             if (data) {
@@ -108,6 +144,11 @@
                     }
                     updatePWMUI();
                 }
+                
+                // Update the UI if there's event data
+                if (data.events) {
+                    updateEventDisplay(data.events);
+                }
             }
         }
 
@@ -126,8 +167,357 @@
                 currentPWMState = data.pwmStates;
                 updatePWMUI();
             }
+            
+            // Update UI if there's event data
+            updateUI(data);
         });
 
+        // Handle mode updates
+        socket.on('modeUpdate', (data) => {
+            console.log('Received mode update:', data);
+            currentMode = data.mode;
+            
+            // Update mode toggle UI
+            const modeToggle = document.getElementById('modeToggle');
+            if (modeToggle && data.mode !== undefined) {
+                modeToggle.checked = data.mode === 0; // 0 is automatic, 1 is manual
+            }
+        });
+
+        // Handle timezone updates
+        socket.on('timezoneUpdate', (data) => {
+            const { timezone } = data;
+            currentTimezone = timezone;
+            updateClock();
+        });
+        
+        // ==== SCHEDULE FUNCTIONALITY ====
+        
+        // Clock and timezone handling
+        function updateClock() {
+            const now = new Date();
+            const formatter = new Intl.DateTimeFormat('en-US', {
+                timeZone: currentTimezone,
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit',
+                hour12: false
+            });
+            const timeString = formatter.format(now);
+            const timezoneAbbr = new Intl.DateTimeFormat('en-US', {
+                timeZone: currentTimezone,
+                timeZoneName: 'short'
+            }).formatToParts(now).find(part => part.type === 'timeZoneName').value;
+            
+            const clockElement = document.getElementById('clock');
+            if (clockElement) {
+                clockElement.textContent = `${timeString} (${timezoneAbbr})`;
+            }
+        }
+
+        // Countdown timer functionality
+        function updateCountdown(index, triggerTime) {
+            const countdownElement = document.getElementById(`countdown-${index}`);
+            if (!countdownElement) return;
+
+            const now = new Date();
+            const [hours, minutes, seconds] = triggerTime.split(':').map(Number);
+            const target = new Date(now);
+            target.setHours(hours, minutes, seconds);
+
+            if (target < now) {
+                target.setDate(target.getDate() + 1);
+            }
+
+            const diff = target - now;
+            const h = Math.floor(diff / 3600000);
+            const m = Math.floor((diff % 3600000) / 60000);
+            const s = Math.floor((diff % 60000) / 1000);
+
+            countdownElement.textContent = `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+        }
+
+        function updateAllCountdowns() {
+            const events = document.querySelectorAll('.event-item');
+            const now = new Date();
+            const currentTime = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds();
+
+            // Find active events for each GPIO, only considering enabled events
+            const activeEvents = {};
+            events.forEach(event => {
+                const time = event.querySelector('.event-time').textContent;
+                const [hours, minutes, seconds] = time.split(':').map(Number);
+                const eventTime = hours * 3600 + minutes * 60 + seconds;
+                const gpio = event.querySelector('.event-gpio').textContent.replace('GPIO', '');
+                const isEnabled = event.querySelector('.event-enabled input').checked;
+                
+                if (!isEnabled) return; // Skip disabled events
+                
+                if (!activeEvents[gpio] || 
+                    (eventTime <= currentTime && eventTime > (activeEvents[gpio].time || -1)) ||
+                    (eventTime > currentTime && eventTime < (activeEvents[gpio].time || Infinity))) {
+                    activeEvents[gpio] = {
+                        time: eventTime,
+                        event: event
+                    };
+                }
+            });
+
+            // Update active states
+            events.forEach(event => {
+                const gpio = event.querySelector('.event-gpio').textContent.replace('GPIO', '');
+                const isActive = activeEvents[gpio] && activeEvents[gpio].event === event;
+                event.classList.toggle('active', isActive);
+            });
+
+            // Update countdowns
+            events.forEach(event => {
+                const index = event.dataset.index;
+                const time = event.querySelector('.event-time').textContent;
+                updateCountdown(index, time);
+            });
+        }
+        
+        // Update countdowns every second
+        setInterval(updateAllCountdowns, 1000);
+        
+        // Handle events update
+        socket.on('eventsUpdated', (events) => {
+            updateEventDisplay(events);
+        });
+
+        // Event handling functions
+        function validateTime(timeStr) {
+            // Check format
+            if (!/^\d{2}:\d{2}:\d{2}$/.test(timeStr)) {
+                alert('Time must be in HH:MM:SS format');
+                return false;
+            }
+
+            const [hours, minutes, seconds] = timeStr.split(':').map(Number);
+
+            // Check ranges
+            if (hours < 0 || hours > 23) {
+                alert('Hours must be between 00 and 23');
+                return false;
+            }
+            if (minutes < 0 || minutes > 59) {
+                alert('Minutes must be between 00 and 59');
+                return false;
+            }
+            if (seconds < 0 || seconds > 59) {
+                alert('Seconds must be between 00 and 59');
+                return false;
+            }
+
+            return true;
+        }
+
+        function validatePwm(pwm) {
+            const pwmNum = Number(pwm);
+            if (isNaN(pwmNum) || pwmNum < 0 || pwmNum > 1023) {
+                alert('PWM value must be between 0 and 1023');
+                return false;
+            }
+            return true;
+        }
+
+        // Convert local time string (HH:MM:SS) to UTC time string (HH:MM:SS)
+        function convertLocalToUTC(timeStr) {
+            // Parse the time string
+            const [hours, minutes, seconds] = timeStr.split(':').map(Number);
+            
+            // Create a Date object for today with the specified time in the database timezone
+            const now = new Date();
+            const localDate = new Date(
+                now.getFullYear(), 
+                now.getMonth(), 
+                now.getDate(), 
+                hours, 
+                minutes, 
+                seconds
+            );
+            
+            // Get the UTC hours, minutes, seconds
+            const utcHours = localDate.getUTCHours();
+            const utcMinutes = localDate.getUTCMinutes();
+            const utcSeconds = localDate.getUTCSeconds();
+            
+            // Format as HH:MM:SS
+            return `${utcHours.toString().padStart(2, '0')}:${utcMinutes.toString().padStart(2, '0')}:${utcSeconds.toString().padStart(2, '0')}`;
+        }
+
+        // Convert UTC time string (HH:MM:SS) to local time string (HH:MM:SS) in database timezone
+        function convertUTCToLocal(timeStr) {
+            // Parse the time string
+            const [hours, minutes, seconds] = timeStr.split(':').map(Number);
+            
+            // Create a Date object for today at the UTC time
+            const now = new Date();
+            const utcDate = new Date(Date.UTC(
+                now.getUTCFullYear(),
+                now.getUTCMonth(),
+                now.getUTCDate(),
+                hours,
+                minutes,
+                seconds
+            ));
+            
+            // Format the date to the database timezone
+            const formatter = new Intl.DateTimeFormat('en-US', {
+                timeZone: currentTimezone,
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit',
+                hour12: false
+            });
+            
+            return formatter.format(utcDate);
+        }
+
+        function addEvent() {
+            const gpio = document.getElementById('gpio').value;
+            const localTime = document.getElementById('triggerTime').value;
+            const pwm = document.getElementById('pwmValue').value;
+            
+            if (!localTime) {
+                alert('Please enter a time');
+                return;
+            }
+            
+            if (!validateTime(localTime)) {
+                return;
+            }
+
+            if (!validatePwm(pwm)) {
+                return;
+            }
+
+            // Convert the local time to UTC for storage
+            const utcTime = convertLocalToUTC(localTime);
+
+            socket.emit('addEvent', { 
+                gpio: parseInt(gpio), 
+                time: utcTime, // Send UTC time to server
+                pwm_value: parseInt(pwm), 
+                enabled: 1 
+            });
+        }
+
+        function updateEventDisplay(events) {
+            const eventList = document.getElementById('eventList');
+            eventList.innerHTML = '';
+            
+            // Get current time in both local and UTC for different purposes
+            const now = new Date();
+            // For display sorting
+            const currentTimeSeconds = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds();
+            // For active event detection (to match server logic)
+            const currentUTCTimeSeconds = now.getUTCHours() * 3600 + now.getUTCMinutes() * 60 + now.getUTCSeconds();
+            
+            // Convert all UTC times to local times first for sorting and display
+            const eventsWithLocalTime = events.map(event => {
+                const localTimeStr = convertUTCToLocal(event.time);
+                const [localHours, localMinutes, localSeconds] = localTimeStr.split(':').map(Number);
+                const localTimeSeconds = localHours * 3600 + localMinutes * 60 + localSeconds;
+                
+                // Also keep UTC time information for active event detection
+                const [utcHours, utcMinutes, utcSeconds] = event.time.split(':').map(Number);
+                const utcTimeSeconds = utcHours * 3600 + utcMinutes * 60 + utcSeconds;
+                
+                return {
+                    ...event,
+                    localTimeStr,
+                    localTimeSeconds,
+                    utcTimeSeconds
+                };
+            });
+            
+            // Sort events by local time for display
+            eventsWithLocalTime.sort((a, b) => a.localTimeSeconds - b.localTimeSeconds);
+            
+            // Find active events for each GPIO using UTC time (to match server logic)
+            const activeEvents = {};
+            eventsWithLocalTime.forEach(event => {
+                if (!event.enabled) return; // Skip disabled events
+                
+                const gpio = event.gpio;
+                const eventTime = event.utcTimeSeconds;
+                
+                if (!activeEvents[gpio] || 
+                    (eventTime <= currentUTCTimeSeconds && eventTime > (activeEvents[gpio].time || -1)) ||
+                    (eventTime > currentUTCTimeSeconds && 
+                     (!activeEvents[gpio].futureEvent || eventTime < activeEvents[gpio].time))) {
+                    
+                    activeEvents[gpio] = {
+                        time: eventTime,
+                        event: event,
+                        futureEvent: eventTime > currentUTCTimeSeconds
+                    };
+                }
+            });
+
+            // Create event items
+            eventsWithLocalTime.forEach(event => {
+                const eventDiv = document.createElement('div');
+                eventDiv.className = 'event-item';
+                eventDiv.dataset.index = event.id;
+                eventDiv.dataset.utcTime = event.time; // Store original UTC time
+
+                // Check if this is an active event
+                const isActive = activeEvents[event.gpio] && activeEvents[event.gpio].event.id === event.id;
+                if (isActive) {
+                    eventDiv.classList.add('active');
+                }
+
+                const percentage = Math.round((event.pwm_value / 1024) * 100);
+                eventDiv.innerHTML = `
+                    <span class="event-gpio gpio-${event.gpio}">GPIO${event.gpio}</span>
+                    <span class="event-time">${event.localTimeStr}</span>
+                    <span class="event-pwm">${event.pwm_value}/1024 ${percentage}%</span>
+                    <span class="countdown" id="countdown-${event.id}"></span>
+                    <label class="toggle event-enabled">
+                        <input type="checkbox" ${event.enabled ? 'checked' : ''} 
+                               onchange="toggleEvent(${event.id}, this.checked)">
+                        <span class="slider"></span>
+                    </label>
+                    <button class="delete" onclick="deleteEvent(${event.id})">Delete</button>
+                `;
+
+                eventList.appendChild(eventDiv);
+                updateCountdown(event.id, event.localTimeStr);
+            });
+            
+            // Add timezone indicator to the event list header
+            const headerRow = document.querySelector('.header-row:nth-child(3)');
+            if (headerRow) {
+                const timezoneAbbr = new Intl.DateTimeFormat('en-US', {
+                    timeZone: currentTimezone,
+                    timeZoneName: 'short'
+                }).formatToParts(new Date()).find(part => part.type === 'timeZoneName').value;
+                
+                headerRow.querySelector('h2').textContent = `Active Events (${timezoneAbbr})`;
+            }
+        }
+
+        function deleteEvent(id) {
+            if (confirm('Are you sure you want to delete this event?')) {
+                socket.emit('deleteEvent', { id });
+            }
+        }
+
+        function toggleEvent(id, enabled) {
+            socket.emit('toggleEvent', { id, enabled });
+        }
+
+        function updateUI(data) {
+            if (data.events) {
+                updateEventDisplay(data.events);
+            }
+        }
+        
+        // ==== MANUAL PWM FUNCTIONALITY ====
+        
         // Handle PWM state updates
         socket.on('pwmStateUpdate', (data) => {
             console.log('Received PWM state update:', data);
@@ -138,18 +528,7 @@
                 updatePWMUI();
             }
         });
-
-        // Handle mode updates
-        socket.on('modeUpdate', (data) => {
-            console.log('Received mode update:', data);
-            // Update mode toggle
-            const modeToggle = document.getElementById('modeToggle');
-            if (modeToggle) {
-                modeToggle.checked = data.mode === 0; // 0 is automatic
-                currentMode = data.mode;
-            }
-        });
-
+        
         // Update UI with current PWM state
         function updatePWMUI() {
             Object.keys(currentPWMState).forEach(pin => {
@@ -228,24 +607,32 @@
         socket.on('pwmError', (data) => {
             console.log('Received pwmError:', data);
             const { pin, message, blocked } = data;
-            const input = document.getElementById(`pwm${pin}`);
-            const errorDiv = document.getElementById(`error${pin}`);
-            
-            if (errorDiv) {
-                errorDiv.textContent = message;
-                errorDiv.style.display = 'block';
-                if (blocked) {
-                    input.style.borderColor = 'red';
-                    setTimeout(() => {
-                        input.style.borderColor = '';
-                        errorDiv.style.display = 'none';
-                    }, 2000);
-                }
-            }
+            alert(`PWM Error (GPIO${pin}): ${message}`);
         });
         
+        // Custom initialization for this page
+        function customInit() {
+            // Initial clock update
+            updateClock();
+            setInterval(updateClock, 1000);
+            
+            // Request timezone
+            socket.emit('getTimezone');
+            
+            // Request events from server
+            socket.emit('getEvents');
+            
+            // Set up listener for mode toggle
+            const modeToggle = document.getElementById('modeToggle');
+            if (modeToggle) {
+                modeToggle.addEventListener('change', function() {
+                    socket.emit('setMode', { automatic: this.checked });
+                });
+            }
+        }
+        
         // Initialize the application
-        initializeApp(socket);
+        initializeApp(socket, customInit);
     </script>
 </body>
 </html> 

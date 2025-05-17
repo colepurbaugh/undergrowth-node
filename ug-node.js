@@ -3,14 +3,13 @@ const { Server } = require('socket.io');
 const http = require('http');
 const raspi = require('raspi');
 const { I2C } = require('raspi-i2c');
-const AHT10 = require('./public/assets/js/aht10');
+const AHT10 = require('./aht10');
 const SystemInfo = require('./systemInfo');
 const Gpio = require('pigpio').Gpio;
 const path = require('path');
 const sqlite3 = require('sqlite3').verbose();
-const mqtt = require('mqtt');
 const os = require('os');
-const { Bonjour } = require('bonjour-service');
+const MQTTController = require('./mqtt');
 
 console.log('\n============ Startup Initiated ============');
 
@@ -24,21 +23,7 @@ const io = new Server(server);
 // Initialize system info
 const systemInfo = new SystemInfo();
 
-// MQTT state variables
-let mqttClient = null;
-let brokerDiscoveryActive = false;
-let brokerRetryTimeout = null;
-let mqttState = {
-    brokerAddress: null,
-    brokerPort: null,
-    connectionStatus: 'disconnected',
-    lastConnectionTime: null,
-    connectionDuration: 0,
-    reconnectionAttempts: 0,
-    lastMessageTime: null,
-    topicsSubscribed: []
-};
-
+// Replace all MQTT state variables with a single controller instance
 // Function to set node ID based on MAC address
 function setNodeId() {
     const networkInfo = SystemInfo.getNetworkInfo();
@@ -53,6 +38,9 @@ function setNodeId() {
 
 // Set node ID
 const nodeId = setNodeId();
+
+// Initialize MQTT controller
+const mqttController = new MQTTController(nodeId);
 
 // Create a single I2C instance
 const i2c = new I2C();
@@ -178,7 +166,105 @@ function loadPwmStates(db) {
                 pwmPins[pin].enabled = row.enabled;
                 pwmPins[pin].normal_enable = row.enabled;
                 console.log(`Loaded PWM state for GPIO${pin}: value=${row.value}, enabled=${row.enabled}`);
+                
+                // Apply PWM values to hardware immediately if enabled
+                if (row.enabled === 1 && pwmEnabled) {
+                    // Database stores values 0-1023, but pigpio expects 0-255
+                    // Scale from database range to hardware range
+                    const dbValue = row.value; // 0-1023
+                    const hardwareValue = Math.floor((dbValue / 1023) * 255); // 0-255
+                    
+                    console.log(`Setting initial PWM for GPIO${pin}: ${dbValue}/1023 -> ${hardwareValue}/255 (${Math.round((dbValue / 1023) * 100)}%)`);
+                    
+                    try {
+                        pwmPins[pin].pwmWrite(hardwareValue);
+                        pwmPins[pin]._dbValue = dbValue;
+                    } catch (e) {
+                        console.error(`Error setting initial PWM for GPIO${pin}:`, e.message);
+                    }
+                }
             }
+        });
+    });
+}
+
+// Add a new function to manually apply PWM states from database
+function applyPwmStatesFromDb() {
+    console.log('Manually applying PWM states from database...');
+    
+    // Get current safety states
+    configDb.all('SELECT key, value FROM safety_state', [], (err, safetyRows) => {
+        if (err) {
+            console.error('Error getting safety state:', err);
+            return;
+        }
+        
+        const safetyStates = safetyRows.reduce((acc, row) => {
+            acc[row.key] = row.value;
+            return acc;
+        }, {});
+        
+        // Check if system is in a safe state
+        const isEmergencyStop = safetyStates.emergency_stop === 1;
+        const isNormalEnable = safetyStates.normal_enable === 1;
+        
+        if (isEmergencyStop || !isNormalEnable) {
+            console.log('System not in safe state, PWM values will not be applied');
+            return;
+        }
+        
+        // Get current mode
+        configDb.get('SELECT value FROM system_state WHERE key = ?', ['mode'], (err, modeRow) => {
+            if (err) {
+                console.error('Error getting mode:', err);
+                return;
+            }
+            
+            const mode = modeRow ? modeRow.value : 1; // Default to manual mode
+            console.log(`Current mode: ${mode === 0 ? 'automatic' : 'manual'} (${mode})`);
+            
+            // Get PWM states based on mode
+            const statesTable = mode === 0 ? 'auto_pwm_states' : 'pwm_states';
+            
+            configDb.all(`SELECT pin, value, enabled FROM ${statesTable}`, [], (err, rows) => {
+                if (err) {
+                    console.error(`Error loading ${statesTable}:`, err);
+                    return;
+                }
+                
+                console.log(`Found ${rows.length} PWM states in ${statesTable}`);
+                
+                // Apply PWM values to hardware
+                rows.forEach(row => {
+                    const pin = row.pin;
+                    if (pwmPins[pin] && pwmEnabled) {
+                        if (row.enabled === 1) {
+                            // Database stores values 0-1023, but pigpio expects 0-255
+                            // Scale from database range to hardware range
+                            const dbValue = row.value; // 0-1023
+                            const hardwareValue = Math.floor((dbValue / 1023) * 255); // 0-255
+                            
+                            console.log(`Setting PWM for GPIO${pin}: ${dbValue}/1023 -> ${hardwareValue}/255 (${Math.round((dbValue / 1023) * 100)}%)`);
+                            
+                            try {
+                                pwmPins[pin].pwmWrite(hardwareValue);
+                                // Store the original database value on the pin object for reference
+                                pwmPins[pin]._dbValue = dbValue;
+                            } catch (e) {
+                                console.error(`Error setting PWM for GPIO${pin}:`, e.message);
+                            }
+                        } else {
+                            console.log(`GPIO${pin} is disabled, setting to 0`);
+                            try {
+                                pwmPins[pin].pwmWrite(0);
+                                pwmPins[pin]._dbValue = 0;
+                            } catch (e) {
+                                console.error(`Error setting PWM for GPIO${pin} to 0:`, e.message);
+                            }
+                        }
+                    }
+                });
+            });
         });
     });
 }
@@ -204,7 +290,7 @@ app.get('/graph', (req, res) => {
 
 // Route for schedule interface
 app.get('/schedule', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'schedule.html'));
+    res.redirect('/pwm');
 });
 
 // API Endpoint to get sensor configurations
@@ -739,55 +825,7 @@ async function initAndRead() {
 
 // Publish sensor data to MQTT
 function publishSensorData(sensor1Data, sensor2Data, configuredSensorData = {}) {
-    if (!mqttClient || !mqttClient.connected) return;
-    
-    const sensors = {};
-    
-    // Add legacy sensors for backward compatibility
-    if (sensor1Data) {
-        sensors.sensor1 = {
-            address: '0x38',
-            temperature: sensor1Data.temperature,
-            humidity: sensor1Data.humidity
-        };
-    }
-    
-    if (sensor2Data) {
-        sensors.sensor2 = {
-            address: '0x39',
-            temperature: sensor2Data.temperature,
-            humidity: sensor2Data.humidity
-        };
-    }
-    
-    // Add configured sensors
-    for (const [address, sensorObj] of Object.entries(sensors)) {
-        if (configuredSensorData[address]) {
-            const reading = configuredSensorData[address];
-            const config = sensorObj.config || {};
-            
-            // Apply calibration if configured
-            const tempValue = (reading.temperature * (config.calibration_scale || 1)) + 
-                             (config.calibration_offset || 0);
-            
-            sensors[`sensor_${config.id || address}`] = {
-                id: config.id,
-                address: address,
-                type: config.type || 'unknown',
-                name: config.name,
-                temperature: tempValue,
-                humidity: reading.humidity
-            };
-        }
-    }
-    
-    const data = {
-        nodeId,
-        timestamp: new Date().toISOString(),
-        sensors
-    };
-    
-    mqttClient.publish(`undergrowth/nodes/${nodeId}/sensors`, JSON.stringify(data), { qos: 1 });
+    mqttController.publishSensorData(sensor1Data, sensor2Data, configuredSensorData);
 }
 
 // Function to broadcast safety state to all clients
@@ -893,7 +931,7 @@ async function clearEmergencyStop() {
     });
 }
 
-// Update togglePWM function
+// Update togglePWM function with better error handling
 async function togglePWM(pin, enabled) {
     return new Promise((resolve) => {
         // Get current value
@@ -920,12 +958,24 @@ async function togglePWM(pin, enabled) {
                     if (mode === 1 && pwmEnabled && pwmPins[pin]) {
                         if (enabled) {
                             const pwmValue = Math.floor((value / 1023) * 255);
-                            pwmPins[pin].pwmWrite(pwmValue);
-                            pwmPins[pin]._pwmValue = value;
+                            console.log(`togglePWM: Setting GPIO${pin} to ${pwmValue} (${value}/1023)`);
+                            try {
+                                pwmPins[pin].pwmWrite(pwmValue);
+                                pwmPins[pin]._pwmValue = value;
+                            } catch (e) {
+                                console.error(`Error in togglePWM for GPIO${pin}:`, e.message);
+                            }
                         } else {
-                            pwmPins[pin].pwmWrite(0);
-                            pwmPins[pin]._pwmValue = 0;
+                            console.log(`togglePWM: Disabling GPIO${pin}`);
+                            try {
+                                pwmPins[pin].pwmWrite(0);
+                                pwmPins[pin]._pwmValue = 0;
+                            } catch (e) {
+                                console.error(`Error in togglePWM for GPIO${pin}:`, e.message);
+                            }
                         }
+                    } else {
+                        console.log(`togglePWM: Not updating hardware - mode:${mode}, pwmEnabled:${pwmEnabled}, pin:${pin}`);
                     }
                     
                     // Broadcast the new state to all clients
@@ -938,228 +988,168 @@ async function togglePWM(pin, enabled) {
     });
 }
 
-// ======================================
-// MQTT BROKER FUNCTIONS
-// ======================================
-async function discoverBroker() {
-    if (brokerDiscoveryActive) {
-        return Promise.reject(new Error('Broker discovery already active'));
-    }
-    
-    brokerDiscoveryActive = true;
-    return new Promise((resolve, reject) => {
-        const bonjour = new Bonjour();
-        const browser = bonjour.find({ type: 'mqtt' });
-        
-        browser.on('up', (service) => {
-            mqttState.brokerAddress = service.addresses[0];
-            mqttState.brokerPort = service.port;
-            browser.stop();
-            bonjour.destroy();
-            brokerDiscoveryActive = false;
-            resolve({ address: mqttState.brokerAddress, port: mqttState.brokerPort });
+// Control loop for hardware updates
+async function controlLoop() {
+    try {
+        // Get current safety states
+        const safetyStates = await new Promise((resolve, reject) => {
+            configDb.all('SELECT key, value FROM safety_state', [], (err, rows) => {
+                if (err) reject(err);
+                else resolve(rows.reduce((acc, row) => {
+                    acc[row.key] = row.value;
+                    return acc;
+                }, {}));
+            });
         });
 
-        browser.on('down', (service) => {
-            console.log('MQTT broker went down:', service);
+        // Get current mode
+        const mode = await new Promise((resolve, reject) => {
+            configDb.get('SELECT value FROM system_state WHERE key = ?', ['mode'], (err, row) => {
+                if (err) reject(err);
+                else resolve(row ? row.value : 1); // Default to manual mode
+            });
         });
 
-        // Timeout after 10 seconds
-        setTimeout(() => {
-            browser.stop();
-            bonjour.destroy();
-            brokerDiscoveryActive = false;
-            reject(new Error('MQTT broker discovery timeout'));
-        }, 10000);
-    });
-}
+        // Update hardware based on mode and safety states
+        if (pwmEnabled) {
+            const isEmergencyStop = safetyStates.emergency_stop;
+            const isNormalEnable = safetyStates.normal_enable;
 
-function connectToBroker(nodeId) {
-    if (!mqttState.brokerAddress || !mqttState.brokerPort) {
-        throw new Error('Broker address not discovered');
-    }
+            if (isEmergencyStop || !isNormalEnable) {
+                // Emergency stop or normal disable - turn off all PWM outputs
+                for (const pin of Object.keys(pwmPins)) {
+                    pwmPins[pin].pwmWrite(0);
+                }
+                return;
+            }
 
-    const brokerUrl = `mqtt://${mqttState.brokerAddress}:${mqttState.brokerPort}`;
-    console.log('Connecting to MQTT broker at:', brokerUrl);
+            if (mode === 0) { // Automatic mode
+                // Get current time in UTC
+                const now = new Date();
+                const currentTime = now.getUTCHours() * 3600 + now.getUTCMinutes() * 60 + now.getUTCSeconds();
+                
+                // Get all enabled events
+                const events = await new Promise((resolve, reject) => {
+                    configDb.all('SELECT * FROM events WHERE enabled = 1 ORDER BY time', [], (err, rows) => {
+                        if (err) reject(err);
+                        else resolve(rows);
+                    });
+                });
 
-    const client = mqtt.connect(brokerUrl, {
-        clientId: nodeId,
-        clean: true,
-        reconnectPeriod: 5000
-    });
+                // Find active events for each GPIO
+                const activeEvents = {};
+                events.forEach(event => {
+                    // Since we now store event times in UTC, parse them directly
+                    const [hours, minutes, seconds] = event.time.split(':').map(Number);
+                    const eventTime = hours * 3600 + minutes * 60 + seconds;
+                    const gpio = event.gpio;
 
-    client.on('connect', () => {
-        console.log('Connected to MQTT broker');
-        mqttState.connectionStatus = 'connected';
-        mqttState.lastConnectionTime = new Date();
-        mqttState.reconnectionAttempts = 0;
-    });
+                    // For automatic mode, we want to use the most recent past event
+                    if (!activeEvents[gpio] || 
+                        (eventTime <= currentTime && eventTime > (activeEvents[gpio].time || -1)) ||
+                        (eventTime > currentTime && eventTime < (activeEvents[gpio].time || Infinity))) {
+                        activeEvents[gpio] = {
+                            time: eventTime,
+                            event: event
+                        };
+                    }
+                });
 
-    client.on('disconnect', () => {
-        console.log('Disconnected from MQTT broker');
-        mqttState.connectionStatus = 'disconnected';
-    });
+                // Update auto_pwm_states based on active events
+                for (const [gpio, activeEvent] of Object.entries(activeEvents)) {
+                    if (pwmPins[gpio]) {
+                        const pwmValue = Math.floor((activeEvent.event.pwm_value / 1023) * 255);
+                        pwmPins[gpio].pwmWrite(pwmValue);
+                        
+                        // Update auto_pwm_states table
+                        await new Promise((resolve, reject) => {
+                            configDb.run('UPDATE auto_pwm_states SET value = ?, enabled = 1 WHERE pin = ?',
+                                [activeEvent.event.pwm_value, gpio], (err) => {
+                                    if (err) reject(err);
+                                    else resolve();
+                                });
+                        });
+                    }
+                }
 
-    client.on('reconnect', () => {
-        console.log('Reconnecting to MQTT broker...');
-        mqttState.reconnectionAttempts++;
-    });
+                // Turn off any GPIOs that don't have active events
+                for (const pin of Object.keys(pwmPins)) {
+                    if (!activeEvents[pin]) {
+                        pwmPins[pin].pwmWrite(0);
+                        await new Promise((resolve, reject) => {
+                            configDb.run('UPDATE auto_pwm_states SET value = 0, enabled = 0 WHERE pin = ?',
+                                [pin], (err) => {
+                                    if (err) reject(err);
+                                    else resolve();
+                                });
+                        });
+                    }
+                }
+            } else { // Manual mode
+                // Get current manual PWM states
+                const manualStates = await new Promise((resolve, reject) => {
+                    configDb.all('SELECT pin, value, enabled FROM pwm_states', [], (err, rows) => {
+                        if (err) reject(err);
+                        else {
+                            const states = rows.reduce((acc, row) => {
+                                acc[row.pin] = { value: row.value, enabled: row.enabled };
+                                return acc;
+                            }, {});
+                            resolve(states);
+                        }
+                    });
+                });
 
-    client.on('error', (err) => {
-        console.error('MQTT error:', err);
-    });
-
-    // Update last message time on any message
-    client.on('message', () => {
-        updateLastMessageTime();
-    });
-
-    return client;
-}
-
-function getBrokerInfo() {
-    // Calculate current connection duration if connected
-    if (mqttState.connectionStatus === 'connected' && mqttState.lastConnectionTime) {
-        mqttState.connectionDuration = Date.now() - mqttState.lastConnectionTime;
-    }
-
-    // Format connection duration
-    let durationStr = 'Not connected';
-    if (mqttState.connectionDuration) {
-        const hours = Math.floor(mqttState.connectionDuration / (1000 * 60 * 60));
-        const minutes = Math.floor((mqttState.connectionDuration % (1000 * 60 * 60)) / (1000 * 60));
-        if (hours > 0) {
-            durationStr = `${hours}h ${minutes}m`;
-        } else {
-            durationStr = `${minutes}m`;
+                // Update hardware based on manual states
+                for (const [pin, state] of Object.entries(manualStates)) {
+                    if (pwmPins[pin]) {
+                        if (state.enabled) {
+                            const pwmValue = Math.floor((state.value / 1023) * 255);
+                            pwmPins[pin].pwmWrite(pwmValue);
+                        } else {
+                            pwmPins[pin].pwmWrite(0);
+                        }
+                    }
+                }
+            }
         }
-    }
-
-    return {
-        status: mqttState.connectionStatus,
-        address: mqttState.brokerAddress,
-        port: mqttState.brokerPort,
-        lastConnection: mqttState.lastConnectionTime,
-        connectionDuration: durationStr,
-        reconnectionAttempts: mqttState.reconnectionAttempts,
-        lastMessage: mqttState.lastMessageTime,
-        topicsSubscribed: mqttState.topicsSubscribed
-    };
-}
-
-function updateLastMessageTime() {
-    mqttState.lastMessageTime = new Date();
-}
-
-function addSubscribedTopic(topic) {
-    if (!mqttState.topicsSubscribed.includes(topic)) {
-        mqttState.topicsSubscribed.push(topic);
+    } catch (error) {
+        console.error('Error in control loop:', error);
     }
 }
 
-function removeSubscribedTopic(topic) {
-    mqttState.topicsSubscribed = mqttState.topicsSubscribed.filter(t => t !== topic);
-}
+// Start control loop
+setInterval(controlLoop, 1000);
 
-// Function to emit broker information
-function emitBrokerInfo() {
-    if (!io) return;
-    
-    const info = getBrokerInfo();
-    io.emit('brokerInfo', {
-        connected: mqttClient ? mqttClient.connected : false,
-        address: info.address,
-        port: info.port,
-        lastConnection: info.lastConnection,
-        connectionDuration: info.connectionDuration,
-        reconnectionAttempts: info.reconnectionAttempts,
-        lastMessage: info.lastMessage,
-        subscribedTopics: info.topicsSubscribed
-    });
-}
-
-// Update broker info every 5 seconds
-setInterval(emitBrokerInfo, 5000);
-
-// Socket.io connection handling
-io.on('connection', (socket) => {
-    console.log('Client connected');
-
-    // Emit initial broker info
-    emitBrokerInfo();
-
-    // Handle timezone get request
-    socket.on('getTimezone', () => {
-        configDb.get('SELECT value FROM timezone WHERE key = ?', ['timezone'], (err, row) => {
-            if (err) {
-                console.error('Error getting timezone:', err);
-                return;
-            }
-            const timezone = row ? row.value : 'America/Los_Angeles';
-            socket.emit('timezoneUpdate', { timezone });
-        });
-    });
-
-    // Handle timezone set request
-    socket.on('setTimezone', (data) => {
-        const { timezone } = data;
-        configDb.run('UPDATE timezone SET value = ? WHERE key = ?', [timezone, 'timezone'], (err) => {
-            if (err) {
-                console.error('Error setting timezone:', err);
-                return;
-            }
-            // Broadcast the new timezone to all clients
-            io.emit('timezoneUpdate', { timezone });
-        });
-    });
-
-    // Handle initial state request
-    socket.on('getInitialState', async () => {
-        try {
-            //console.log('Handling getInitialState request');
+// Publish node status to MQTT
+async function publishNodeStatus() {
+    try {
+        // Keep all the code that gathers status information
+        const [systemInfo, safetyStates, mode, pwmStates, sequenceRange] = await Promise.all([
+            // Get system info
+            SystemInfo.getSystemInfo(),
             
-            // Get system info including system timezone - forced fresh data
-            const systemInfo = await SystemInfo.getSystemInfo();
+            // Get safety states
+            new Promise((resolve, reject) => {
+                configDb.all('SELECT key, value FROM safety_state', [], (err, rows) => {
+                    if (err) reject(err);
+                    else resolve(rows.reduce((acc, row) => {
+                        acc[row.key] = row.value === 1;
+                        return acc;
+                    }, {}));
+                });
+            }),
             
-            // Get mode from database
-            const mode = await new Promise((resolve, reject) => {
+            // Get current mode
+            new Promise((resolve, reject) => {
                 configDb.get('SELECT value FROM system_state WHERE key = ?', ['mode'], (err, row) => {
                     if (err) reject(err);
                     else resolve(row ? row.value : 1);
                 });
-            });
-            //console.log('Current mode:', mode);
+            }),
             
-            // Get database timezone
-            const databaseTimezone = await new Promise((resolve, reject) => {
-                configDb.get('SELECT value FROM timezone WHERE key = ?', ['timezone'], (err, row) => {
-                    if (err) reject(err);
-                    else resolve(row ? row.value : 'America/Los_Angeles');
-                });
-            });
-            //console.log('Database timezone:', databaseTimezone);
-            //console.log('System timezone:', systemInfo.system.systemTimezone);
-
-            const events = await new Promise((resolve, reject) => {
-                configDb.all('SELECT * FROM events ORDER BY time', [], (err, rows) => {
-                    if (err) reject(err);
-                    else resolve(rows);
-                });
-            });
-
-            const safetyStates = await new Promise((resolve, reject) => {
-                configDb.all('SELECT key, value FROM safety_state', [], (err, rows) => {
-                    if (err) reject(err);
-                    else resolve(rows.reduce((acc, row) => {
-                        acc[row.key] = row.value;
-                        return acc;
-                    }, {}));
-                });
-            });
-            //console.log('Safety states:', safetyStates);
-
-            // Get manual PWM states
-            const manualPwmStates = await new Promise((resolve, reject) => {
+            // Get PWM states
+            new Promise((resolve, reject) => {
                 configDb.all('SELECT pin, value, enabled FROM pwm_states', [], (err, rows) => {
                     if (err) reject(err);
                     else {
@@ -1173,374 +1163,445 @@ io.on('connection', (socket) => {
                         resolve(states);
                     }
                 });
-            });
-
-            // Get automatic PWM states
-            const autoPwmStates = await new Promise((resolve, reject) => {
-                configDb.all('SELECT pin, value, enabled FROM auto_pwm_states', [], (err, rows) => {
-                    if (err) reject(err);
-                    else {
-                        const states = {};
-                        rows.forEach(row => {
-                            states[row.pin] = {
-                                value: row.value,
-                                enabled: row.enabled === 1
-                            };
-                        });
-                        resolve(states);
-                    }
-                });
-            });
-
-            // Current PWM states based on mode
-            const currentPwmStates = mode === 0 ? autoPwmStates : manualPwmStates;
-
-            const initialState = {
-                mode,
-                events,
-                safetyStates,
-                pwmStates: {
-                    current: currentPwmStates,
-                    manual: manualPwmStates,
-                    auto: autoPwmStates
-                },
-                system: systemInfo.system,
-                databaseTimezone
-            };
-            //console.log('Sending initial state:', initialState);
-            socket.emit('initialState', initialState);
-        } catch (error) {
-            console.error('Error getting initial state:', error);
-        }
-    });
-
-    // Handle emergency stop
-    socket.on('emergencyStop', async () => {
-        await emergencyStop();
-        broadcastSafetyState();
-        io.emit('emergencyStop');
-    });
-
-    // Handle clear emergency stop
-    socket.on('clearEmergencyStop', async () => {
-        await clearEmergencyStop();
-        broadcastSafetyState();
-        io.emit('clearEmergencyStop');
-    });
-
-    // Handle mode toggle
-    socket.on('toggleMode', async (data) => {
-        //console.log('Server: Received mode toggle:', data);
-        const { automatic } = data;
-        const mode = automatic ? 0 : 1; // 0 is automatic, 1 is manual
-        try {
-            configDb.run('UPDATE system_state SET value = ? WHERE key = ?',
-                [mode, 'mode'], (err) => {
-                    if (err) {
-                        console.error('Server: Error updating mode:', err);
-                        socket.emit('modeError', { message: 'Failed to update mode' });
-                    } else {
-                        console.log('Server: Mode updated successfully to:', mode);
-                        // Broadcast the new mode to all clients
-                        io.emit('modeUpdate', { mode });
-                    }
-                });
-        } catch (error) {
-            console.error('Server: Error handling mode toggle:', error);
-            socket.emit('modeError', { message: 'Failed to update mode' });
-        }
-    });
-
-    // Handle PWM set requests
-    socket.on('pwmSet', async (data) => {
-        console.log('Server: Received pwmSet event:', data);
-        const { pin, value } = data;
+            }),
+            
+            // Get sequence range
+            getSequenceRange()
+        ]);
         
-        try {
-            // Always update the database regardless of hardware availability
-            console.log('Server: Updating database with value:', { pin, value });
-            configDb.run('UPDATE pwm_states SET value = ? WHERE pin = ?',
-                [value, pin], (err) => {
-                    if (err) {
-                        console.error('Server: Error saving PWM state:', err);
-                        socket.emit('pwmError', { pin, message: 'Failed to update database' });
+        // Get sensor statistics
+        const sensorStats = await new Promise((resolve, reject) => {
+            // Get all sensors from config
+            configDb.all('SELECT * FROM sensor_config', [], async (err, rows) => {
+                if (err) {
+                    reject(err);
+                    return;
+                }
+                
+                const sensors = rows || [];
+                // Add legacy sensors
+                const allSensors = [
+                    ...sensors,
+                    { id: 'legacy1', address: '0x38', type: 'AHT10', name: 'Legacy AHT10 (0x38)' },
+                    { id: 'legacy2', address: '0x39', type: 'AHT10', name: 'Legacy AHT10 (0x39)' }
+                ];
+                
+                // Get stats for each sensor
+                const sensorStats = [];
+                let totalRecordCount = 0;
+                
+                for (const sensor of allSensors) {
+                    // Determine device_id format
+                    let deviceId;
+                    if (sensor.id === 'legacy1') {
+                        deviceId = 'sensor1';
+                    } else if (sensor.id === 'legacy2') {
+                        deviceId = 'sensor2';
                     } else {
-                        console.log('Server: Database update successful, broadcasting state');
-                        
-                        // If hardware is available, update it (but only in manual mode)
-                        configDb.get('SELECT value FROM system_state WHERE key = ?', ['mode'], (err, row) => {
-                            const mode = err || !row ? 1 : row.value; // Default to manual mode
-                            
-                            // Only update hardware if we're in manual mode and PWM is available
-                            if (mode === 1 && pwmEnabled && pwmPins[pin]) {
-                                // Need to also get the enabled state
-                                configDb.get('SELECT enabled FROM pwm_states WHERE pin = ?', [pin], (err, enabledRow) => {
-                                    if (!err && enabledRow && enabledRow.enabled === 1) {
-                                        const pwmValue = Math.floor((value / 1023) * 255);
-                                        pwmPins[pin].pwmWrite(pwmValue);
-                                    }
-                                    // Store the value in memory for future reference
-                                    if (pwmPins[pin]) {
-                                        pwmPins[pin]._pwmValue = value;
-                                    }
-                                });
+                        deviceId = `sensor_${sensor.id}`;
+                    }
+                    
+                    // Get temperature record count
+                    const tempCount = await new Promise((resolve, reject) => {
+                        dataDb.get(
+                            'SELECT COUNT(*) as count FROM sensor_readings WHERE device_id = ? AND type = ?',
+                            [deviceId, 'temperature'],
+                            (err, row) => {
+                                if (err) reject(err);
+                                else resolve(row ? row.count : 0);
                             }
-                            
-                            // Broadcast the new state to all clients
-                            broadcastPWMState();
-                        });
+                        );
+                    });
+                    
+                    // Get humidity record count
+                    const humidityCount = await new Promise((resolve, reject) => {
+                        dataDb.get(
+                            'SELECT COUNT(*) as count FROM sensor_readings WHERE device_id = ? AND type = ?',
+                            [deviceId, 'humidity'],
+                            (err, row) => {
+                                if (err) reject(err);
+                                else resolve(row ? row.count : 0);
+                            }
+                        );
+                    });
+                    
+                    // Calculate total for this sensor
+                    const sensorTotal = tempCount + humidityCount;
+                    totalRecordCount += sensorTotal;
+                    
+                    sensorStats.push({
+                        id: sensor.id,
+                        deviceId: deviceId,
+                        name: sensor.name || `${sensor.type} ${sensor.address}`,
+                        address: sensor.address,
+                        type: sensor.type,
+                        temperatureCount: tempCount,
+                        humidityCount: humidityCount,
+                        totalCount: sensorTotal
+                    });
+                }
+                
+                resolve({
+                    sensors: sensorStats,
+                    totalRecordCount
+                });
+            });
+        });
+
+        // Get network info directly to ensure we have the latest IP
+        const networkInfo = SystemInfo.getNetworkInfo();
+        console.log('Publishing node status with IP:', networkInfo.ipAddress);
+
+        const status = {
+            nodeId,
+            timestamp: new Date().toISOString(),
+            hostname: os.hostname(),
+            ip: networkInfo.ipAddress,
+            system: {
+                uptime: systemInfo.system.piUptime,
+                cpuTemp: systemInfo.system.cpuTemp,
+                internetConnected: systemInfo.system.internetConnected
+            },
+            safety: safetyStates,
+            mode: mode === 0 ? 'automatic' : 'manual',
+            pwm: pwmStates,
+            // Add sequence range and sensor stats information
+            data: {
+                sequenceRange,
+                sensorStats: sensorStats.sensors,
+                totalRecords: sensorStats.totalRecordCount
+            }
+        };
+        
+        // Use our module to publish instead of direct MQTT client call
+        mqttController.publishNodeStatus(status);
+    } catch (error) {
+        console.error('Error publishing node status:', error);
+    }
+}
+
+// Replace initializeMqtt function with our controller's initialize method
+async function initializeMqtt() {
+    try {
+        const initialized = await mqttController.initialize();
+        
+        // Set up message handlers after initialization
+        if (initialized) {
+            // Handle incoming messages
+            mqttController.on('message', (topic, message) => {
+                console.log(`Received message on ${topic}:`, message.toString());
+                
+                // Handle data history requests from server
+                if (topic === `undergrowth/server/requests/${nodeId}/history`) {
+                    try {
+                        const request = JSON.parse(message.toString());
+                        console.log(`Processing server history request:`, 
+                            request.startSequence !== undefined ? 
+                            `sequence-based (${request.startSequence} to ${request.endSequence || 'latest'})` : 
+                            `time-based (${request.startTime} to ${request.endTime})`);
+                        handleHistoryRequest(request);
+                    } catch (error) {
+                        console.error('Error handling history request:', error);
                     }
-                });
-        } catch (error) {
-            console.error(`Server: Error setting PWM value for pin ${pin}:`, error);
-            socket.emit('pwmError', { pin, message: 'Failed to set PWM value' });
-        }
-    });
-
-    // Handle PWM toggle requests
-    socket.on('pwmToggle', async (data) => {
-        await togglePWM(data.pin, data.enabled);
-        broadcastPWMState();
-    });
-
-    socket.on('disconnect', () => {
-        console.log('Client disconnected');
-    });
-
-    // Handle event add
-    socket.on('addEvent', async (data) => {
-        try {
-            // Store time in UTC format (HH:MM:SS) regardless of database or system timezone
-            await new Promise((resolve, reject) => {
-                configDb.run('INSERT INTO events (gpio, time, pwm_value, enabled) VALUES (?, ?, ?, ?)',
-                    [data.gpio, data.time, data.pwm_value, data.enabled], (err) => {
-                        if (err) reject(err);
-                        else resolve();
-                    });
-            });
-            await broadcastEvents();
-            await broadcastPWMState();
-        } catch (error) {
-            console.error('Error adding event:', error);
-        }
-    });
-
-    // Handle get events request
-    socket.on('getEvents', () => {
-        configDb.all('SELECT * FROM events ORDER BY time', [], (err, rows) => {
-            if (err) {
-                console.error('Error fetching events:', err);
-                socket.emit('eventError', { message: 'Failed to fetch events' });
-            } else {
-                socket.emit('eventsUpdated', rows);
-            }
-        });
-    });
-
-    // Handle event delete
-    socket.on('deleteEvent', async (data) => {
-        try {
-            await new Promise((resolve, reject) => {
-                configDb.run('DELETE FROM events WHERE id = ?', [data.id], (err) => {
-                    if (err) reject(err);
-                    else resolve();
-                });
-            });
-            await broadcastEvents();
-            await broadcastPWMState();
-            io.emit('eventDeleted', { id: data.id });
-        } catch (error) {
-            console.error('Error deleting event:', error);
-        }
-    });
-
-    // Handle event toggle
-    socket.on('toggleEvent', (data) => {
-        const { id, enabled } = data;
-        
-        configDb.run('UPDATE events SET enabled = ? WHERE id = ?', [enabled ? 1 : 0, id], (err) => {
-            if (err) {
-                console.error('Error toggling event:', err);
-                socket.emit('eventError', { message: 'Failed to toggle event' });
-            } else {
-                broadcastEvents();
-                socket.emit('eventToggled', { id, enabled });
-            }
-        });
-    });
-
-    // Handle normal enable toggle
-    socket.on('toggleNormalEnable', async (data) => {
-        await toggleNormalEnable(data.enabled);
-    });
-
-    // Handle mode set request
-    socket.on('setMode', async (data) => {
-        try {
-            const { automatic } = data;
-            const mode = automatic ? 0 : 1; // 0 is automatic, 1 is manual
-            await new Promise((resolve, reject) => {
-                configDb.run('UPDATE system_state SET value = ? WHERE key = ?', 
-                    [mode, 'mode'], (err) => {
-                        if (err) reject(err);
-                        else resolve();
-                    });
-            });
-            console.log('Server: Mode updated successfully to:', mode);
-            io.emit('modeUpdate', { mode });
-        } catch (error) {
-            console.error('Error setting mode:', error);
-        }
-    });
-
-    // Handle sensor configuration related events
-    socket.on('getSensors', () => {
-        configDb.all('SELECT * FROM sensor_config ORDER BY created_at ASC', [], (err, rows) => {
-            if (err) {
-                console.error('Error fetching sensors:', err);
-                socket.emit('sensorError', { message: 'Failed to fetch sensors' });
-            } else {
-                socket.emit('sensorsUpdated', rows);
-            }
-        });
-    });
-    
-    socket.on('addSensor', (data) => {
-        const { address, type, name } = data;
-        
-        if (!address || !type) {
-            socket.emit('sensorError', { message: 'Address and type are required' });
-            return;
-        }
-        
-        configDb.run(
-            'INSERT INTO sensor_config (address, type, name) VALUES (?, ?, ?)',
-            [address, type, name || null],
-            function(err) {
-                if (err) {
-                    console.error('Error adding sensor:', err);
-                    socket.emit('sensorError', { message: 'Failed to add sensor' });
-                    return;
                 }
-                
-                const id = this.lastID;
-                const newSensor = { 
-                    id, 
-                    address, 
-                    type, 
-                    name, 
-                    enabled: 1,
-                    calibration_offset: 0.0,
-                    calibration_scale: 1.0
-                };
-                
-                socket.emit('sensorAdded', newSensor);
-                socket.broadcast.emit('sensorAdded', newSensor);
-            }
-        );
-    });
-    
-    socket.on('updateSensor', (data) => {
-        const { id, name, enabled, calibration_offset, calibration_scale } = data;
-        
-        if (!id) {
-            socket.emit('sensorError', { message: 'Sensor ID is required' });
-            return;
-        }
-        
-        const updateFields = [];
-        const params = [];
-        
-        if (name !== undefined) {
-            updateFields.push('name = ?');
-            params.push(name);
-        }
-        
-        if (enabled !== undefined) {
-            updateFields.push('enabled = ?');
-            params.push(enabled ? 1 : 0);
-        }
-        
-        if (calibration_offset !== undefined) {
-            updateFields.push('calibration_offset = ?');
-            params.push(calibration_offset);
-        }
-        
-        if (calibration_scale !== undefined) {
-            updateFields.push('calibration_scale = ?');
-            params.push(calibration_scale);
-        }
-        
-        if (updateFields.length === 0) {
-            socket.emit('sensorError', { message: 'No fields to update' });
-            return;
-        }
-        
-        updateFields.push('last_updated = CURRENT_TIMESTAMP');
-        params.push(id);
-        
-        const query = `UPDATE sensor_config SET ${updateFields.join(', ')} WHERE id = ?`;
-        
-        configDb.run(query, params, function(err) {
-            if (err) {
-                console.error('Error updating sensor:', err);
-                socket.emit('sensorError', { message: 'Failed to update sensor' });
-                return;
-            }
-            
-            if (this.changes === 0) {
-                socket.emit('sensorError', { message: 'Sensor not found' });
-                return;
-            }
-            
-            configDb.get('SELECT * FROM sensor_config WHERE id = ?', [id], (err, row) => {
-                if (err) {
-                    socket.emit('sensorError', { message: 'Failed to fetch updated sensor' });
-                    return;
-                }
-                
-                socket.emit('sensorUpdated', row);
-                socket.broadcast.emit('sensorUpdated', row);
             });
-        });
-    });
-    
-    socket.on('deleteSensor', (data) => {
-        const { id } = data;
+            
+            console.log('MQTT successfully initialized');
+            
+            // Start periodic status updates
+            setInterval(() => {
+                if (mqttController.getBrokerInfo().connected) {
+                    publishNodeStatus();
+                }
+            }, 60000); // Send status every minute
+        } else {
+            console.log('MQTT initialization skipped. Node running in standalone mode.');
+        }
         
-        if (!id) {
-            socket.emit('sensorError', { message: 'Sensor ID is required' });
+        return initialized;
+    } catch (error) {
+        console.error('Error during MQTT initialization:', error);
+        console.log('Continuing without MQTT support');
+        return false;
+    }
+}
+
+// Modify handleHistoryRequest to use our MQTT controller
+function handleHistoryRequest(request) {
+    console.log('Received history request:', request);
+    
+    // Check if this is a sequence-based or time-based request
+    const isSequenceBased = request.startSequence !== undefined;
+    
+    if (isSequenceBased) {
+        // Handle sequence-based request
+        if (!request.requestId) {
+            console.error('Invalid sequence-based request, missing requestId');
             return;
         }
         
-        configDb.run('DELETE FROM sensor_config WHERE id = ?', [id], function(err) {
+        // Use the getDataBySequenceRange function that already exists
+        const startSequence = request.startSequence;
+        const endSequence = request.endSequence || Number.MAX_SAFE_INTEGER;
+        const limit = request.limit || 1000;
+        
+        getDataBySequenceRange(startSequence, endSequence, limit)
+            .then(rows => {
+                // Get the actual max sequence from the database
+                return getSequenceRange()
+                    .then(sequenceRange => {
+                        // Format response
+                        const response = {
+                            nodeId,
+                            requestId: request.requestId,
+                            startSequence: startSequence,
+                            endSequence: rows.length > 0 ? rows[rows.length - 1].sequence_id : startSequence,
+                            maxSequence: sequenceRange.maxSequence, // Use the actual max sequence from the database
+                            dataPoints: rows.map(row => ({
+                                timestamp: row.timestamp,
+                                sensorId: row.device_id,
+                                type: row.type,
+                                value: row.value,
+                                sequence_id: row.sequence_id
+                            })),
+                            recordCount: rows.length
+                        };
+                        
+                        console.log(`Sending sequence-based history response with ${rows.length} records (max sequence: ${sequenceRange.maxSequence})`);
+                        
+                        // Send response using our MQTT controller
+                        mqttController.publish(`undergrowth/nodes/${nodeId}/history`, response)
+                            .then(() => {
+                                // Update server_sync table to track sync progress
+                                const now = new Date().toISOString();
+                                configDb.run(
+                                    'INSERT OR REPLACE INTO server_sync (server_id, last_sync_time, last_sequence, last_seen) VALUES (?, ?, ?, ?)',
+                                    ['server', now, response.endSequence, now],
+                                    (err) => {
+                                        if (err) {
+                                            console.error('Error updating server_sync table:', err);
+                                        } else {
+                                            console.log(`Updated server sync record to sequence ${response.endSequence}`);
+                                        }
+                                    }
+                                );
+                            })
+                            .catch(err => {
+                                console.error('Failed to publish history response:', err);
+                            });
+                    });
+            })
+            .catch(err => {
+                console.error('Error querying sequence-based sensor history:', err);
+                
+                // Send error response using our MQTT controller
+                mqttController.publish(`undergrowth/nodes/${nodeId}/history/error`, {
+                    nodeId,
+                    requestId: request.requestId,
+                    error: 'Database query error',
+                    message: err.message
+                }).catch(err => {
+                    console.error('Failed to publish error response:', err);
+                });
+            });
+    } else {
+        // Handle time-based request (existing code)
+        if (!request.startTime || !request.endTime || !request.requestId) {
+            console.error('Invalid time-based request, missing required fields');
+            return;
+        }
+        
+        // Query the database for sensor readings in the requested time range
+        const query = `
+            SELECT timestamp, device_id, type, value
+            FROM sensor_readings
+            WHERE timestamp >= ? AND timestamp <= ?
+            ORDER BY timestamp ASC
+        `;
+        
+        dataDb.all(query, [request.startTime, request.endTime], (err, rows) => {
             if (err) {
-                console.error('Error deleting sensor:', err);
-                socket.emit('sensorError', { message: 'Failed to delete sensor' });
+                console.error('Error querying sensor history:', err);
+                
+                // Send error response using our MQTT controller
+                mqttController.publish(`undergrowth/nodes/${nodeId}/history/error`, {
+                    nodeId,
+                    requestId: request.requestId,
+                    error: 'Database query error',
+                    message: err.message
+                }).catch(err => {
+                    console.error('Failed to publish error response:', err);
+                });
                 return;
             }
             
-            if (this.changes === 0) {
-                socket.emit('sensorError', { message: 'Sensor not found' });
-                return;
-            }
-            
-            socket.emit('sensorDeleted', { id });
-            socket.broadcast.emit('sensorDeleted', { id });
+            // Get max sequence information if available
+            getSequenceRange()
+                .then(sequenceRange => {
+                    // Format response
+                    const response = {
+                        nodeId,
+                        requestId: request.requestId,
+                        startTime: request.startTime,
+                        endTime: request.endTime,
+                        // Include sequence info if available
+                        maxSequence: sequenceRange.maxSequence,
+                        dataPoints: rows.map(row => ({
+                            timestamp: row.timestamp,
+                            sensorId: row.device_id,
+                            type: row.type,
+                            value: row.value
+                        })),
+                        recordCount: rows.length
+                    };
+                    
+                    console.log(`Sending time-based history response with ${rows.length} records (max sequence: ${sequenceRange.maxSequence})`);
+                    
+                    // Send response using our MQTT controller
+                    mqttController.publish(`undergrowth/nodes/${nodeId}/history`, response)
+                        .then(() => {
+                            // Update server_sync table to track last contact, but not sequence since this was time-based
+                            const now = new Date().toISOString();
+                            configDb.run(
+                                'INSERT OR REPLACE INTO server_sync (server_id, last_sync_time, last_seen) VALUES (?, ?, ?)',
+                                ['server', now, now],
+                                (err) => {
+                                    if (err) {
+                                        console.error('Error updating server_sync table:', err);
+                                    }
+                                }
+                            );
+                        })
+                        .catch(err => {
+                            console.error('Failed to publish history response:', err);
+                        });
+                })
+                .catch(err => {
+                    console.error('Error getting sequence range:', err);
+                    
+                    // Fall back to response without sequence information
+                    const response = {
+                        nodeId,
+                        requestId: request.requestId,
+                        startTime: request.startTime,
+                        endTime: request.endTime,
+                        dataPoints: rows.map(row => ({
+                            timestamp: row.timestamp,
+                            sensorId: row.device_id,
+                            type: row.type,
+                            value: row.value
+                        })),
+                        recordCount: rows.length
+                    };
+                    
+                    console.log(`Sending time-based history response with ${rows.length} records (without sequence info)`);
+                    
+                    mqttController.publish(`undergrowth/nodes/${nodeId}/history`, response)
+                        .catch(err => {
+                            console.error('Failed to publish history response:', err);
+                        });
+                });
         });
+    }
+}
+
+// Modify the section where you initialize MQTT in the main init function
+raspi.init(async () => {
+    console.log(`Node ID: ${nodeId}`);
+    console.log(`Startup Time: ${new Date().toISOString()}`);
+    
+    console.log('\n------------------System Configuration-----------------');
+    // Get network info first
+    const networkInfo = SystemInfo.getNetworkInfo();
+    console.log(`Network Interface: ${networkInfo.interface || 'wlan0'}, IP: ${networkInfo.ipAddress}, MAC: ${networkInfo.macAddress}`);
+    
+    // Check time sync status at startup
+    await SystemInfo.checkTimeSync();
+    
+    // Check internet connectivity
+    await SystemInfo.checkInternetConnectivity();
+    
+    // Get system timezone
+    await SystemInfo.getSystemTimezone();
+    
+    console.log('\n------------------Database Initialization-----------------');
+    // Enable database logging
+    shouldLogDatabase = true;
+    // Re-trigger database connection logs
+    console.log('Connected to config database');
+    console.log('Connected to data database');
+    
+    console.log('\n------------------Hardware Initialization-----------------');
+    // Initialize hardware and services
+    initPwmPins(); // Initialize PWM pins
+    // Apply PWM states after pin initialization
+    setTimeout(() => {
+        console.log('Applying saved PWM states to hardware...');
+        applyPwmStatesFromDb();
+    }, 1000); // Small delay to ensure pins are ready
+    
+    console.log('\n------------------Sensor Initialization-----------------');
+    // Initialize sensors and start data collection
+    await initAndRead();
+    
+    // Add default sensors to config if database is empty
+    configDb.get('SELECT COUNT(*) as count FROM sensor_config', [], (err, row) => {
+        if (err) {
+            console.error('Error checking sensor config:', err);
+            return;
+        }
+        
+        if (row.count === 0) {
+            console.log('No sensors configured, adding default AHT10 sensors');
+            
+            // Add the two default AHT10 sensors
+            configDb.run(
+                'INSERT INTO sensor_config (address, type, name, enabled) VALUES (?, ?, ?, ?)',
+                ['0x38-AHT10', 'AHT10', 'AHT10 Sensor 1', 1],
+                (err) => {
+                    if (err) console.error('Error adding default sensor 1:', err);
+                    else console.log('Added default sensor 1 (0x38-AHT10)');
+                }
+            );
+            
+            configDb.run(
+                'INSERT INTO sensor_config (address, type, name, enabled) VALUES (?, ?, ?, ?)',
+                ['0x39-AHT10', 'AHT10', 'AHT10 Sensor 2', 1],
+                (err) => {
+                    if (err) console.error('Error adding default sensor 2:', err);
+                    else console.log('Added default sensor 2 (0x39-AHT10)');
+                    
+                    // Reload sensors after adding defaults
+                    loadSensors().catch(err => console.error('Error loading sensors after adding defaults:', err));
+                }
+            );
+        }
+    });
+    
+    console.log('\n------------------MQTT Configuration-----------------');
+    // Try to discover and connect to MQTT broker - but don't block startup if it fails
+    try {
+        const mqttInitialized = await initializeMqtt();
+        if (mqttInitialized) {
+            console.log('MQTT successfully initialized');
+            // Note: Status updates are now set up in the initializeMqtt function
+        } else {
+            console.log('MQTT initialization skipped. Node running in standalone mode.');
+        }
+    } catch (error) {
+        console.error('Error during MQTT initialization:', error);
+        console.log('Continuing without MQTT support');
+    }
+    
+    console.log('\n------------------Webserver Initialization-----------------');
+    // Start server on port 80 only
+    server.listen(PORT, () => {
+        console.log(`Server is running on port ${PORT}`);
+        console.log('\n========== Startup Complete ============');
+        console.log(`Web UI accessible at: http://${networkInfo.ipAddress}:${PORT}`);
+        console.log('\n========================================\n');
     });
 });
-
-// Function to broadcast events to all connected clients
-function broadcastEvents() {
-    configDb.all('SELECT * FROM events ORDER BY time', [], (err, rows) => {
-        if (err) {
-            console.error('Error fetching events for broadcast:', err);
-        } else {
-            io.emit('eventsUpdated', rows);
-        }
-    });
-}
 
 // Binned Readings Endpoint
 app.get('/api/readings/binned', async (req, res) => {
@@ -1758,705 +1819,6 @@ async function toggleNormalEnable(enabled) {
 
     configDb.run('UPDATE safety_state SET value = ? WHERE key = ?', [enabled ? 1 : 0, 'normal_enable']);
     io.emit('safetyStateChanged', { normalEnable: enabled });
-}
-
-// Control loop for hardware updates
-async function controlLoop() {
-    try {
-        // Get current safety states
-        const safetyStates = await new Promise((resolve, reject) => {
-            configDb.all('SELECT key, value FROM safety_state', [], (err, rows) => {
-                if (err) reject(err);
-                else resolve(rows.reduce((acc, row) => {
-                    acc[row.key] = row.value;
-                    return acc;
-                }, {}));
-            });
-        });
-
-        // Get current mode
-        const mode = await new Promise((resolve, reject) => {
-            configDb.get('SELECT value FROM system_state WHERE key = ?', ['mode'], (err, row) => {
-                if (err) reject(err);
-                else resolve(row ? row.value : 1); // Default to manual mode
-            });
-        });
-
-        // Update hardware based on mode and safety states
-        if (pwmEnabled) {
-            const isEmergencyStop = safetyStates.emergency_stop;
-            const isNormalEnable = safetyStates.normal_enable;
-
-            if (isEmergencyStop || !isNormalEnable) {
-                // Emergency stop or normal disable - turn off all PWM outputs
-                for (const pin of Object.keys(pwmPins)) {
-                    pwmPins[pin].pwmWrite(0);
-                }
-                return;
-            }
-
-            if (mode === 0) { // Automatic mode
-                // Get current time in UTC
-                const now = new Date();
-                const currentTime = now.getUTCHours() * 3600 + now.getUTCMinutes() * 60 + now.getUTCSeconds();
-                
-                // Get all enabled events
-                const events = await new Promise((resolve, reject) => {
-                    configDb.all('SELECT * FROM events WHERE enabled = 1 ORDER BY time', [], (err, rows) => {
-                        if (err) reject(err);
-                        else resolve(rows);
-                    });
-                });
-
-                // Find active events for each GPIO
-                const activeEvents = {};
-                events.forEach(event => {
-                    // Since we now store event times in UTC, parse them directly
-                    const [hours, minutes, seconds] = event.time.split(':').map(Number);
-                    const eventTime = hours * 3600 + minutes * 60 + seconds;
-                    const gpio = event.gpio;
-
-                    // For automatic mode, we want to use the most recent past event
-                    if (!activeEvents[gpio] || 
-                        (eventTime <= currentTime && eventTime > (activeEvents[gpio].time || -1)) ||
-                        (eventTime > currentTime && eventTime < (activeEvents[gpio].time || Infinity))) {
-                        activeEvents[gpio] = {
-                            time: eventTime,
-                            event: event
-                        };
-                    }
-                });
-
-                // Update auto_pwm_states based on active events
-                for (const [gpio, activeEvent] of Object.entries(activeEvents)) {
-                    if (pwmPins[gpio]) {
-                        const pwmValue = Math.floor((activeEvent.event.pwm_value / 1023) * 255);
-                        pwmPins[gpio].pwmWrite(pwmValue);
-                        
-                        // Update auto_pwm_states table
-                        await new Promise((resolve, reject) => {
-                            configDb.run('UPDATE auto_pwm_states SET value = ?, enabled = 1 WHERE pin = ?',
-                                [activeEvent.event.pwm_value, gpio], (err) => {
-                                    if (err) reject(err);
-                                    else resolve();
-                                });
-                        });
-                    }
-                }
-
-                // Turn off any GPIOs that don't have active events
-                for (const pin of Object.keys(pwmPins)) {
-                    if (!activeEvents[pin]) {
-                        pwmPins[pin].pwmWrite(0);
-                        await new Promise((resolve, reject) => {
-                            configDb.run('UPDATE auto_pwm_states SET value = 0, enabled = 0 WHERE pin = ?',
-                                [pin], (err) => {
-                                    if (err) reject(err);
-                                    else resolve();
-                                });
-                        });
-                    }
-                }
-            } else { // Manual mode
-                // Get current manual PWM states
-                const manualStates = await new Promise((resolve, reject) => {
-                    configDb.all('SELECT pin, value, enabled FROM pwm_states', [], (err, rows) => {
-                        if (err) reject(err);
-                        else {
-                            const states = rows.reduce((acc, row) => {
-                                acc[row.pin] = { value: row.value, enabled: row.enabled };
-                                return acc;
-                            }, {});
-                            resolve(states);
-                        }
-                    });
-                });
-
-                // Update hardware based on manual states
-                for (const [pin, state] of Object.entries(manualStates)) {
-                    if (pwmPins[pin]) {
-                        if (state.enabled) {
-                            const pwmValue = Math.floor((state.value / 1023) * 255);
-                            pwmPins[pin].pwmWrite(pwmValue);
-                        } else {
-                            pwmPins[pin].pwmWrite(0);
-                        }
-                    }
-                }
-            }
-        }
-    } catch (error) {
-        console.error('Error in control loop:', error);
-    }
-}
-
-// Start control loop
-setInterval(controlLoop, 1000);
-
-// Publish node status to MQTT
-async function publishNodeStatus() {
-    if (!mqttClient || !mqttClient.connected) return;
-    
-    try {
-        const [systemInfo, safetyStates, mode, pwmStates, sequenceRange] = await Promise.all([
-            // Get system info
-            SystemInfo.getSystemInfo(),
-            
-            // Get safety states
-            new Promise((resolve, reject) => {
-                configDb.all('SELECT key, value FROM safety_state', [], (err, rows) => {
-                    if (err) reject(err);
-                    else resolve(rows.reduce((acc, row) => {
-                        acc[row.key] = row.value === 1;
-                        return acc;
-                    }, {}));
-                });
-            }),
-            
-            // Get current mode
-            new Promise((resolve, reject) => {
-                configDb.get('SELECT value FROM system_state WHERE key = ?', ['mode'], (err, row) => {
-                    if (err) reject(err);
-                    else resolve(row ? row.value : 1);
-                });
-            }),
-            
-            // Get PWM states
-            new Promise((resolve, reject) => {
-                configDb.all('SELECT pin, value, enabled FROM pwm_states', [], (err, rows) => {
-                    if (err) reject(err);
-                    else {
-                        const states = {};
-                        rows.forEach(row => {
-                            states[row.pin] = {
-                                value: row.value,
-                                enabled: row.enabled === 1
-                            };
-                        });
-                        resolve(states);
-                    }
-                });
-            }),
-            
-            // Get sequence range
-            getSequenceRange()
-        ]);
-        
-        // Get sensor statistics
-        const sensorStats = await new Promise((resolve, reject) => {
-            // Get all sensors from config
-            configDb.all('SELECT * FROM sensor_config', [], async (err, rows) => {
-                if (err) {
-                    reject(err);
-                    return;
-                }
-                
-                const sensors = rows || [];
-                // Add legacy sensors
-                const allSensors = [
-                    ...sensors,
-                    { id: 'legacy1', address: '0x38', type: 'AHT10', name: 'Legacy AHT10 (0x38)' },
-                    { id: 'legacy2', address: '0x39', type: 'AHT10', name: 'Legacy AHT10 (0x39)' }
-                ];
-                
-                // Get stats for each sensor
-                const sensorStats = [];
-                let totalRecordCount = 0;
-                
-                for (const sensor of allSensors) {
-                    // Determine device_id format
-                    let deviceId;
-                    if (sensor.id === 'legacy1') {
-                        deviceId = 'sensor1';
-                    } else if (sensor.id === 'legacy2') {
-                        deviceId = 'sensor2';
-                    } else {
-                        deviceId = `sensor_${sensor.id}`;
-                    }
-                    
-                    // Get temperature record count
-                    const tempCount = await new Promise((resolve, reject) => {
-                        dataDb.get(
-                            'SELECT COUNT(*) as count FROM sensor_readings WHERE device_id = ? AND type = ?',
-                            [deviceId, 'temperature'],
-                            (err, row) => {
-                                if (err) reject(err);
-                                else resolve(row ? row.count : 0);
-                            }
-                        );
-                    });
-                    
-                    // Get humidity record count
-                    const humidityCount = await new Promise((resolve, reject) => {
-                        dataDb.get(
-                            'SELECT COUNT(*) as count FROM sensor_readings WHERE device_id = ? AND type = ?',
-                            [deviceId, 'humidity'],
-                            (err, row) => {
-                                if (err) reject(err);
-                                else resolve(row ? row.count : 0);
-                            }
-                        );
-                    });
-                    
-                    // Calculate total for this sensor
-                    const sensorTotal = tempCount + humidityCount;
-                    totalRecordCount += sensorTotal;
-                    
-                    sensorStats.push({
-                        id: sensor.id,
-                        deviceId: deviceId,
-                        name: sensor.name || `${sensor.type} ${sensor.address}`,
-                        address: sensor.address,
-                        type: sensor.type,
-                        temperatureCount: tempCount,
-                        humidityCount: humidityCount,
-                        totalCount: sensorTotal
-                    });
-                }
-                
-                resolve({
-                    sensors: sensorStats,
-                    totalRecordCount
-                });
-            });
-        });
-
-        // Get network info directly to ensure we have the latest IP
-        const networkInfo = SystemInfo.getNetworkInfo();
-        console.log('Publishing node status with IP:', networkInfo.ipAddress);
-
-        const status = {
-            nodeId,
-            timestamp: new Date().toISOString(),
-            hostname: os.hostname(),
-            ip: networkInfo.ipAddress,
-            system: {
-                uptime: systemInfo.system.piUptime,
-                cpuTemp: systemInfo.system.cpuTemp,
-                internetConnected: systemInfo.system.internetConnected
-            },
-            safety: safetyStates,
-            mode: mode === 0 ? 'automatic' : 'manual',
-            pwm: pwmStates,
-            // Add sequence range and sensor stats information
-            data: {
-                sequenceRange,
-                sensorStats: sensorStats.sensors,
-                totalRecords: sensorStats.totalRecordCount
-            }
-        };
-        
-        console.log('Publishing status:', JSON.stringify(status, null, 2));
-        mqttClient.publish(`undergrowth/nodes/${nodeId}/status`, JSON.stringify(status), { qos: 1, retain: true });
-    } catch (error) {
-        console.error('Error publishing node status:', error);
-    }
-}
-
-// ======================================
-// MQTT CONNECTION MANAGEMENT
-// ======================================
-// Function to try connecting to MQTT broker, with backoff retry
-async function initializeMqtt() {
-    try {
-        // Clear any existing retry timeout
-        if (brokerRetryTimeout) {
-            clearTimeout(brokerRetryTimeout);
-            brokerRetryTimeout = null;
-        }
-        
-        console.log('Attempting to discover MQTT broker...');
-        const broker = await discoverBroker();
-        console.log(`Found MQTT broker: ${broker.address}:${broker.port}`);
-        
-        mqttClient = connectToBroker(nodeId);
-        
-        // Subscribe to topics
-        mqttClient.subscribe(`${nodeId}/#`, (err) => {
-            if (err) {
-                console.error('Error subscribing to topics:', err);
-            } else {
-                addSubscribedTopic(`${nodeId}/#`);
-            }
-        });
-
-        // Subscribe to server requests topics
-        mqttClient.subscribe(`undergrowth/server/requests/${nodeId}/#`, (err) => {
-            if (err) {
-                console.error('Error subscribing to server requests topics:', err);
-            } else {
-                console.log(`Subscribed to topic: undergrowth/server/requests/${nodeId}/#`);
-                addSubscribedTopic(`undergrowth/server/requests/${nodeId}/#`);
-            }
-        });
-
-        // Handle incoming messages
-        mqttClient.on('message', (topic, message) => {
-            updateLastMessageTime();
-            console.log(`Received message on ${topic}:`, message.toString());
-            
-            // Handle data history requests from server
-            if (topic === `undergrowth/server/requests/${nodeId}/history`) {
-                try {
-                    const request = JSON.parse(message.toString());
-                    console.log(`Processing server history request:`, 
-                        request.startSequence !== undefined ? 
-                        `sequence-based (${request.startSequence} to ${request.endSequence || 'latest'})` : 
-                        `time-based (${request.startTime} to ${request.endTime})`);
-                    handleHistoryRequest(request);
-                } catch (error) {
-                    console.error('Error handling history request:', error);
-                }
-            }
-        });
-
-        return true;
-    } catch (error) {
-        console.log('MQTT broker discovery failed:', error.message);
-        console.log('Node will run in standalone mode. MQTT features disabled.');
-        
-        // Schedule retry with exponential backoff
-        const retryMinutes = Math.min(30, Math.pow(2, mqttState.reconnectionAttempts));
-        mqttState.reconnectionAttempts++;
-        console.log(`Will retry MQTT connection in ${retryMinutes} minutes`);
-        
-        brokerRetryTimeout = setTimeout(() => {
-            initializeMqtt();
-        }, retryMinutes * 60 * 1000);
-        
-        return false;
-    }
-}
-
-// ======================================
-// PORT FALLBACK LOGIC
-// ======================================
-function startServer(port) {
-    return new Promise((resolve, reject) => {
-        // Set up error handler for this attempt
-        const errorHandler = (error) => {
-            if (error.code === 'EADDRINUSE') {
-                console.log(`Port ${port} is already in use, will try next port`);
-                server.removeListener('error', errorHandler);
-                resolve(false);
-            } else {
-                reject(error);
-            }
-        };
-
-        server.once('error', errorHandler);
-
-        server.listen(port, () => {
-            console.log(`Server is running on port ${port}`);
-            server.removeListener('error', errorHandler);
-            resolve(true);
-        });
-    });
-}
-
-async function tryPorts() {
-    for (const port of PORTS_TO_TRY) {
-        console.log(`Attempting to start server on port ${port}...`);
-        try {
-            const success = await startServer(port);
-            if (success) {
-                console.log(`Server successfully started on port ${port}`);
-                return true;
-            }
-        } catch (error) {
-            console.error(`Error starting server on port ${port}:`, error);
-        }
-    }
-    
-    console.error('Failed to start server on any available port');
-    return false;
-}
-
-// ======================================
-// MAIN INIT FUNCTION - MODIFIED
-// ======================================
-// Initialize Raspberry Pi and then start the application
-raspi.init(async () => {
-    console.log(`Node ID: ${nodeId}`);
-    console.log(`Startup Time: ${new Date().toISOString()}`);
-    
-    console.log('\n------------------System Configuration-----------------');
-    // Get network info first
-    const networkInfo = SystemInfo.getNetworkInfo();
-    console.log(`Network Interface: ${networkInfo.interface || 'wlan0'}, IP: ${networkInfo.ipAddress}, MAC: ${networkInfo.macAddress}`);
-    
-    // Check time sync status at startup
-    await SystemInfo.checkTimeSync();
-    
-    // Check internet connectivity
-    await SystemInfo.checkInternetConnectivity();
-    
-    // Get system timezone
-    await SystemInfo.getSystemTimezone();
-    
-    console.log('\n------------------Database Initialization-----------------');
-    // Enable database logging
-    shouldLogDatabase = true;
-    // Re-trigger database connection logs
-    console.log('Connected to config database');
-    console.log('Connected to data database');
-    
-    console.log('\n------------------Hardware Initialization-----------------');
-    // Initialize hardware and services
-    initPwmPins(); // Initialize PWM pins
-    
-    console.log('\n------------------Sensor Initialization-----------------');
-    // Initialize sensors and start data collection
-    await initAndRead();
-    
-    // Add default sensors to config if database is empty
-    configDb.get('SELECT COUNT(*) as count FROM sensor_config', [], (err, row) => {
-        if (err) {
-            console.error('Error checking sensor config:', err);
-            return;
-        }
-        
-        if (row.count === 0) {
-            console.log('No sensors configured, adding default AHT10 sensors');
-            
-            // Add the two default AHT10 sensors
-            configDb.run(
-                'INSERT INTO sensor_config (address, type, name, enabled) VALUES (?, ?, ?, ?)',
-                ['0x38-AHT10', 'AHT10', 'AHT10 Sensor 1', 1],
-                (err) => {
-                    if (err) console.error('Error adding default sensor 1:', err);
-                    else console.log('Added default sensor 1 (0x38-AHT10)');
-                }
-            );
-            
-            configDb.run(
-                'INSERT INTO sensor_config (address, type, name, enabled) VALUES (?, ?, ?, ?)',
-                ['0x39-AHT10', 'AHT10', 'AHT10 Sensor 2', 1],
-                (err) => {
-                    if (err) console.error('Error adding default sensor 2:', err);
-                    else console.log('Added default sensor 2 (0x39-AHT10)');
-                    
-                    // Reload sensors after adding defaults
-                    loadSensors().catch(err => console.error('Error loading sensors after adding defaults:', err));
-                }
-            );
-        }
-    });
-    
-    console.log('\n------------------MQTT Configuration-----------------');
-    // Try to discover and connect to MQTT broker - but don't block startup if it fails
-    try {
-        const mqttInitialized = await initializeMqtt();
-        if (mqttInitialized) {
-            console.log('MQTT successfully initialized');
-            // Start periodic status updates to MQTT
-            setInterval(() => {
-                if (mqttClient && mqttClient.connected) {
-                    publishNodeStatus();
-                }
-            }, 60000); // Send status every minute
-        } else {
-            console.log('MQTT initialization skipped. Node running in standalone mode.');
-        }
-    } catch (error) {
-        console.error('Error during MQTT initialization:', error);
-        console.log('Continuing without MQTT support');
-    }
-    
-    console.log('\n------------------Webserver Initialization-----------------');
-    // Start server on port 80 only
-    server.listen(PORT, () => {
-        console.log(`Server is running on port ${PORT}`);
-        console.log('\n========== Startup Complete ============');
-        console.log(`Web UI accessible at: http://${networkInfo.ipAddress}:${PORT}`);
-        console.log('\n========================================\n');
-    });
-});
-
-// Handle historical data requests
-function handleHistoryRequest(request) {
-    console.log('Received history request:', request);
-    
-    // Check if this is a sequence-based or time-based request
-    const isSequenceBased = request.startSequence !== undefined;
-    
-    if (isSequenceBased) {
-        // Handle sequence-based request
-        if (!request.requestId) {
-            console.error('Invalid sequence-based request, missing requestId');
-            return;
-        }
-        
-        // Use the getDataBySequenceRange function that already exists
-        const startSequence = request.startSequence;
-        const endSequence = request.endSequence || Number.MAX_SAFE_INTEGER;
-        const limit = request.limit || 1000;
-        
-        getDataBySequenceRange(startSequence, endSequence, limit)
-            .then(rows => {
-                // Get the actual max sequence from the database
-                return getSequenceRange()
-                    .then(sequenceRange => {
-                        // Format response
-                        const response = {
-                            nodeId,
-                            requestId: request.requestId,
-                            startSequence: startSequence,
-                            endSequence: rows.length > 0 ? rows[rows.length - 1].sequence_id : startSequence,
-                            maxSequence: sequenceRange.maxSequence, // Use the actual max sequence from the database
-                            dataPoints: rows.map(row => ({
-                                timestamp: row.timestamp,
-                                sensorId: row.device_id,
-                                type: row.type,
-                                value: row.value,
-                                sequence_id: row.sequence_id
-                            })),
-                            recordCount: rows.length
-                        };
-                        
-                        console.log(`Sending sequence-based history response with ${rows.length} records (max sequence: ${sequenceRange.maxSequence})`);
-                        
-                        // Send response
-                        if (mqttClient && mqttClient.connected) {
-                            mqttClient.publish(`undergrowth/nodes/${nodeId}/history`, JSON.stringify(response), { 
-                                qos: 1 
-                            });
-                            
-                            // Update server_sync table to track sync progress
-                            const now = new Date().toISOString();
-                            configDb.run(
-                                'INSERT OR REPLACE INTO server_sync (server_id, last_sync_time, last_sequence, last_seen) VALUES (?, ?, ?, ?)',
-                                ['server', now, response.endSequence, now],
-                                (err) => {
-                                    if (err) {
-                                        console.error('Error updating server_sync table:', err);
-                                    } else {
-                                        console.log(`Updated server sync record to sequence ${response.endSequence}`);
-                                    }
-                                }
-                            );
-                        } else {
-                            console.log('MQTT client not connected, history response could not be sent');
-                        }
-                    });
-            })
-            .catch(err => {
-                console.error('Error querying sequence-based sensor history:', err);
-                
-                // Send error response
-                if (mqttClient && mqttClient.connected) {
-                    mqttClient.publish(`undergrowth/nodes/${nodeId}/history/error`, JSON.stringify({
-                        nodeId,
-                        requestId: request.requestId,
-                        error: 'Database query error',
-                        message: err.message
-                    }), { qos: 1 });
-                }
-            });
-    } else {
-        // Handle time-based request (existing code)
-        if (!request.startTime || !request.endTime || !request.requestId) {
-            console.error('Invalid time-based request, missing required fields');
-            return;
-        }
-        
-        // Query the database for sensor readings in the requested time range
-        const query = `
-            SELECT timestamp, device_id, type, value
-            FROM sensor_readings
-            WHERE timestamp >= ? AND timestamp <= ?
-            ORDER BY timestamp ASC
-        `;
-        
-        dataDb.all(query, [request.startTime, request.endTime], (err, rows) => {
-            if (err) {
-                console.error('Error querying sensor history:', err);
-                
-                // Send error response
-                if (mqttClient && mqttClient.connected) {
-                    mqttClient.publish(`undergrowth/nodes/${nodeId}/history/error`, JSON.stringify({
-                        nodeId,
-                        requestId: request.requestId,
-                        error: 'Database query error',
-                        message: err.message
-                    }), { qos: 1 });
-                }
-                return;
-            }
-            
-            // Get max sequence information if available
-            getSequenceRange()
-                .then(sequenceRange => {
-                    // Format response
-                    const response = {
-                        nodeId,
-                        requestId: request.requestId,
-                        startTime: request.startTime,
-                        endTime: request.endTime,
-                        // Include sequence info if available
-                        maxSequence: sequenceRange.maxSequence,
-                        dataPoints: rows.map(row => ({
-                            timestamp: row.timestamp,
-                            sensorId: row.device_id,
-                            type: row.type,
-                            value: row.value
-                        })),
-                        recordCount: rows.length
-                    };
-                    
-                    console.log(`Sending time-based history response with ${rows.length} records (max sequence: ${sequenceRange.maxSequence})`);
-                    
-                    // Send response
-                    if (mqttClient && mqttClient.connected) {
-                        mqttClient.publish(`undergrowth/nodes/${nodeId}/history`, JSON.stringify(response), { 
-                            qos: 1 
-                        });
-                        
-                        // Update server_sync table to track last contact, but not sequence since this was time-based
-                        const now = new Date().toISOString();
-                        configDb.run(
-                            'INSERT OR REPLACE INTO server_sync (server_id, last_sync_time, last_seen) VALUES (?, ?, ?)',
-                            ['server', now, now],
-                            (err) => {
-                                if (err) {
-                                    console.error('Error updating server_sync table:', err);
-                                }
-                            }
-                        );
-                    } else {
-                        console.log('MQTT client not connected, history response could not be sent');
-                    }
-                })
-                .catch(err => {
-                    console.error('Error getting sequence range:', err);
-                    
-                    // Fall back to response without sequence information
-                    const response = {
-                        nodeId,
-                        requestId: request.requestId,
-                        startTime: request.startTime,
-                        endTime: request.endTime,
-                        dataPoints: rows.map(row => ({
-                            timestamp: row.timestamp,
-                            sensorId: row.device_id,
-                            type: row.type,
-                            value: row.value
-                        })),
-                        recordCount: rows.length
-                    };
-                    
-                    console.log(`Sending time-based history response with ${rows.length} records (without sequence info)`);
-                    
-                    if (mqttClient && mqttClient.connected) {
-                        mqttClient.publish(`undergrowth/nodes/${nodeId}/history`, JSON.stringify(response), { 
-                            qos: 1 
-                        });
-                    } else {
-                        console.log('MQTT client not connected, history response could not be sent');
-                    }
-                });
-        });
-    }
 }
 
 // API endpoint for sequence information 
@@ -2756,4 +2118,450 @@ app.get('/api/sensor-stats/summary', async (req, res) => {
     console.error('Error getting sensor statistics summary:', error);
     res.status(500).json({ error: 'Failed to get sensor statistics summary' });
   }
+});
+
+// Update the emitBrokerInfo function to use our MQTT controller
+function emitBrokerInfo() {
+    if (!io) return;
+    
+    const info = mqttController.getBrokerInfo();
+    io.emit('brokerInfo', {
+        connected: info.connected,
+        address: info.address,
+        port: info.port,
+        lastConnection: info.lastConnection,
+        connectionDuration: info.connectionDuration,
+        reconnectionAttempts: info.reconnectionAttempts,
+        lastMessage: info.lastMessage,
+        subscribedTopics: info.topicsSubscribed
+    });
+}
+
+// Update broker info every 5 seconds
+setInterval(emitBrokerInfo, 5000);
+
+// Socket.io connection handling
+io.on('connection', (socket) => {
+    console.log('Client connected');
+
+    // Emit initial broker info
+    emitBrokerInfo();
+
+    // Handle timezone get request
+    socket.on('getTimezone', () => {
+        configDb.get('SELECT value FROM timezone WHERE key = ?', ['timezone'], (err, row) => {
+            if (err) {
+                console.error('Error getting timezone:', err);
+                return;
+            }
+            const timezone = row ? row.value : 'America/Los_Angeles';
+            socket.emit('timezoneUpdate', { timezone });
+        });
+    });
+
+    // Handle timezone set request
+    socket.on('setTimezone', (data) => {
+        const { timezone } = data;
+        configDb.run('UPDATE timezone SET value = ? WHERE key = ?', [timezone, 'timezone'], (err) => {
+            if (err) {
+                console.error('Error setting timezone:', err);
+                return;
+            }
+            // Broadcast the new timezone to all clients
+            io.emit('timezoneUpdate', { timezone });
+        });
+    });
+
+    // Handle PWM Set request - THIS IS MISSING
+    socket.on('pwmSet', async (data) => {
+        try {
+            const { pin, value } = data;
+            
+            // Validate input
+            if (!pin || value === undefined || !pwmPins[pin]) {
+                socket.emit('pwmError', { pin, message: 'Invalid pin or value', blocked: false });
+                return;
+            }
+            
+            // Check if system is in a safe state
+            const isSafe = await isSystemSafe();
+            if (!isSafe) {
+                socket.emit('pwmError', { pin, message: 'System is in emergency stop, cannot set PWM', blocked: true });
+                return;
+            }
+            
+            // Get current mode
+            const currentMode = await new Promise((resolve, reject) => {
+                configDb.get('SELECT value FROM system_state WHERE key = ?', ['mode'], (err, row) => {
+                    if (err) reject(err);
+                    else resolve(row ? row.value : 1); // Default to manual mode (1)
+                });
+            });
+            
+            // Don't allow PWM changes in automatic mode
+            if (currentMode === 0) {
+                socket.emit('pwmError', { pin, message: 'Cannot change PWM in automatic mode', blocked: true });
+                return;
+            }
+            
+            console.log(`Setting PWM for pin ${pin} to ${value}`);
+            
+            // Update database
+            configDb.run('INSERT OR REPLACE INTO pwm_states (pin, value, enabled, last_modified) VALUES (?, ?, (SELECT enabled FROM pwm_states WHERE pin = ?), CURRENT_TIMESTAMP)',
+                [pin, value, pin],
+                (err) => {
+                    if (err) {
+                        console.error('Error updating PWM value in database:', err);
+                        socket.emit('pwmError', { pin, message: 'Database error', blocked: false });
+                        return;
+                    }
+                    
+                    // Update hardware if PWM is enabled
+                    if (pwmEnabled && pwmPins[pin]) {
+                        // Get current enabled state
+                        configDb.get('SELECT enabled FROM pwm_states WHERE pin = ?', [pin], (err, row) => {
+                            if (err) {
+                                console.error('Error getting PWM enabled state:', err);
+                                return;
+                            }
+                            
+                            // Only write to the pin if it's enabled
+                            if (row && row.enabled === 1) {
+                                // Scale from 0-1023 to 0-255 for hardware
+                                const pwmValue = Math.floor((value / 1023) * 255);
+                                console.log(`Writing PWM value ${pwmValue} (from ${value}) to pin ${pin}`);
+                                pwmPins[pin].pwmWrite(pwmValue);
+                            }
+                            
+                            // Broadcast updated PWM state to all clients
+                            broadcastPWMState();
+                        });
+                    } else {
+                        // Still broadcast state even if hardware control is disabled
+                        broadcastPWMState();
+                    }
+                }
+            );
+        } catch (error) {
+            console.error('Error in pwmSet handler:', error);
+            socket.emit('pwmError', { message: 'Server error: ' + error.message, blocked: false });
+        }
+    });
+    
+    // Handle PWM Toggle request - THIS IS MISSING
+    socket.on('pwmToggle', async (data) => {
+        try {
+            const { pin, enabled } = data;
+            
+            // Validate input
+            if (!pin || enabled === undefined || !pwmPins[pin]) {
+                socket.emit('pwmError', { pin, message: 'Invalid pin or value', blocked: false });
+                return;
+            }
+            
+            // Check if system is in a safe state
+            const isSafe = await isSystemSafe();
+            if (!isSafe) {
+                socket.emit('pwmError', { pin, message: 'System is in emergency stop, cannot toggle PWM', blocked: true });
+                return;
+            }
+            
+            // Get current mode
+            const currentMode = await new Promise((resolve, reject) => {
+                configDb.get('SELECT value FROM system_state WHERE key = ?', ['mode'], (err, row) => {
+                    if (err) reject(err);
+                    else resolve(row ? row.value : 1); // Default to manual mode
+                });
+            });
+            
+            // Don't allow PWM changes in automatic mode
+            if (currentMode === 0) {
+                socket.emit('pwmError', { pin, message: 'Cannot change PWM in automatic mode', blocked: true });
+                return;
+            }
+            
+            console.log(`Toggling PWM for pin ${pin} to ${enabled ? 'enabled' : 'disabled'}`);
+            
+            // Use the existing togglePWM function which handles database and hardware updates
+            await togglePWM(pin, enabled);
+            
+        } catch (error) {
+            console.error('Error in pwmToggle handler:', error);
+            socket.emit('pwmError', { message: 'Server error: ' + error.message, blocked: false });
+        }
+    });
+    
+    // Handle mode toggle request - THIS IS MISSING
+    socket.on('setMode', async (data) => {
+        try {
+            const { automatic } = data;
+            const mode = automatic ? 0 : 1; // 0 = automatic, 1 = manual
+            
+            console.log(`Setting mode to ${automatic ? 'automatic' : 'manual'} (${mode})`);
+            
+            // Update database
+            configDb.run('UPDATE system_state SET value = ? WHERE key = ?', [mode, 'mode'], async (err) => {
+                if (err) {
+                    console.error('Error updating mode in database:', err);
+                    return;
+                }
+                
+                // Broadcast mode change to all clients
+                io.emit('modeUpdate', { mode });
+                
+                // Also broadcast PWM state which includes mode information
+                broadcastPWMState();
+                
+                // If switching to automatic mode, run the control loop to update outputs
+                if (mode === 0) {
+                    await controlLoop();
+                }
+            });
+        } catch (error) {
+            console.error('Error in setMode handler:', error);
+        }
+    });
+    
+    // Handle getInitialState request - THIS IS MISSING
+    socket.on('getInitialState', async () => {
+        try {
+            // Get safety states
+            const safetyStates = await new Promise((resolve, reject) => {
+                configDb.all('SELECT key, value FROM safety_state', [], (err, rows) => {
+                    if (err) reject(err);
+                    else resolve(rows.reduce((acc, row) => {
+                        acc[row.key] = row.value;
+                        return acc;
+                    }, {}));
+                });
+            });
+            
+            // Get current mode
+            const mode = await new Promise((resolve, reject) => {
+                configDb.get('SELECT value FROM system_state WHERE key = ?', ['mode'], (err, row) => {
+                    if (err) reject(err);
+                    else resolve(row ? row.value : 1); // Default to manual mode
+                });
+            });
+            
+            // Get manual PWM states
+            const manualPwmStates = await new Promise((resolve, reject) => {
+                configDb.all('SELECT pin, value, enabled FROM pwm_states', [], (err, rows) => {
+                    if (err) reject(err);
+                    else {
+                        const pwmStates = {};
+                        rows.forEach(row => {
+                            pwmStates[row.pin] = {
+                                value: row.value,
+                                enabled: row.enabled === 1
+                            };
+                        });
+                        resolve(pwmStates);
+                    }
+                });
+            });
+            
+            // Get auto PWM states
+            const autoPwmStates = await new Promise((resolve, reject) => {
+                configDb.all('SELECT pin, value, enabled FROM auto_pwm_states', [], (err, rows) => {
+                    if (err) reject(err);
+                    else {
+                        const pwmStates = {};
+                        rows.forEach(row => {
+                            pwmStates[row.pin] = {
+                                value: row.value,
+                                enabled: row.enabled === 1
+                            };
+                        });
+                        resolve(pwmStates);
+                    }
+                });
+            });
+            
+            // Send initial state to client
+            socket.emit('initialState', {
+                safety: {
+                    emergency_stop: safetyStates.emergency_stop === 1,
+                    normal_enable: safetyStates.normal_enable === 1
+                },
+                safetyStates,
+                mode,
+                pwmStates: {
+                    mode,
+                    current: mode === 0 ? autoPwmStates : manualPwmStates,
+                    manual: manualPwmStates,
+                    auto: autoPwmStates
+                }
+            });
+            
+            // Get events data for schedule page
+            configDb.all('SELECT id, gpio, time, pwm_value, enabled FROM events ORDER BY time', [], (err, rows) => {
+                if (err) {
+                    console.error('Error getting events for initial state:', err);
+                    return;
+                }
+                
+                // Include events data in the initial state if there are any
+                if (rows && rows.length > 0) {
+                    socket.emit('eventsUpdated', rows);
+                }
+            });
+            
+        } catch (error) {
+            console.error('Error in getInitialState handler:', error);
+        }
+    });
+
+    // Also add an applyPwmHardware command for debugging
+    socket.on('applyPwmHardware', () => {
+        console.log('Manual request to apply PWM hardware state received');
+        applyPwmStatesFromDb();
+    });
+
+    // Handle event-related requests for schedule.html
+    
+    // Get all events
+    socket.on('getEvents', () => {
+        configDb.all('SELECT id, gpio, time, pwm_value, enabled FROM events ORDER BY time', [], (err, rows) => {
+            if (err) {
+                console.error('Error getting events:', err);
+                socket.emit('error', { message: 'Failed to retrieve events' });
+                return;
+            }
+            socket.emit('eventsUpdated', rows);
+        });
+    });
+
+    // Add a new event
+    socket.on('addEvent', (data) => {
+        const { gpio, time, pwm_value, enabled } = data;
+        
+        if (!gpio || !time || pwm_value === undefined) {
+            socket.emit('error', { message: 'Invalid event data' });
+            return;
+        }
+        
+        configDb.run('INSERT INTO events (gpio, time, pwm_value, enabled) VALUES (?, ?, ?, ?)',
+            [gpio, time, pwm_value, enabled || 1],
+            function(err) {
+                if (err) {
+                    console.error('Error adding event:', err);
+                    socket.emit('error', { message: 'Failed to add event' });
+                    return;
+                }
+                
+                console.log(`Event added: GPIO${gpio} at ${time} with PWM ${pwm_value}`);
+                
+                // Send updated events to all clients
+                configDb.all('SELECT id, gpio, time, pwm_value, enabled FROM events ORDER BY time', [], (err, rows) => {
+                    if (err) {
+                        console.error('Error getting events after add:', err);
+                        return;
+                    }
+                    io.emit('eventsUpdated', rows);
+                });
+            }
+        );
+    });
+
+    // Delete an event
+    socket.on('deleteEvent', (data) => {
+        const { id } = data;
+        
+        if (!id) {
+            socket.emit('error', { message: 'Invalid event ID' });
+            return;
+        }
+        
+        configDb.run('DELETE FROM events WHERE id = ?', [id], function(err) {
+            if (err) {
+                console.error('Error deleting event:', err);
+                socket.emit('error', { message: 'Failed to delete event' });
+                return;
+            }
+            
+            console.log(`Event ${id} deleted`);
+            
+            // Send updated events to all clients
+            configDb.all('SELECT id, gpio, time, pwm_value, enabled FROM events ORDER BY time', [], (err, rows) => {
+                if (err) {
+                    console.error('Error getting events after delete:', err);
+                    return;
+                }
+                io.emit('eventsUpdated', rows);
+            });
+        });
+    });
+
+    // Toggle event enabled state
+    socket.on('toggleEvent', (data) => {
+        const { id, enabled } = data;
+        
+        if (!id || enabled === undefined) {
+            socket.emit('error', { message: 'Invalid event data' });
+            return;
+        }
+        
+        configDb.run('UPDATE events SET enabled = ? WHERE id = ?', [enabled ? 1 : 0, id], function(err) {
+            if (err) {
+                console.error('Error toggling event:', err);
+                socket.emit('error', { message: 'Failed to toggle event' });
+                return;
+            }
+            
+            console.log(`Event ${id} toggled to ${enabled ? 'enabled' : 'disabled'}`);
+            
+            // Send updated events to all clients
+            configDb.all('SELECT id, gpio, time, pwm_value, enabled FROM events ORDER BY time', [], (err, rows) => {
+                if (err) {
+                    console.error('Error getting events after toggle:', err);
+                    return;
+                }
+                io.emit('eventsUpdated', rows);
+            });
+        });
+    });
+
+    // Handle emergency stop request
+    socket.on('emergencyStop', async () => {
+        console.log('Emergency stop requested');
+        try {
+            await emergencyStop();
+            // Broadcast safety state update to all clients
+            broadcastSafetyState();
+            // Also emit specific event for compatibility
+            io.emit('emergencyStop');
+            // Stop all PWM outputs
+            if (pwmEnabled) {
+                for (const pin of Object.keys(pwmPins)) {
+                    if (pwmPins[pin]) {
+                        try {
+                            console.log(`Emergency stop: Setting GPIO${pin} to 0`);
+                            pwmPins[pin].pwmWrite(0);
+                        } catch (e) {
+                            console.error(`Error setting GPIO${pin} to 0:`, e.message);
+                        }
+                    }
+                }
+            }
+        } catch (error) {
+            console.error('Error in emergencyStop handler:', error);
+        }
+    });
+
+    // Handle clear emergency stop request
+    socket.on('clearEmergencyStop', async () => {
+        console.log('Clear emergency stop requested');
+        try {
+            await clearEmergencyStop();
+            // Broadcast safety state update to all clients
+            broadcastSafetyState();
+            // Also emit specific event for compatibility
+            io.emit('clearEmergencyStop');
+            // Re-apply PWM states from database
+            applyPwmStatesFromDb();
+        } catch (error) {
+            console.error('Error in clearEmergencyStop handler:', error);
+        }
+    });
 }); 
