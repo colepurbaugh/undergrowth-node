@@ -95,14 +95,19 @@
         let showAverage = false; // Whether to show average of selected sensors
         
         // Chart colors for different sensors (can add more as needed)
-        const chartColors = [
+        const tempColors = [
             { border: 'rgb(255, 99, 132)', background: 'rgba(255, 99, 132, 0.1)' },  // Red
+            { border: 'rgb(220, 38, 38)', background: 'rgba(220, 38, 38, 0.1)' },   // Darker Red
+            { border: 'rgb(239, 68, 68)', background: 'rgba(239, 68, 68, 0.1)' },   // Medium Red
+            { border: 'rgb(252, 165, 165)', background: 'rgba(252, 165, 165, 0.1)' }, // Light Red
+            { border: 'rgb(153, 27, 27)', background: 'rgba(153, 27, 27, 0.1)' }    // Deep Red
+        ];
+        const humidColors = [
             { border: 'rgb(54, 162, 235)', background: 'rgba(54, 162, 235, 0.1)' },  // Blue
-            { border: 'rgb(255, 206, 86)', background: 'rgba(255, 206, 86, 0.1)' },  // Yellow
-            { border: 'rgb(75, 192, 192)', background: 'rgba(75, 192, 192, 0.1)' },  // Green
-            { border: 'rgb(153, 102, 255)', background: 'rgba(153, 102, 255, 0.1)' }, // Purple
-            { border: 'rgb(255, 159, 64)', background: 'rgba(255, 159, 64, 0.1)' },  // Orange
-            { border: 'rgb(199, 199, 199)', background: 'rgba(199, 199, 199, 0.1)' }  // Gray
+            { border: 'rgb(37, 99, 235)', background: 'rgba(37, 99, 235, 0.1)' },   // Darker Blue
+            { border: 'rgb(59, 130, 246)', background: 'rgba(59, 130, 246, 0.1)' }, // Medium Blue
+            { border: 'rgb(191, 219, 254)', background: 'rgba(191, 219, 254, 0.1)' }, // Light Blue
+            { border: 'rgb(30, 64, 175)', background: 'rgba(30, 64, 175, 0.1)' }    // Deep Blue
         ];
 
         // Initialize socket connection
@@ -187,8 +192,8 @@
             
             availableSensors.forEach((sensor, index) => {
                 const isSelected = selectedSensors.includes(sensor.id.toString());
-                const colorIndex = index % chartColors.length;
-                const color = chartColors[colorIndex].border;
+                // Always use dark gray for accent color
+                const color = '#333';
                 
                 const wrapper = document.createElement('div');
                 wrapper.className = 'sensor-checkbox-wrapper';
@@ -290,7 +295,7 @@
                             hoverRadius: 5
                         },
                         line: {
-                            tension: 0.1,
+                            tension: 0,
                             borderWidth: 2
                         }
                     },
@@ -329,13 +334,12 @@
                                 maxRotation: 45,
                                 minRotation: 45,
                                 autoSkip: false,
-                                maxTicksLimit: 30,
+                                maxTicksLimit: 40,
                                 callback: function(value, index, values) {
                                     // Show every n-th label to avoid overcrowding
-                                    // The frequency depends on the total number of ticks
-                                    if (values.length <= 10) return value;
-                                    if (values.length <= 20) return index % 2 === 0 ? value : '';
-                                    if (values.length <= 40) return index % 3 === 0 ? value : '';
+                                    if (values.length <= 40) return value;
+                                    if (values.length <= 80) return index % 2 === 0 ? value : '';
+                                    if (values.length <= 120) return index % 3 === 0 ? value : '';
                                     return index % 4 === 0 ? value : '';
                                 },
                                 source: 'data',
@@ -523,32 +527,33 @@
                         // Individual sensor mode
                         // Group data by sensor
                         const sensorGroups = {};
-                        
-                        data.forEach(item => {
-                            if (!sensorGroups[item.sensorId]) {
-                                sensorGroups[item.sensorId] = [];
-                            }
-                            
-                            // Only add valid values
-                            if (item.value !== null) {
-                                sensorGroups[item.sensorId].push({
-                                    x: new Date(item.timestamp).valueOf(),
-                                    y: item.value
+                        // Build a map of all timestamps (bins) and sensors in data (declare once)
+                        const allTimestamps = Array.from(new Set(data.map(item => item.timestamp))).sort();
+                        const sensorsInData = Array.from(new Set(data.map(item => item.sensorId)));
+                        // Group data by sensor, including nulls
+                        sensorsInData.forEach(sensorId => {
+                            sensorGroups[sensorId] = [];
+                            allTimestamps.forEach(ts => {
+                                const found = data.find(item => item.sensorId === sensorId && item.timestamp === ts);
+                                sensorGroups[sensorId].push({
+                                    x: new Date(ts).valueOf(),
+                                    y: found ? found.value : null
                                 });
-                            }
+                            });
                         });
                         
                         // Calculate overall min/max for better scaling
                         let allValues = [];
-                        let allTimestamps = [];
+                        let allXValues = [];
                         Object.values(sensorGroups).forEach(points => {
                             allValues = allValues.concat(points.map(p => p.y));
-                            allTimestamps = allTimestamps.concat(points.map(p => p.x));
+                            allXValues = allXValues.concat(points.map(p => p.x));
                         });
-                        
-                        if (allValues.length > 0) {
-                            const min = Math.min(...allValues);
-                            const max = Math.max(...allValues);
+                        // Filter out nulls for min/max calculation
+                        const validValues = allValues.filter(v => v !== null && v !== undefined && !isNaN(v));
+                        if (validValues.length > 0) {
+                            const min = Math.min(...validValues);
+                            const max = Math.max(...validValues);
                             const padding = (max - min) * 0.1;
                             
                             // Update y-axis scale with padding
@@ -569,69 +574,24 @@
                         Object.keys(sensorGroups).forEach((sensorId, index) => {
                             const sensor = availableSensors.find(s => s.id.toString() === sensorId.toString()) || 
                                         { name: `Sensor ${sensorId}`, type: 'unknown' };
-                            
-                            const colorIndex = index % chartColors.length;
-                            
+                            // Use red shades for temperature, blue for humidity
+                            let colorIndex = index;
+                            let color;
+                            if (type === 'temperature') {
+                                color = tempColors[colorIndex % tempColors.length];
+                            } else {
+                                color = humidColors[colorIndex % humidColors.length];
+                            }
                             // Sort data points by timestamp
                             const sortedData = sensorGroups[sensorId].sort((a, b) => a.x - b.x);
-                            
-                            // Split data into segments where there are gaps
-                            const segments = [];
-                            let currentSegment = [];
-                            
-                            for (let i = 0; i < sortedData.length; i++) {
-                                const current = sortedData[i];
-                                
-                                // Add to current segment
-                                currentSegment.push(current);
-                                
-                                // If this is last point or there's a gap to the next point, end segment
-                                if (i === sortedData.length - 1) {
-                                    // Last point, add segment if it has points
-                                    if (currentSegment.length > 0) segments.push([...currentSegment]);
-                                } else {
-                                    const next = sortedData[i + 1];
-                                    const gapMinutes = (next.x - current.x) / (1000 * 60);
-                                    
-                                    // Use different gap thresholds based on time range
-                                    let gapThreshold = 10; // Default 10 minutes for hour view
-                                    
-                                    // Get current time range setting
-                                    const currentTimeRange = parseInt(document.getElementById('timeRange').value);
-                                    if (currentTimeRange >= 168) { // Week view
-                                        gapThreshold = 120; // 2 hours for week view
-                                    } else if (currentTimeRange >= 24) { // Day view
-                                        gapThreshold = 60; // 1 hour for day view
-                                    } else if (currentTimeRange >= 6) { // Several hours
-                                        gapThreshold = 30; // 30 minutes
-                                    }
-                                    
-                                    // Consider it a gap if more than the threshold between points
-                                    if (gapMinutes > gapThreshold) {
-                                        if (currentSegment.length > 0) segments.push([...currentSegment]);
-                                        currentSegment = [];
-                                    }
-                                }
-                            }
-                            
-                            // Display each segment as a separate dataset for better gap visualization
-                            segments.forEach((segment, segIndex) => {
-                                // Only add dataset if we have points
-                                if (segment.length > 0) {
-                                    const segmentSuffix = segments.length > 1 ? ` (segment ${segIndex+1})` : '';
-                                    
-                                    chart.data.datasets.push({
-                                        label: `${sensor.name || `${sensor.type} ${sensor.address}`}${segmentSuffix} ${type === 'temperature' ? 'Temperature (°F)' : 'Humidity (%)'}`,
-                                        data: segment,
-                                        borderColor: chartColors[colorIndex].border,
-                                        backgroundColor: chartColors[colorIndex].background,
-                                        tension: 0.1,
-                                        borderWidth: 2,
-                                        pointRadius: 3,
-                                        fill: false,
-                                        spanGaps: false // Important: don't span gaps within a segment
-                                    });
-                                }
+                            chart.data.datasets.push({
+                                label: `${sensor.name || `${sensor.type} ${sensor.address}`}${type === 'temperature' ? ' Temperature (°F)' : ' Humidity (%)'}`,
+                                data: sortedData,
+                                borderColor: color.border,
+                                backgroundColor: color.background,
+                                pointRadius: 3,
+                                showLine: false,
+                                fill: false
                             });
                         });
                     }

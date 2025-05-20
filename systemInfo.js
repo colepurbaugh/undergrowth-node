@@ -17,6 +17,28 @@ class SystemInfo {
     static _timeSyncErrorLogged = false;
     static _cpuTempErrorLogged = false;
 
+    // New static properties for node info
+    static nodeInfo = {
+        lastUpdate: 0,
+        sensorStats: {
+            totalReadings: 0,
+            temperatureReadings: 0,
+            humidityReadings: 0,
+            firstReadingTime: null,
+            lastReadingTime: null
+        },
+        syncStats: {
+            lastSyncTime: null,
+            lastSyncSequence: 0,
+            totalRecords: 0,
+            pendingRecords: 0
+        },
+        mqttStats: {
+            messageCount: 0,
+            lastMessageTime: null
+        }
+    };
+
     static async getSystemInfo() {
         try {
             // Check internet connectivity
@@ -292,6 +314,184 @@ class SystemInfo {
             console.error('All timezone detection methods failed:', error);
             return this.cachedTimezone || 'Unknown';
         }
+    }
+
+    // New method to get complete node info
+    static async getNodeInfo() {
+        const now = Date.now();
+        const systemInfo = await this.getSystemInfo();
+        const networkInfo = this.getNetworkInfo();
+        
+        // Update node info if it's been more than 5 seconds
+        if (now - this.nodeInfo.lastUpdate > 5000) {
+            this.nodeInfo.lastUpdate = now;
+            
+            // Get sensor stats from database
+            try {
+                const sensorStats = await this.getSensorStats();
+                this.nodeInfo.sensorStats = sensorStats;
+            } catch (error) {
+                console.error('Error getting sensor stats:', error);
+            }
+            
+            // Get sync stats from database
+            try {
+                const syncStats = await this.getSyncStats();
+                this.nodeInfo.syncStats = syncStats;
+            } catch (error) {
+                console.error('Error getting sync stats:', error);
+            }
+        }
+
+        return {
+            node_id: networkInfo.macAddress ? `node-${networkInfo.macAddress.split(':').slice(-3).join('').toUpperCase()}` : 'unknown',
+            timestamp: new Date().toISOString(),
+            system: {
+                ip_address: networkInfo.ipAddress,
+                runtime: this.formatUptime(Math.floor((now - this.serverStartTime) / 1000)),
+                uptime: Math.floor((now - this.serverStartTime) / 1000),
+                cpu_temp: systemInfo.system.cpuTemp,
+                memory_usage: systemInfo.system.memory,
+                disk_usage: systemInfo.system.disk
+            },
+            sensors: {
+                total_sensors: this.nodeInfo.sensorStats.totalSensors || 0,
+                active_sensors: this.nodeInfo.sensorStats.activeSensors || 0,
+                last_reading_time: this.nodeInfo.sensorStats.lastReadingTime,
+                reading_interval: 10, // Fixed interval
+                sensor_stats: this.nodeInfo.sensorStats
+            },
+            mqtt: {
+                connected: systemInfo.system.mqttConnected,
+                broker_address: systemInfo.system.mqttBroker,
+                last_message_time: this.nodeInfo.mqttStats.lastMessageTime,
+                message_count: this.nodeInfo.mqttStats.messageCount
+            },
+            sync: {
+                last_sync_time: this.nodeInfo.syncStats.lastSyncTime,
+                last_sync_sequence: this.nodeInfo.syncStats.lastSyncSequence,
+                total_records: this.nodeInfo.syncStats.totalRecords,
+                pending_records: this.nodeInfo.syncStats.pendingRecords,
+                sync_status: this.getSyncStatus()
+            }
+        };
+    }
+
+    // Helper method to get sensor stats
+    static async getSensorStats() {
+        // This would be implemented to query the database
+        // For now, return mock data
+        return {
+            totalSensors: 2,
+            activeSensors: 2,
+            totalReadings: 1000,
+            temperatureReadings: 500,
+            humidityReadings: 500,
+            firstReadingTime: new Date(Date.now() - 86400000).toISOString(), // 24 hours ago
+            lastReadingTime: new Date().toISOString()
+        };
+    }
+
+    // Helper method to get sync stats
+    static async getSyncStats() {
+        // This would be implemented to query the database
+        // For now, return mock data
+        return {
+            lastSyncTime: new Date(Date.now() - 3600000).toISOString(), // 1 hour ago
+            lastSyncSequence: 500,
+            totalRecords: 1000,
+            pendingRecords: 500
+        };
+    }
+
+    // Helper method to determine sync status
+    static getSyncStatus() {
+        const stats = this.nodeInfo.syncStats;
+        if (!stats.lastSyncTime) return 'none';
+        if (stats.pendingRecords === 0) return 'full';
+        return 'partial';
+    }
+
+    // Method to update sensor stats when new readings are added
+    static updateSensorStats(reading) {
+        this.nodeInfo.sensorStats.totalReadings++;
+        if (reading.type === 'temperature') {
+            this.nodeInfo.sensorStats.temperatureReadings++;
+        } else if (reading.type === 'humidity') {
+            this.nodeInfo.sensorStats.humidityReadings++;
+        }
+        
+        if (!this.nodeInfo.sensorStats.firstReadingTime) {
+            this.nodeInfo.sensorStats.firstReadingTime = reading.timestamp;
+        }
+        this.nodeInfo.sensorStats.lastReadingTime = reading.timestamp;
+    }
+
+    // Method to update sync stats after successful sync
+    static updateSyncStats(sequence, count) {
+        this.nodeInfo.syncStats.lastSyncTime = new Date().toISOString();
+        this.nodeInfo.syncStats.lastSyncSequence = sequence;
+        this.nodeInfo.syncStats.pendingRecords = Math.max(0, this.nodeInfo.syncStats.totalRecords - count);
+    }
+
+    // Method to update MQTT stats
+    static updateMqttStats() {
+        this.nodeInfo.mqttStats.messageCount++;
+        this.nodeInfo.mqttStats.lastMessageTime = new Date().toISOString();
+    }
+    
+    // Method to handle "info get" requests
+    static async getInfoResponse() {
+        const systemInfo = await this.getSystemInfo();
+        const nodeInfo = await this.getNodeInfo();
+        
+        return {
+            timestamp: new Date().toISOString(),
+            system: {
+                ip_address: systemInfo.system.ipAddress,
+                hostname: systemInfo.system.hostname,
+                uptime: systemInfo.system.piUptime,
+                cpu_temp: systemInfo.system.cpuTemp,
+                memory_usage: process.memoryUsage().heapUsed / 1024 / 1024,
+                internet_connected: systemInfo.system.internetConnected
+            },
+            sensors: {
+                total_count: nodeInfo.sensors.total_sensors,
+                active_count: nodeInfo.sensors.active_sensors,
+                readings: {
+                    total: nodeInfo.sensors.sensor_stats.totalReadings,
+                    temperature: nodeInfo.sensors.sensor_stats.temperatureReadings,
+                    humidity: nodeInfo.sensors.sensor_stats.humidityReadings,
+                    last_reading_time: nodeInfo.sensors.last_reading_time
+                },
+                reading_interval: 10000 // 10 seconds
+            },
+            mqtt: {
+                connected: nodeInfo.mqtt.connected,
+                broker_address: nodeInfo.mqtt.broker_address,
+                message_count: nodeInfo.mqtt.message_count,
+                last_message_time: nodeInfo.mqtt.last_message_time
+            },
+            sync: {
+                status: nodeInfo.sync.sync_status,
+                records: {
+                    total: nodeInfo.sync.total_records,
+                    pending: nodeInfo.sync.pending_records
+                },
+                last_sync: {
+                    time: nodeInfo.sync.last_sync_time,
+                    sequence: nodeInfo.sync.last_sync_sequence
+                }
+            },
+            safety: {
+                emergency_stop: false, // To be updated with actual data
+                normal_enable: true    // To be updated with actual data
+            },
+            pwm: {
+                active_channels: 0,    // To be updated with actual data
+                last_update: null      // To be updated with actual data
+            }
+        };
     }
 }
 

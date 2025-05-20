@@ -365,23 +365,16 @@
                 databaseTimezoneElement.textContent = formatTimezoneDisplay(data.databaseTimezone);
             }
 
-            // Store sensor data for legacy sensors (0x38 and 0x39) to support existing code
-            if (data.sensor1) {
-                sensorData['0x38'] = {
-                    address: data.sensor1.address,
-                    temperature: data.sensor1.temperature,
-                    humidity: data.sensor1.humidity
-                };
-                updateSensorDisplay('0x38', data.sensor1);
-            }
-
-            if (data.sensor2) {
-                sensorData['0x39'] = {
-                    address: data.sensor2.address,
-                    temperature: data.sensor2.temperature,
-                    humidity: data.sensor2.humidity
-                };
-                updateSensorDisplay('0x39', data.sensor2);
+            // Update sensor data cache and display for all sensors by address
+            for (const [address, sensorData] of Object.entries(data)) {
+                // Skip non-sensor keys (system, databaseTimezone, etc.)
+                if (address === 'system' || address === 'databaseTimezone') continue;
+                
+                // Update our data cache
+                sensorData[address] = sensorData;
+                
+                // Update the display
+                updateSensorDisplay(address, sensorData);
             }
             
             // After receiving initial state, request configured sensors
@@ -532,24 +525,31 @@
             
             // Process each sensor
             data.sensors.forEach(sensorStat => {
-                // Legacy sensors have special handling
-                let sensorId = sensorStat.id;
+                // Get the address for display
+                const address = sensorStat.address;
                 
-                // Convert legacy sensor IDs to match the DOM elements
-                if (sensorStat.deviceId === 'sensor1' || sensorStat.address === '0x38') {
+                // Convert address to match the DOM elements
+                let sensorId;
+                if (address === '0x38') {
                     sensorId = '1';
-                } else if (sensorStat.deviceId === 'sensor2' || sensorStat.address === '0x39') {
+                } else if (address === '0x39') {
                     sensorId = '2';
+                } else {
+                    // For other sensors, we might not have a pre-defined ID
+                    // Create a dynamic display or use a data-address selector
+                    sensorId = address.replace('0x', '');
                 }
                 
-                console.log(`Processing sensor ${sensorId} (${sensorStat.address}) - Stats: temp=${sensorStat.temperatureCount}, humid=${sensorStat.humidityCount}, total=${sensorStat.totalCount}`);
+                console.log(`Processing sensor ${sensorId} (${address}) - Stats: temp=${sensorStat.temperatureCount}, humid=${sensorStat.humidityCount}, total=${sensorStat.totalCount}`);
                 
-                // Find corresponding DOM elements
-                const firstRecordElem = document.querySelector(`.sensor-first-record[data-id="${sensorId}"]`);
-                const recordCountElem = document.querySelector(`.sensor-record-count[data-id="${sensorId}"]`);
+                // Find corresponding DOM elements - try by id first
+                const firstRecordElem = document.querySelector(`.sensor-first-record[data-id="${sensorId}"]`) || 
+                                     document.querySelector(`.sensor-first-record[data-address="${address}"]`);
+                const recordCountElem = document.querySelector(`.sensor-record-count[data-id="${sensorId}"]`) || 
+                                     document.querySelector(`.sensor-record-count[data-address="${address}"]`);
                 
                 if (!firstRecordElem || !recordCountElem) {
-                    console.warn(`Could not find elements for sensor ${sensorId}`);
+                    console.warn(`Could not find elements for sensor ${sensorId} (${address})`);
                 }
                 
                 // Update first timestamp (won't change)
@@ -825,23 +825,16 @@
                 databaseTimezoneElement.textContent = formatTimezoneDisplay(data.databaseTimezone);
             }
 
-            // Update sensor data cache and display
-            if (data.sensor1) {
-                sensorData['0x38'] = {
-                    address: data.sensor1.address,
-                    temperature: data.sensor1.temperature,
-                    humidity: data.sensor1.humidity
-                };
-                updateSensorDisplay('0x38', data.sensor1);
-            }
-
-            if (data.sensor2) {
-                sensorData['0x39'] = {
-                    address: data.sensor2.address,
-                    temperature: data.sensor2.temperature,
-                    humidity: data.sensor2.humidity
-                };
-                updateSensorDisplay('0x39', data.sensor2);
+            // Update sensor data cache and display for all sensors by address
+            for (const [address, sensorData] of Object.entries(data)) {
+                // Skip non-sensor keys (system, databaseTimezone, etc.)
+                if (address === 'system' || address === 'databaseTimezone') continue;
+                
+                // Update our data cache
+                sensorData[address] = sensorData;
+                
+                // Update the display
+                updateSensorDisplay(address, sensorData);
             }
         });
 

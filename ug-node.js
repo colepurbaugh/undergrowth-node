@@ -71,7 +71,7 @@ function loadSensors() {
                     }
                     const sensor = createSensor(address, type);
                     if (sensor) {
-                        sensors[row.address] = { instance: sensor, config: row, lastReading: null };
+                        sensors[address] = { instance: sensor, config: row, lastReading: null };
                         console.log(`Initialized sensor ${type} at ${address}`);
                     }
                 } catch (error) {
@@ -119,7 +119,16 @@ configDb = new sqlite3.Database('./database/ug-config.db', (err) => {
         configDb.run(`CREATE TABLE IF NOT EXISTS events (id INTEGER PRIMARY KEY AUTOINCREMENT, gpio INTEGER NOT NULL, time TEXT NOT NULL, pwm_value INTEGER NOT NULL, enabled INTEGER DEFAULT 1)`);
         configDb.run(`CREATE TABLE IF NOT EXISTS pwm_states (pin INTEGER PRIMARY KEY, value INTEGER DEFAULT 0, enabled INTEGER DEFAULT 0, last_modified DATETIME DEFAULT CURRENT_TIMESTAMP)`);
         configDb.run(`CREATE TABLE IF NOT EXISTS auto_pwm_states (pin INTEGER PRIMARY KEY, value INTEGER DEFAULT 0, enabled INTEGER DEFAULT 0, last_modified DATETIME DEFAULT CURRENT_TIMESTAMP)`);
-        configDb.run(`CREATE TABLE IF NOT EXISTS sensor_config (id INTEGER PRIMARY KEY AUTOINCREMENT, address TEXT NOT NULL, type TEXT NOT NULL, name TEXT, enabled INTEGER DEFAULT 1, calibration_offset REAL DEFAULT 0.0, calibration_scale REAL DEFAULT 1.0, created_at DATETIME DEFAULT CURRENT_TIMESTAMP, last_updated DATETIME DEFAULT CURRENT_TIMESTAMP, UNIQUE(address))`);
+        configDb.run(`CREATE TABLE IF NOT EXISTS sensor_config (
+            address TEXT PRIMARY KEY,
+            type TEXT NOT NULL,
+            name TEXT,
+            enabled INTEGER DEFAULT 1,
+            calibration_offset REAL DEFAULT 0.0,
+            calibration_scale REAL DEFAULT 1.0,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            last_updated DATETIME DEFAULT CURRENT_TIMESTAMP
+        )`);
         configDb.run(`CREATE TABLE IF NOT EXISTS safety_state (key TEXT PRIMARY KEY, value INTEGER DEFAULT 0)`);
         configDb.run(`CREATE TABLE IF NOT EXISTS system_state (key TEXT PRIMARY KEY, value INTEGER DEFAULT 1)`);
         configDb.run(`CREATE TABLE IF NOT EXISTS timezone (key TEXT PRIMARY KEY, value TEXT DEFAULT 'America/Los_Angeles')`);
@@ -149,8 +158,16 @@ dataDb = new sqlite3.Database('./database/ug-data.db', (err) => {
         console.log('Connected to data database');
     }
     dataDb.serialize(() => {
-        dataDb.run(`CREATE TABLE IF NOT EXISTS sensor_readings (id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP, device_id TEXT, type TEXT, value REAL, sequence_id INTEGER)`);
+        dataDb.run(`CREATE TABLE IF NOT EXISTS sensor_readings (
+            timestamp DATETIME,
+            address TEXT,
+            type TEXT,
+            value REAL,
+            sequence_id INTEGER,
+            PRIMARY KEY (timestamp, address, type)
+        )`);
         dataDb.run(`CREATE INDEX IF NOT EXISTS idx_sequence_id ON sensor_readings(sequence_id)`);
+        dataDb.run(`CREATE INDEX IF NOT EXISTS idx_address ON sensor_readings(address)`);
     });
 });
 
@@ -196,7 +213,7 @@ function getSequenceRange() {
 function getDataBySequenceRange(startSequence, endSequence, limit = 1000) {
     return new Promise((resolve, reject) => {
         dataDb.all(
-            `SELECT id, timestamp, device_id, type, value, sequence_id
+            `SELECT timestamp, address, type, value, sequence_id
              FROM sensor_readings
              WHERE sequence_id >= ? AND sequence_id <= ?
              ORDER BY sequence_id ASC
@@ -273,10 +290,10 @@ async function initAndRead() {
                         const seqId4 = await getNextSequenceId();
                         const timestamp = new Date().toISOString();
                         if (dataDb) {
-                            dataDb.run('INSERT INTO sensor_readings (timestamp, device_id, type, value, sequence_id) VALUES (?, ?, ?, ?, ?)',[timestamp, 'sensor1', 'temperature', data1.temperature, seqId1]);
-                            dataDb.run('INSERT INTO sensor_readings (timestamp, device_id, type, value, sequence_id) VALUES (?, ?, ?, ?, ?)',[timestamp, 'sensor2', 'temperature', data2.temperature, seqId2]);
-                            dataDb.run('INSERT INTO sensor_readings (timestamp, device_id, type, value, sequence_id) VALUES (?, ?, ?, ?, ?)',[timestamp, 'sensor1', 'humidity', data1.humidity, seqId3]);
-                            dataDb.run('INSERT INTO sensor_readings (timestamp, device_id, type, value, sequence_id) VALUES (?, ?, ?, ?, ?)',[timestamp, 'sensor2', 'humidity', data2.humidity, seqId4]);
+                            dataDb.run('INSERT INTO sensor_readings (timestamp, address, type, value, sequence_id) VALUES (?, ?, ?, ?, ?)',[timestamp, '0x38', 'temperature', data1.temperature, seqId1]);
+                            dataDb.run('INSERT INTO sensor_readings (timestamp, address, type, value, sequence_id) VALUES (?, ?, ?, ?, ?)',[timestamp, '0x39', 'temperature', data2.temperature, seqId2]);
+                            dataDb.run('INSERT INTO sensor_readings (timestamp, address, type, value, sequence_id) VALUES (?, ?, ?, ?, ?)',[timestamp, '0x38', 'humidity', data1.humidity, seqId3]);
+                            dataDb.run('INSERT INTO sensor_readings (timestamp, address, type, value, sequence_id) VALUES (?, ?, ?, ?, ?)',[timestamp, '0x39', 'humidity', data2.humidity, seqId4]);
                         }
                     } catch (seqErr) {
                         console.error('Error getting sequence IDs for legacy sensors:', seqErr);
@@ -286,15 +303,14 @@ async function initAndRead() {
                 for (const [address, data] of Object.entries(sensorReadings)) {
                     try {
                         const sensorConfig = sensors[address].config;
-                        const sensorId = `sensor_${sensorConfig.id}`;
                         const tempSeqId = await getNextSequenceId();
                         const humiditySeqId = await getNextSequenceId();
                         const timestamp = new Date().toISOString();
                         if (dataDb) {
                             const tempValue = (data.temperature * (sensorConfig.calibration_scale || 1)) + (sensorConfig.calibration_offset || 0);
                             const humidityValue = data.humidity;
-                            dataDb.run('INSERT INTO sensor_readings (timestamp, device_id, type, value, sequence_id) VALUES (?, ?, ?, ?, ?)',[timestamp, sensorId, 'temperature', tempValue, tempSeqId]);
-                            dataDb.run('INSERT INTO sensor_readings (timestamp, device_id, type, value, sequence_id) VALUES (?, ?, ?, ?, ?)',[timestamp, sensorId, 'humidity', humidityValue, humiditySeqId]);
+                            dataDb.run('INSERT INTO sensor_readings (timestamp, address, type, value, sequence_id) VALUES (?, ?, ?, ?, ?)',[timestamp, address, 'temperature', tempValue, tempSeqId]);
+                            dataDb.run('INSERT INTO sensor_readings (timestamp, address, type, value, sequence_id) VALUES (?, ?, ?, ?, ?)',[timestamp, address, 'humidity', humidityValue, humiditySeqId]);
                         }
                     } catch (seqErr) {
                         console.error(`Error processing readings for sensor ${address}:`, seqErr);
@@ -305,14 +321,19 @@ async function initAndRead() {
                     configDb.get('SELECT value FROM timezone WHERE key = ?', ['timezone'], (err, row) => {
                         const databaseTimezone = err || !row ? 'America/Los_Angeles' : row.value;
                         const sensorDataForClients = {};
-                        if (data1) sensorDataForClients.sensor1 = { ...data1, address: '0x38', temperature: `${data1.temperature.toFixed(1)}°F (${((data1.temperature - 32) * 5/9).toFixed(1)}°C)` };
-                        if (data2) sensorDataForClients.sensor2 = { ...data2, address: '0x39', temperature: `${data2.temperature.toFixed(1)}°F (${((data2.temperature - 32) * 5/9).toFixed(1)}°C)` };
+                        if (data1) sensorDataForClients['0x38'] = { ...data1, address: '0x38', temperature: `${data1.temperature.toFixed(1)}°F (${((data1.temperature - 32) * 5/9).toFixed(1)}°C)` };
+                        if (data2) sensorDataForClients['0x39'] = { ...data2, address: '0x39', temperature: `${data2.temperature.toFixed(1)}°F (${((data2.temperature - 32) * 5/9).toFixed(1)}°C)` };
                         for (const [address, sensorObj] of Object.entries(sensors)) {
                             const reading = sensorObj.lastReading;
                             if (reading) {
-                                const sensorId = `sensor_${sensorObj.config.id}`;
                                 const tempValue = (reading.temperature * (sensorObj.config.calibration_scale || 1)) + (sensorObj.config.calibration_offset || 0);
-                                sensorDataForClients[sensorId] = { ...reading, address: address, temperature: `${tempValue.toFixed(1)}°F (${((tempValue - 32) * 5/9).toFixed(1)}°C)`, raw_temperature: tempValue, config: sensorObj.config };
+                                sensorDataForClients[address] = { 
+                                    ...reading, 
+                                    address: address, 
+                                    temperature: `${tempValue.toFixed(1)}°F (${((tempValue - 32) * 5/9).toFixed(1)}°C)`, 
+                                    raw_temperature: tempValue, 
+                                    config: sensorObj.config 
+                                };
                             }
                         }
                         if (io) io.emit('sensorData', { system: systemInfoData.system, databaseTimezone, ...sensorDataForClients });
@@ -447,18 +468,25 @@ async function publishNodeStatus() {
                 const sensorsFromDb = configuredSensors || [];
                 const allSensors = [
                     ...sensorsFromDb,
-                    { id: 'legacy1', address: '0x38', type: 'AHT10', name: 'Legacy AHT10 (0x38)' },
-                    { id: 'legacy2', address: '0x39', type: 'AHT10', name: 'Legacy AHT10 (0x39)' }
+                    { address: '0x38', type: 'AHT10', name: 'Legacy AHT10 (0x38)' },
+                    { address: '0x39', type: 'AHT10', name: 'Legacy AHT10 (0x39)' }
                 ];
                 const sensorStatsList = [];
                 let totalRecordCount = 0;
                 for (const sensor of allSensors) {
-                    let deviceId = sensor.id === 'legacy1' ? 'sensor1' : (sensor.id === 'legacy2' ? 'sensor2' : `sensor_${sensor.id}`);
-                    const tempCount = await new Promise((res) => dataDb.get('SELECT COUNT(*) as count FROM sensor_readings WHERE device_id = ? AND type = ?', [deviceId, 'temperature'], (e, r) => res(e || !r ? 0 : r.count)));
-                    const humidityCount = await new Promise((res) => dataDb.get('SELECT COUNT(*) as count FROM sensor_readings WHERE device_id = ? AND type = ?', [deviceId, 'humidity'], (e, r) => res(e || !r ? 0 : r.count)));
+                    const address = sensor.address;
+                    const tempCount = await new Promise((res) => dataDb.get('SELECT COUNT(*) as count FROM sensor_readings WHERE address = ? AND type = ?', [address, 'temperature'], (e, r) => res(e || !r ? 0 : r.count)));
+                    const humidityCount = await new Promise((res) => dataDb.get('SELECT COUNT(*) as count FROM sensor_readings WHERE address = ? AND type = ?', [address, 'humidity'], (e, r) => res(e || !r ? 0 : r.count)));
                     const sensorTotal = tempCount + humidityCount;
                     totalRecordCount += sensorTotal;
-                    sensorStatsList.push({ id: sensor.id, deviceId, name: sensor.name || `${sensor.type} ${sensor.address}`, address: sensor.address, type: sensor.type, temperatureCount: tempCount, humidityCount: humidityCount, totalCount: sensorTotal });
+                    sensorStatsList.push({ 
+                        address: sensor.address, 
+                        name: sensor.name || `${sensor.type} ${sensor.address}`, 
+                        type: sensor.type, 
+                        temperatureCount: tempCount, 
+                        humidityCount: humidityCount, 
+                        totalCount: sensorTotal 
+                    });
                 }
                 resolve({ sensors: sensorStatsList, totalRecordCount });
             });
@@ -503,8 +531,19 @@ async function initializeMqtt() {
                     } catch (error) {
                         console.error('Error handling history request:', error);
                     }
+                } else if (topic === `undergrowth/server/requests/${nodeId}/info`) {
+                    try {
+                        console.log('Received info get request');
+                        handleInfoGetRequest();
+                    } catch (error) {
+                        console.error('Error handling info get request:', error);
+                    }
                 }
             });
+            
+            // Subscribe to required topics
+            await mqttController.subscribe(`undergrowth/server/requests/${nodeId}/info`);
+            
             console.log('MQTT successfully initialized');
             
             // Schedule periodic status updates when connected
@@ -556,8 +595,8 @@ function handleHistoryRequest(request) {
             .then(rows => getSequenceRange().then(sequenceRangeData => {
                 // Convert to standardized format
                 const dataPoints = rows.map(r => {
-                    // Convert device_id to standardized sensor_id format
-                    const sensorId = convertToStandardSensorId(r.device_id);
+                    // Create standardized sensor_id format based on address
+                    const sensorId = `aht10_${r.address}`;
                     // Add appropriate unit based on reading type
                     const unit = r.type === 'temperature' ? '°F' : '%';
                     
@@ -610,7 +649,7 @@ function handleHistoryRequest(request) {
             console.error('Invalid time-based request, missing required fields');
             return;
         }
-        const query = `SELECT timestamp, device_id, type, value FROM sensor_readings WHERE timestamp >= ? AND timestamp <= ? ORDER BY timestamp ASC`;
+        const query = `SELECT timestamp, address, type, value FROM sensor_readings WHERE timestamp >= ? AND timestamp <= ? ORDER BY timestamp ASC`;
         dataDb.all(query, [request.startTime, request.endTime], (err, rows) => {
             if (err) {
                 console.error('Error querying sensor history:', err);
@@ -625,8 +664,8 @@ function handleHistoryRequest(request) {
             getSequenceRange().then(sequenceRangeData => {
                 // Convert to standardized format
                 const dataPoints = rows.map(r => {
-                    // Convert device_id to standardized sensor_id format
-                    const sensorId = convertToStandardSensorId(r.device_id);
+                    // Create standardized sensor_id format based on address
+                    const sensorId = `aht10_${r.address}`;
                     // Add appropriate unit based on reading type
                     const unit = r.type === 'temperature' ? '°F' : '%';
                     
@@ -667,8 +706,8 @@ function handleHistoryRequest(request) {
                 
                 // Convert to standardized format even in fallback case
                 const dataPoints = rows.map(r => {
-                    // Convert device_id to standardized sensor_id format
-                    const sensorId = convertToStandardSensorId(r.device_id);
+                    // Create standardized sensor_id format based on address
+                    const sensorId = `aht10_${r.address}`;
                     // Add appropriate unit based on reading type
                     const unit = r.type === 'temperature' ? '°F' : '%';
                     
@@ -695,24 +734,71 @@ function handleHistoryRequest(request) {
     }
 }
 
-// Helper function to convert legacy device_id to standardized sensor_id format
-function convertToStandardSensorId(deviceId) {
-    // Handle legacy sensor identifiers
-    if (deviceId === 'sensor1') return 'aht10_0x38';
-    if (deviceId === 'sensor2') return 'aht10_0x39';
-    
-    // Handle sensor_X pattern (from sensor_config table)
-    if (deviceId.startsWith('sensor_')) {
-        // Get the database ID
-        const id = deviceId.replace('sensor_', '');
-        // Look up the sensor in configDb to get type and address
-        // For simplicity, we'll assume it's an AHT10 sensor
-        // In a real implementation, you would query the database
-        return `aht10_sensor${id}`;
+async function handleInfoGetRequest() {
+    try {
+        // Get comprehensive node info from SystemInfo
+        const infoResponse = await SystemInfo.getInfoResponse();
+        
+        // Get safety state from database
+        const safetyState = await new Promise((resolve, reject) => {
+            configDb.all('SELECT key, value FROM safety_state', [], (err, rows) => {
+                if (err) {
+                    console.error('Error fetching safety state for info request:', err);
+                    resolve({});
+                    return;
+                }
+                const state = {};
+                rows.forEach(row => {
+                    state[row.key] = row.value === 1;
+                });
+                resolve(state);
+            });
+        });
+        
+        // Update safety info with actual data
+        infoResponse.safety = {
+            emergency_stop: safetyState.emergency_stop || false,
+            normal_enable: safetyState.normal_enable !== false // Default to true if not found
+        };
+        
+        // Get PWM info if available
+        if (gpioController) {
+            const pwmStates = await gpioController.getPwmStatesForStatus();
+            let activeChannels = 0;
+            let lastUpdate = null;
+            
+            // Count active channels and get last update time
+            Object.values(pwmStates).forEach(state => {
+                if (state.enabled) {
+                    activeChannels++;
+                    if (state.last_update && (!lastUpdate || new Date(state.last_update) > new Date(lastUpdate))) {
+                        lastUpdate = state.last_update;
+                    }
+                }
+            });
+            
+            infoResponse.pwm = {
+                active_channels: activeChannels,
+                last_update: lastUpdate
+            };
+        }
+        
+        // Publish info response
+        await mqttController.publish(`undergrowth/nodes/${nodeId}/info`, infoResponse);
+        console.log('Published info response');
+        
+        // Also update SystemInfo's MQTT stats
+        SystemInfo.updateMqttStats();
+        
+    } catch (error) {
+        console.error('Error in handleInfoGetRequest:', error);
+        // Send error response
+        await mqttController.publish(`undergrowth/nodes/${nodeId}/info/error`, {
+            node_id: nodeId,
+            error: 'Failed to get node info',
+            message: error.message
+        });
     }
-    
-    // For any other format, just return as is
-    return deviceId;
 }
 
 raspi.init(async () => {

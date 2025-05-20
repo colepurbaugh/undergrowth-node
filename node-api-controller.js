@@ -66,8 +66,8 @@ module.exports = function (app, configDb, dataDb) {
     });
 
     // API Endpoint to update a sensor
-    app.put('/api/sensors/:id', (req, res) => {
-        const { id } = req.params;
+    app.put('/api/sensors/:address', (req, res) => {
+        const { address } = req.params;
         const { name, enabled, calibration_offset, calibration_scale } = req.body;
 
         const updateFields = [];
@@ -95,9 +95,9 @@ module.exports = function (app, configDb, dataDb) {
         }
 
         updateFields.push('last_updated = CURRENT_TIMESTAMP');
-        params.push(id);
+        params.push(address);
 
-        const query = `UPDATE sensor_config SET ${updateFields.join(', ')} WHERE id = ?`;
+        const query = `UPDATE sensor_config SET ${updateFields.join(', ')} WHERE address = ?`;
 
         configDb.run(query, params, function (err) {
             if (err) {
@@ -109,7 +109,7 @@ module.exports = function (app, configDb, dataDb) {
                 return res.status(404).json({ error: 'Sensor not found' });
             }
 
-            configDb.get('SELECT * FROM sensor_config WHERE id = ?', [id], (err, row) => {
+            configDb.get('SELECT * FROM sensor_config WHERE address = ?', [address], (err, row) => {
                 if (err) {
                     console.error('API: Error fetching updated sensor:', err);
                     return res.status(500).json({ error: 'Failed to fetch updated sensor' });
@@ -120,10 +120,10 @@ module.exports = function (app, configDb, dataDb) {
     });
 
     // API Endpoint to delete a sensor
-    app.delete('/api/sensors/:id', (req, res) => {
-        const { id } = req.params;
+    app.delete('/api/sensors/:address', (req, res) => {
+        const { address } = req.params;
 
-        configDb.run('DELETE FROM sensor_config WHERE id = ?', [id], function (err) {
+        configDb.run('DELETE FROM sensor_config WHERE address = ?', [address], function (err) {
             if (err) {
                 console.error('API: Error deleting sensor:', err);
                 return res.status(500).json({ error: 'Failed to delete sensor' });
@@ -167,22 +167,24 @@ module.exports = function (app, configDb, dataDb) {
             console.log(`API: Date range for binned readings: ${startIso} to ${endIso}`);
 
             let sql = `
-                SELECT timestamp, device_id, value
+                SELECT timestamp, address, value
                 FROM sensor_readings
                 WHERE type = ? AND timestamp >= ? AND timestamp < ?
             `;
             const params = [type, startIso, endIso];
 
             if (sensorsQuery && sensorsQuery.length > 0) {
-                const deviceIdMatches = [];
+                const addressMatches = [];
                 sensorsQuery.forEach(id => {
-                    if (id === 'legacy1') deviceIdMatches.push('sensor1');
-                    else if (id === 'legacy2') deviceIdMatches.push('sensor2');
-                    else deviceIdMatches.push(`sensor_${id}`);
+                    const baseAddress = id.split('-')[0]; 
+                    if (id === 'legacy1' || id === '1') addressMatches.push('0x38');
+                    else if (id === 'legacy2' || id === '2') addressMatches.push('0x39');
+                    else if (baseAddress.startsWith('0x')) addressMatches.push(baseAddress);
+                    else addressMatches.push(id);
                 });
-                if (deviceIdMatches.length > 0) {
-                    sql += ` AND device_id IN (${deviceIdMatches.map(() => '?').join(',')})`;
-                    params.push(...deviceIdMatches);
+                if (addressMatches.length > 0) {
+                    sql += ` AND address IN (${addressMatches.map(() => '?').join(',')})`;
+                    params.push(...addressMatches);
                 }
             }
             sql += ' ORDER BY timestamp ASC';
@@ -226,32 +228,52 @@ module.exports = function (app, configDb, dataDb) {
             } else {
                 const sensorData = {};
                 rawRows.forEach(row => {
-                    if (!sensorData[row.device_id]) sensorData[row.device_id] = [];
-                    sensorData[row.device_id].push(row);
+                    if (!sensorData[row.address]) sensorData[row.address] = [];
+                    sensorData[row.address].push(row);
                 });
                 console.log(`API: Grouped binned data into ${Object.keys(sensorData).length} sensors`);
                 const result = [];
-                Object.entries(sensorData).forEach(([sensorId, sensorRows]) => {
-                    const bins = new Array(binCount).fill(null).map(() => ({ sum: 0, count: 0 }));
+                Object.entries(sensorData).forEach(([address, sensorRows]) => {
+                    const bins = new Array(binCount).fill(null).map(() => ({ sum: 0, count: 0, isGap: false }));
                     const totalMs = endMs - startMs;
                     const binSizeMs = totalMs / binCount;
+                    
+                    // Track last timestamp for gap detection
+                    let lastTimestamp = null;
+                    const gapThresholdMs = 10 * 60 * 1000; // 10 minutes in milliseconds
+                    
                     for (const row of sensorRows) {
                         const tMs = Date.parse(row.timestamp);
                         const offset = tMs - startMs;
                         const index = Math.floor(offset / binSizeMs);
+                        
+                        // Check for gaps
+                        if (lastTimestamp) {
+                            const gapMs = tMs - lastTimestamp;
+                            if (gapMs > gapThresholdMs) {
+                                // Insert null points in bins between the gap
+                                const lastIndex = Math.floor((lastTimestamp - startMs) / binSizeMs);
+                                const currentIndex = index;
+                                for (let i = lastIndex + 1; i < currentIndex; i++) {
+                                    if (i >= 0 && i < binCount) {
+                                        bins[i].isGap = true;
+                                    }
+                                }
+                            }
+                        }
                         if (index >= 0 && index < binCount) {
                             bins[index].sum += row.value;
                             bins[index].count += 1;
                         }
+                        lastTimestamp = tMs;
                     }
+                    // Always output a value for every bin
                     bins.forEach((b, i) => {
-                        if (b.count > 0) {
-                            result.push({
-                                timestamp: new Date(startMs + (i * binSizeMs)).toISOString(),
-                                sensorId: sensorId,
-                                value: b.sum / b.count
-                            });
-                        }
+                        result.push({
+                            timestamp: new Date(startMs + (i * binSizeMs)).toISOString(),
+                            sensorId: address,
+                            value: (b.count > 0) ? (b.sum / b.count) : null
+                        });
                     });
                 });
                 console.log(`API: Returning ${result.length} binned data points across all sensors`);
@@ -327,12 +349,12 @@ module.exports = function (app, configDb, dataDb) {
     });
 
     // API endpoint for individual sensor statistics
-    app.get('/api/sensor-stats/:sensorId', async (req, res) => {
+    app.get('/api/sensor-stats/:address', async (req, res) => {
         try {
-            const sensorIdParam = req.params.sensorId; // Renamed to avoid conflict
+            const addressParam = req.params.address;
 
             const sensor = await new Promise((resolve, reject) => {
-                configDb.get('SELECT * FROM sensor_config WHERE id = ?', [sensorIdParam],
+                configDb.get('SELECT * FROM sensor_config WHERE address = ?', [addressParam],
                     (err, row) => err ? reject(err) : resolve(row));
             });
 
@@ -340,33 +362,31 @@ module.exports = function (app, configDb, dataDb) {
                 return res.status(404).json({ error: 'Sensor not found' });
             }
 
-            const deviceId = `sensor_${sensorIdParam}`;
-
             const recordCount = await new Promise((resolve, reject) => {
-                dataDb.get('SELECT COUNT(*) as count FROM sensor_readings WHERE device_id = ?', [deviceId],
+                dataDb.get('SELECT COUNT(*) as count FROM sensor_readings WHERE address = ?', [addressParam],
                     (err, row) => err ? reject(err) : resolve(row ? row.count : 0));
             });
 
             const firstRecord = await new Promise((resolve, reject) => {
-                dataDb.get('SELECT timestamp FROM sensor_readings WHERE device_id = ? ORDER BY timestamp ASC LIMIT 1', [deviceId],
+                dataDb.get('SELECT timestamp FROM sensor_readings WHERE address = ? ORDER BY timestamp ASC LIMIT 1', [addressParam],
                     (err, row) => err ? reject(err) : resolve(row));
             });
 
             const lastRecord = await new Promise((resolve, reject) => {
-                dataDb.get('SELECT timestamp FROM sensor_readings WHERE device_id = ? ORDER BY timestamp DESC LIMIT 1', [deviceId],
+                dataDb.get('SELECT timestamp FROM sensor_readings WHERE address = ? ORDER BY timestamp DESC LIMIT 1', [addressParam],
                     (err, row) => err ? reject(err) : resolve(row));
             });
 
             res.json({
-                sensorId: sensorIdParam,
-                address: sensor.address,
+                address: addressParam,
                 type: sensor.type,
+                name: sensor.name,
                 recordCount,
                 firstTimestamp: firstRecord ? firstRecord.timestamp : null,
                 lastTimestamp: lastRecord ? lastRecord.timestamp : null
             });
         } catch (error) {
-            console.error(`API: Error getting sensor stats for sensor ${req.params.sensorId}:`, error);
+            console.error(`API: Error getting sensor stats for sensor ${req.params.address}:`, error);
             res.status(500).json({ error: 'Failed to get sensor statistics' });
         }
     });
@@ -379,48 +399,37 @@ module.exports = function (app, configDb, dataDb) {
                     (err, rows) => err ? reject(err) : resolve(rows || []));
             });
 
-            const allSensors = [
-                ...configuredSensors,
-                { id: 'legacy1', address: '0x38', type: 'AHT10', name: 'Legacy AHT10 (0x38)', deviceId: 'sensor1' },
-                { id: 'legacy2', address: '0x39', type: 'AHT10', name: 'Legacy AHT10 (0x39)', deviceId: 'sensor2' }
-            ];
-
-            console.log(`API: Processing statistics for ${allSensors.length} sensors in summary`);
+            console.log(`API: Processing statistics for ${configuredSensors.length} sensors in summary`);
 
             const sensorStats = [];
             let totalRecordCount = 0;
 
-            for (const sensor of allSensors) {
-                let deviceId = sensor.deviceId; // Use pre-defined if available (for legacy)
-                if (!deviceId) { // Construct for configured sensors
-                    deviceId = `sensor_${sensor.id}`;
-                }
+            for (const sensor of configuredSensors) {
+                const address = sensor.address;
 
-                // console.log(`API: Fetching summary stats for sensor ${sensor.id} (${sensor.address}) using deviceId: ${deviceId}`);
+                // console.log(`API: Fetching summary stats for sensor ${sensor.address} using address: ${address}`);
 
                 const tempCount = await new Promise((resolve, reject) => {
-                    dataDb.get('SELECT COUNT(*) as count FROM sensor_readings WHERE device_id = ? AND type = ?',
-                        [deviceId, 'temperature'], (err, row) => err ? reject(err) : resolve(row ? row.count : 0));
+                    dataDb.get('SELECT COUNT(*) as count FROM sensor_readings WHERE address = ? AND type = ?',
+                        [address, 'temperature'], (err, row) => err ? reject(err) : resolve(row ? row.count : 0));
                 });
 
                 const humidityCount = await new Promise((resolve, reject) => {
-                    dataDb.get('SELECT COUNT(*) as count FROM sensor_readings WHERE device_id = ? AND type = ?',
-                        [deviceId, 'humidity'], (err, row) => err ? reject(err) : resolve(row ? row.count : 0));
+                    dataDb.get('SELECT COUNT(*) as count FROM sensor_readings WHERE address = ? AND type = ?',
+                        [address, 'humidity'], (err, row) => err ? reject(err) : resolve(row ? row.count : 0));
                 });
 
                 const firstRecord = await new Promise((resolve, reject) => {
-                    dataDb.get('SELECT timestamp FROM sensor_readings WHERE device_id = ? ORDER BY timestamp ASC LIMIT 1',
-                        [deviceId], (err, row) => err ? reject(err) : resolve(row));
+                    dataDb.get('SELECT timestamp FROM sensor_readings WHERE address = ? ORDER BY timestamp ASC LIMIT 1',
+                        [address], (err, row) => err ? reject(err) : resolve(row));
                 });
 
                 const sensorTotal = tempCount + humidityCount;
                 totalRecordCount += sensorTotal;
 
                 sensorStats.push({
-                    id: sensor.id,
-                    deviceId: deviceId,
-                    name: sensor.name || `${sensor.type} @ ${sensor.address}`,
                     address: sensor.address,
+                    name: sensor.name || `${sensor.type} @ ${sensor.address}`,
                     type: sensor.type,
                     temperatureCount: tempCount,
                     humidityCount: humidityCount,
