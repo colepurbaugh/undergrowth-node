@@ -100,10 +100,6 @@
                 <div class="info-value" id="internetStatus">Loading...</div>
             </div>
             <div class="info-item">
-                <div class="info-label">Last Time Sync:</div>
-                <div class="info-value" id="clockStatus">Loading...</div>
-            </div>
-            <div class="info-item">
                 <div class="info-label">System Timezone:</div>
                 <div class="info-value" id="systemTimezone">Loading...</div>
             </div>
@@ -146,28 +142,25 @@
         </div>
     </div>
 
+    <!-- New MQTT/Local Info Cards -->
     <div class="container">
-        <h2>Data Synchronization</h2>
+        <h2>MQTT Status</h2>
         <div class="info-section">
-            <div class="sync-info-item">
-                <div class="sync-node-info">node-<span id="nodeIdDisplay">--</span> (<span id="nodeIpDisplay">--</span>)</div>
-                <div class="sync-server-info">server-<span id="serverIdDisplay">--</span> (<span id="serverIpDisplay">--</span>)</div>
-                <div class="sync-timestamp">Last Sync: <span id="lastSyncTime">--/--/-- --:--:--</span></div>
-                <div class="sync-counts">
-                    <div>Local: <span id="nodeTotalRecords">0</span></div>
-                    <div>Server: <span id="serverRecordCount">0</span></div>
-                </div>
-                <div class="sync-progress-container">
-                    <div class="sync-progress-bar">
-                        <div id="syncProgressFill" class="sync-progress-fill" style="width: 0%"></div>
-                    </div>
-                    <div class="sync-percentage"><span id="syncPercentage">0</span>% Synched</div>
-                </div>
-                <div id="serverConnectionStatus" class="sync-connection-status"></div>
+            <div class="info-item">
+                <div class="info-label">MQTT:</div>
+                <div class="info-value" id="mqttStatusValue">--</div>
+            </div>
+            <div class="info-item">
+                <div class="info-label">Last Message:</div>
+                <div class="info-value" id="lastMessageValue">--</div>
+            </div>
+            <div class="info-item">
+                <div class="info-label">Local Values:</div>
+                <div class="info-value" id="localValuesValue">--</div>
             </div>
         </div>
     </div>
-    
+
     <style>
         /* Sensor Card Updates */
         .sensor-readings {
@@ -310,32 +303,52 @@
         const socket = io();
         let currentTimezone = 'America/Los_Angeles';
         let brokerInfo = {
+            connected: false,
             address: null,
-            port: null,
-            subscribedTopics: []
+            port: "1883",
+            subscribedTopics: [],
+            lastMessage: null
         };
         let sensorData = {}; // Store the latest sensor readings
         
         // Define custom handler for initial state data
         function onInitialState(data) {
+            console.log('onInitialState', data); // Debug log
             // Update system information and other data
             if (data.system) {
-                document.getElementById('piUptime').textContent = data.system.piUptime;
-                document.getElementById('serverUptime').textContent = data.system.serverUptime;
-                document.getElementById('ipAddress').textContent = data.system.ipAddress;
-                document.getElementById('macAddress').textContent = data.system.macAddress;
-                document.getElementById('hostname').textContent = data.system.hostname;
-                document.getElementById('cpuTemp').textContent = data.system.cpuTemp;
+                const piUptime = document.getElementById('piUptime');
+                if (piUptime) piUptime.textContent = data.system.piUptime;
+                
+                const serverUptime = document.getElementById('serverUptime');
+                if (serverUptime) serverUptime.textContent = data.system.serverUptime;
+                
+                const ipAddress = document.getElementById('ipAddress');
+                if (ipAddress) ipAddress.textContent = data.system.ipAddress;
+                
+                const macAddress = document.getElementById('macAddress');
+                if (macAddress) macAddress.textContent = data.system.macAddress;
+                
+                const hostname = document.getElementById('hostname');
+                if (hostname) hostname.textContent = data.system.hostname;
+                
+                const cpuTemp = document.getElementById('cpuTemp');
+                if (cpuTemp) cpuTemp.textContent = data.system.cpuTemp;
                 
                 // Update header with hostname and IP address
-                const hostname = data.system.hostname || '';
-                const ipAddress = data.system.ipAddress || '';
+                const hostname_val = data.system.hostname || '';
+                const ipAddress_val = data.system.ipAddress || '';
                 // Extract the last part of the hostname and the last octet of the IP
-                const hostnameShort = hostname.split('-').pop() || '';
-                const ipOctet = ipAddress.split('.').pop() || '';
-                if (hostnameShort && ipOctet) {
-                    document.getElementById('nodeHeader').textContent = `${hostnameShort}.${ipOctet}`;
-                    document.getElementById('nodeIdDisplay').textContent = hostnameShort;
+                const hostnameShort = hostname_val.split('-').pop() || '';
+                const ipOctet = ipAddress_val.split('.').pop() || '';
+                
+                const nodeHeader = document.getElementById('nodeHeader');
+                if (hostnameShort && ipOctet && nodeHeader) {
+                    nodeHeader.textContent = `${hostnameShort}.${ipOctet}`;
+                }
+                
+                const nodeIdDisplay = document.getElementById('nodeIdDisplay');
+                if (hostnameShort && nodeIdDisplay) {
+                    nodeIdDisplay.textContent = hostnameShort;
                 }
                 
                 // Update internet status with color coding
@@ -344,12 +357,6 @@
                     internetStatusElement.textContent = data.system.internetStatus;
                     internetStatusElement.style.color = data.system.internetConnected ? 
                         'var(--success-color)' : 'var(--error-color)';
-                }
-                
-                // Update clock status
-                const clockStatusElement = document.getElementById('clockStatus');
-                if (clockStatusElement) {
-                    clockStatusElement.textContent = data.system.timeSinceSync;
                 }
                 
                 // Update system timezone
@@ -381,6 +388,12 @@
             socket.emit('getSensors');
         }
         
+        // Helper function to format timezone for display
+        function formatTimezoneDisplay(timezone) {
+            if (!timezone) return 'Unknown';
+            return timezone;
+        }
+        
         // Function to update sensor display with latest data
         function updateSensorDisplay(address, data) {
             const tempElement = document.querySelector(`.sensor-temp[data-address="${address}"]`);
@@ -401,261 +414,70 @@
                 .then(response => response.json())
                 .then(data => {
                     console.log('Sequence data:', data);
-                    
-                    // Update node sequence information
-                    if (data.nodeSequence) {
-                        document.getElementById('nodeTotalRecords').textContent = data.nodeSequence.count.toLocaleString();
-                        
-                        // Update node IP if available
-                        const nodeIpElement = document.getElementById('nodeIpDisplay');
-                        const ipAddress = document.getElementById('ipAddress').textContent || '--';
-                        if (nodeIpElement && ipAddress !== 'Loading...') {
-                            nodeIpElement.textContent = ipAddress;
-                        }
-                        
-                        // Update last timestamp as the "Last Sync" time locally
-                        if (data.nodeSequence.lastTimestamp) {
-                            document.getElementById('lastSyncTime').textContent = formatDateTime(data.nodeSequence.lastTimestamp);
-                        }
-                    }
-                    
-                    if (data.serverSync) {
-                        // Get server information
-                        const serverIdDisplay = document.getElementById('serverIdDisplay');
-                        serverIdDisplay.textContent = data.serverSync.server_id || '--';
-                        
-                        // Update server IP if broker info is available
-                        const serverIpDisplay = document.getElementById('serverIpDisplay');
-                        if (brokerInfo && brokerInfo.address) {
-                            serverIpDisplay.textContent = brokerInfo.address;
-                        }
-                        
-                        // Get last synced value timestamp
-                        const lastSyncedTimestamp = formatDateTime(data.serverSync.lastSyncedTimestamp || 'Never');
-                        document.getElementById('lastSyncTime').textContent = lastSyncedTimestamp;
-                        
-                        // Update server record count
-                        const synchedValues = data.serverSync.sentCount ? data.serverSync.sentCount.toLocaleString() : '0';
-                        document.getElementById('serverRecordCount').textContent = synchedValues;
-                        
-                        // Calculate and update sync percentage
-                        const localCount = data.nodeSequence ? data.nodeSequence.count : 0;
-                        const serverCount = data.serverSync.sentCount || 0;
-                        
-                        let syncPercentage = 0;
-                        if (localCount > 0) {
-                            syncPercentage = Math.floor((serverCount / localCount) * 100);
-                        }
-                        
-                        document.getElementById('syncPercentage').textContent = syncPercentage;
-                        document.getElementById('syncProgressFill').style.width = `${syncPercentage}%`;
-                        
-                        // Update connection status
-                        const serverConnectionStatus = document.getElementById('serverConnectionStatus');
-                        if (brokerInfo && brokerInfo.address) {
-                            serverConnectionStatus.textContent = 'Connected to MQTT Broker';
-                            serverConnectionStatus.style.color = 'var(--success-color)';
-                        } else {
-                            serverConnectionStatus.textContent = 'Disconnected from MQTT Broker';
-                            serverConnectionStatus.style.color = 'var(--error-color)';
-                        }
-                    } else {
-                        // Default values if no server sync info
-                        document.getElementById('serverIdDisplay').textContent = '--';
-                        document.getElementById('serverIpDisplay').textContent = '--';
-                        document.getElementById('serverRecordCount').textContent = '0';
-                        document.getElementById('syncPercentage').textContent = '0';
-                        document.getElementById('syncProgressFill').style.width = '0%';
-                        
-                        const serverConnectionStatus = document.getElementById('serverConnectionStatus');
-                        serverConnectionStatus.textContent = 'Server connection not established';
-                        serverConnectionStatus.style.color = 'var(--error-color)';
-                    }
+                    // Only update new info cards
+                    updateSystemStatusCards(data);
                 })
                 .catch(error => {
                     console.error('Error fetching sequence data:', error);
-                    
-                    // Set default values on error
-                    document.getElementById('serverIdDisplay').textContent = '--';
-                    document.getElementById('serverIpDisplay').textContent = '--';
-                    document.getElementById('serverRecordCount').textContent = '0';
-                    document.getElementById('syncPercentage').textContent = '0';
-                    document.getElementById('syncProgressFill').style.width = '0%';
-                    
-                    const serverConnectionStatus = document.getElementById('serverConnectionStatus');
-                    serverConnectionStatus.textContent = 'Error fetching server information';
-                    serverConnectionStatus.style.color = 'var(--error-color)';
                 });
-        }
-        
-        // New function to fetch and update sensor statistics efficiently
-        let lastSensorStatsFetch = 0;
-        let sensorStatsCache = {};
-        
-        function fetchSensorStats() {
-            const now = Date.now();
-            // Only fetch every 10 seconds to reduce database load
-            if (now - lastSensorStatsFetch < 10000 && Object.keys(sensorStatsCache).length > 0) {
-                updateSensorStatsUI(sensorStatsCache);
-                return;
-            }
-            
-            fetch('/api/sensor-stats/summary')
-                .then(response => response.json())
-                .then(data => {
-                    // Update last fetch time
-                    lastSensorStatsFetch = now;
-                    sensorStatsCache = data;
-                    
-                    // Update UI with received data
-                    updateSensorStatsUI(data);
-                    
-                    // Update Database Information section with current stats
-                    updateDatabaseInfoSection(data);
-                })
-                .catch(error => {
-                    console.error('Error fetching sensor statistics:', error);
-                });
-        }
-        
-        function updateSensorStatsUI(data) {
-            if (!data.sensors || !data.sensors.length) return;
-            
-            console.log('Updating sensor stats UI with data:', data);
-            
-            // Process each sensor
-            data.sensors.forEach(sensorStat => {
-                // Get the address for display
-                const address = sensorStat.address;
-                
-                // Convert address to match the DOM elements
-                let sensorId;
-                if (address === '0x38') {
-                    sensorId = '1';
-                } else if (address === '0x39') {
-                    sensorId = '2';
-                } else {
-                    // For other sensors, we might not have a pre-defined ID
-                    // Create a dynamic display or use a data-address selector
-                    sensorId = address.replace('0x', '');
-                }
-                
-                console.log(`Processing sensor ${sensorId} (${address}) - Stats: temp=${sensorStat.temperatureCount}, humid=${sensorStat.humidityCount}, total=${sensorStat.totalCount}`);
-                
-                // Find corresponding DOM elements - try by id first
-                const firstRecordElem = document.querySelector(`.sensor-first-record[data-id="${sensorId}"]`) || 
-                                     document.querySelector(`.sensor-first-record[data-address="${address}"]`);
-                const recordCountElem = document.querySelector(`.sensor-record-count[data-id="${sensorId}"]`) || 
-                                     document.querySelector(`.sensor-record-count[data-address="${address}"]`);
-                
-                if (!firstRecordElem || !recordCountElem) {
-                    console.warn(`Could not find elements for sensor ${sensorId} (${address})`);
-                }
-                
-                // Update first timestamp (won't change)
-                if (firstRecordElem && sensorStat.firstTimestamp) {
-                    firstRecordElem.textContent = formatDateTime(sensorStat.firstTimestamp);
-                    // Store in data attribute to avoid re-fetching
-                    firstRecordElem.dataset.timestamp = sensorStat.firstTimestamp;
-                } else if (firstRecordElem) {
-                    // No timestamp available
-                    firstRecordElem.textContent = 'No data';
-                }
-                
-                // Update record count
-                if (recordCountElem) {
-                    recordCountElem.textContent = sensorStat.totalCount ? 
-                        sensorStat.totalCount.toLocaleString() : '0';
-                }
-            });
-            
-            // Update total record count in Database Information section
-            const totalDbRecordsElem = document.getElementById('totalDbRecords');
-            if (totalDbRecordsElem) {
-                totalDbRecordsElem.textContent = data.totalRecordCount ? 
-                    data.totalRecordCount.toLocaleString() : '0';
-            }
-        }
-        
-        function updateDatabaseInfoSection(data) {
-            // Find or create elements for database stats
-            let totalDbRecordsElem = document.getElementById('totalDbRecords');
-            let dbStatsContainer = document.getElementById('dbStatsContainer');
-            
-            // Create elements if they don't exist
-            if (!dbStatsContainer) {
-                // Find the command box to insert before
-                const firstCommandBox = document.querySelector('.database-info-item:nth-child(2) .command-box');
-                if (firstCommandBox) {
-                    // Create stats container
-                    dbStatsContainer = document.createElement('div');
-                    dbStatsContainer.id = 'dbStatsContainer';
-                    dbStatsContainer.className = 'database-section';
-                    
-                    // Create section title
-                    const sectionTitle = document.createElement('div');
-                    sectionTitle.className = 'section-title';
-                    sectionTitle.textContent = 'Current Statistics';
-                    dbStatsContainer.appendChild(sectionTitle);
-                    
-                    // Create stats display
-                    const statsDisplay = document.createElement('div');
-                    statsDisplay.className = 'database-stats';
-                    statsDisplay.innerHTML = `
-                        <div>Total Records: <span id="totalDbRecords">0</span></div>
-                        <div>Last Updated: <span id="dbStatsUpdated">--</span></div>
-                    `;
-                    dbStatsContainer.appendChild(statsDisplay);
-                    
-                    // Insert container before the command box
-                    firstCommandBox.parentNode.insertBefore(dbStatsContainer, firstCommandBox);
-                    
-                    // Get the newly created element
-                    totalDbRecordsElem = document.getElementById('totalDbRecords');
-                }
-            }
-            
-            // Update stats if elements exist
-            if (totalDbRecordsElem) {
-                totalDbRecordsElem.textContent = data.totalRecordCount ? 
-                    data.totalRecordCount.toLocaleString() : '0';
-            }
-            
-            const dbStatsUpdatedElem = document.getElementById('dbStatsUpdated');
-            if (dbStatsUpdatedElem) {
-                dbStatsUpdatedElem.textContent = formatDateTime(data.timestamp);
-            }
         }
         
         // Helper function to update broker info display
         function updateBrokerInfoDisplay() {
             console.log('Updating broker info display with:', brokerInfo);
-            
-            const serverConnectionStatus = document.getElementById('serverConnectionStatus');
-            if (!serverConnectionStatus) {
-                console.warn('serverConnectionStatus element not found');
-                return;
-            }
-            
-            if (brokerInfo && brokerInfo.address) {
-                // We have broker information
-                const status = brokerInfo.connected ? 'Connected' : 'Discovered but not connected';
-                serverConnectionStatus.textContent = `MQTT Broker: ${status} (${brokerInfo.address}:${brokerInfo.port})`;
-                serverConnectionStatus.style.color = brokerInfo.connected ? 
-                    'var(--success-color)' : 'var(--active-color)';
-                
-                // Update server IP in sync section if available
-                const serverIpDisplay = document.getElementById('serverIpDisplay');
-                if (serverIpDisplay) {
-                    serverIpDisplay.textContent = brokerInfo.address;
+            // Only update new MQTT status card
+            const mqttStatusElem = document.getElementById('mqttStatusValue');
+            if (mqttStatusElem) {
+                if (brokerInfo && brokerInfo.address) {
+                    const statusColor = brokerInfo.connected ? 'var(--success-color)' : 'var(--error-color)';
+                    mqttStatusElem.textContent = `${brokerInfo.address}:${brokerInfo.port || '1883'}`;
+                    mqttStatusElem.style.color = statusColor;
+                } else {
+                    mqttStatusElem.textContent = 'Not connected';
+                    mqttStatusElem.style.color = 'var(--error-color)';
                 }
-            } else {
-                // No broker information
-                serverConnectionStatus.textContent = 'MQTT Broker: Not discovered';
-                serverConnectionStatus.style.color = 'var(--error-color)';
             }
         }
         
+        // Helper to format time ago for last message
+        function formatTimeAgo(timestamp) {
+            if (!timestamp) return '--';
+            const now = Date.now();
+            const then = new Date(timestamp).getTime();
+            let diff = Math.floor((now - then) / 1000); // seconds
+            if (diff < 60) return `${diff} seconds ago`;
+            let minutes = Math.floor(diff / 60);
+            if (minutes < 60) return `${minutes} minute${minutes !== 1 ? 's' : ''} ago`;
+            let hours = Math.floor(minutes / 60);
+            minutes = minutes % 60;
+            if (hours < 24) return `${hours} hour${hours !== 1 ? 's' : ''}${minutes > 0 ? ' ' + minutes + ' minute' + (minutes !== 1 ? 's' : '') : ''} ago`;
+            let days = Math.floor(hours / 24);
+            hours = hours % 24;
+            if (days < 365) return `${days} day${days !== 1 ? 's' : ''}${hours > 0 ? ' ' + hours + ' hour' + (hours !== 1 ? 's' : '') : ''} ago`;
+            let years = Math.floor(days / 365);
+            days = days % 365;
+            return `${years} year${years !== 1 ? 's' : ''}${days > 0 ? ' ' + days + ' day' + (days !== 1 ? 's' : '') : ''} ago`;
+        }
+
+        // Update new info cards when broker info or sequence info is available
+        function updateSystemStatusCards(sequenceData) {
+            // Last Message
+            const lastMessageElem = document.getElementById('lastMessageValue');
+            if (lastMessageElem && brokerInfo && brokerInfo.lastMessage) {
+                lastMessageElem.textContent = formatTimeAgo(brokerInfo.lastMessage);
+            } else if (lastMessageElem) {
+                lastMessageElem.textContent = '--';
+            }
+            
+            // Local Values
+            const localValuesElem = document.getElementById('localValuesValue');
+            if (localValuesElem && sequenceData && sequenceData.nodeSequence) {
+                localValuesElem.textContent = sequenceData.nodeSequence.count.toLocaleString();
+            } else if (localValuesElem) {
+                localValuesElem.textContent = '--';
+            }
+        }
+
         // Update broker information
         socket.on('brokerInfo', (data) => {
             console.log('Received broker info:', data);
@@ -665,16 +487,15 @@
                 connected: data.connected === true, // Ensure this is a boolean
                 address: data.address || null,
                 port: data.port || '1883',
-                subscribedTopics: data.subscribedTopics || []
+                subscribedTopics: data.subscribedTopics || [],
+                lastMessage: data.lastMessage || null
             };
             
             // Update the display immediately
             updateBrokerInfoDisplay();
             
-            // If we have broker info but no connection yet, attempt to fetch sequence data right away
-            if (brokerInfo.address && document.getElementById('serverIpDisplay').textContent === '--') {
-                fetchSequenceData();
-            }
+            // Also update system status cards (last message)
+            updateSystemStatusCards();
         });
         
         // Helper function to format date/time
@@ -739,10 +560,6 @@
             // Fetch sequence data every second
             fetchSequenceData(); // Initial fetch
             setInterval(fetchSequenceData, 1000); // Update every second
-            
-            // Fetch sensor statistics initially and every 10 seconds
-            fetchSensorStats(); // Initial fetch
-            setInterval(fetchSensorStats, 10000); // Update every 10 seconds
 
             // Request fresh system information periodically to catch system changes
             setInterval(() => {
@@ -780,23 +597,41 @@
         });
 
         socket.on('sensorData', (data) => {
+            console.log('sensorData', data); // Debug log
             // Update system information
-            document.getElementById('piUptime').textContent = data.system.piUptime;
-            document.getElementById('serverUptime').textContent = data.system.serverUptime;
-            document.getElementById('ipAddress').textContent = data.system.ipAddress;
-            document.getElementById('macAddress').textContent = data.system.macAddress;
-            document.getElementById('hostname').textContent = data.system.hostname;
-            document.getElementById('cpuTemp').textContent = data.system.cpuTemp;
+            const piUptime = document.getElementById('piUptime');
+            if (piUptime) piUptime.textContent = data.system.piUptime;
+            
+            const serverUptime = document.getElementById('serverUptime');
+            if (serverUptime) serverUptime.textContent = data.system.serverUptime;
+            
+            const ipAddress = document.getElementById('ipAddress');
+            if (ipAddress) ipAddress.textContent = data.system.ipAddress;
+            
+            const macAddress = document.getElementById('macAddress');
+            if (macAddress) macAddress.textContent = data.system.macAddress;
+            
+            const hostname = document.getElementById('hostname');
+            if (hostname) hostname.textContent = data.system.hostname;
+            
+            const cpuTemp = document.getElementById('cpuTemp');
+            if (cpuTemp) cpuTemp.textContent = data.system.cpuTemp;
             
             // Update header with hostname and IP address
-            const hostname = data.system.hostname || '';
-            const ipAddress = data.system.ipAddress || '';
+            const hostname_val = data.system.hostname || '';
+            const ipAddress_val = data.system.ipAddress || '';
             // Extract the last part of the hostname and the last octet of the IP
-            const hostnameShort = hostname.split('-').pop() || '';
-            const ipOctet = ipAddress.split('.').pop() || '';
-            if (hostnameShort && ipOctet) {
-                document.getElementById('nodeHeader').textContent = `${hostnameShort}.${ipOctet}`;
-                document.getElementById('nodeIdDisplay').textContent = hostnameShort;
+            const hostnameShort = hostname_val.split('-').pop() || '';
+            const ipOctet = ipAddress_val.split('.').pop() || '';
+            
+            const nodeHeader = document.getElementById('nodeHeader');
+            if (hostnameShort && ipOctet && nodeHeader) {
+                nodeHeader.textContent = `${hostnameShort}.${ipOctet}`;
+            }
+            
+            const nodeIdDisplay = document.getElementById('nodeIdDisplay');
+            if (hostnameShort && nodeIdDisplay) {
+                nodeIdDisplay.textContent = hostnameShort;
             }
             
             // Update internet status with color coding
@@ -805,12 +640,6 @@
                 internetStatusElement.textContent = data.system.internetStatus;
                 internetStatusElement.style.color = data.system.internetConnected ? 
                     'var(--success-color)' : 'var(--error-color)';
-            }
-            
-            // Update clock status
-            const clockStatusElement = document.getElementById('clockStatus');
-            if (clockStatusElement) {
-                clockStatusElement.textContent = data.system.timeSinceSync;
             }
             
             // Update system timezone
@@ -830,50 +659,56 @@
                 // Skip non-sensor keys (system, databaseTimezone, etc.)
                 if (address === 'system' || address === 'databaseTimezone') continue;
                 
-                // Update our data cache
-                sensorData[address] = sensorData;
-                
                 // Update the display
                 updateSensorDisplay(address, sensorData);
             }
         });
 
         socket.on('systemState', function(data) {
-            // Update modes
-            document.getElementById('mode-auto').textContent = data.modes.automatic ? '1' : '0';
-            document.getElementById('mode-emergency').textContent = data.modes.emergency ? '1' : '0';
+            // Update modes if elements exist
+            const modeAuto = document.getElementById('mode-auto');
+            if (modeAuto) modeAuto.textContent = data.modes.automatic ? '1' : '0';
+            
+            const modeEmergency = document.getElementById('mode-emergency');
+            if (modeEmergency) modeEmergency.textContent = data.modes.emergency ? '1' : '0';
 
-            // Update manual PWM
-            Object.entries(data.manualPwm).forEach(([pin, state]) => {
-                const element = document.getElementById(`manual-${pin}`);
-                if (element) {
-                    element.textContent = `{${state.value}, ${state.enabled}}`;
-                }
-            });
-
-            // Update automatic PWM
-            Object.entries(data.autoPwm).forEach(([pin, value]) => {
-                const element = document.getElementById(`auto-${pin}`);
-                if (element) {
-                    element.textContent = value;
-                }
-            });
-
-            // Update schedule
-            Object.entries(data.schedule).forEach(([pin, events]) => {
-                const element = document.getElementById(`schedule-${pin}`);
-                if (element) {
-                    if (events.length === 0) {
-                        element.textContent = '-';
-                    } else {
-                        element.innerHTML = events.map(event => 
-                            `<div class="schedule-event ${event.enabled ? 'enabled' : 'disabled'}">
-                                {"${event.time}", ${event.value}, ${event.enabled}}
-                            </div>`
-                        ).join('');
+            // Update manual PWM if elements exist
+            if (data.manualPwm) {
+                Object.entries(data.manualPwm).forEach(([pin, state]) => {
+                    const element = document.getElementById(`manual-${pin}`);
+                    if (element) {
+                        element.textContent = `{${state.value}, ${state.enabled}}`;
                     }
-                }
-            });
+                });
+            }
+
+            // Update automatic PWM if elements exist
+            if (data.autoPwm) {
+                Object.entries(data.autoPwm).forEach(([pin, value]) => {
+                    const element = document.getElementById(`auto-${pin}`);
+                    if (element) {
+                        element.textContent = value;
+                    }
+                });
+            }
+
+            // Update schedule if elements exist
+            if (data.schedule) {
+                Object.entries(data.schedule).forEach(([pin, events]) => {
+                    const element = document.getElementById(`schedule-${pin}`);
+                    if (element) {
+                        if (events.length === 0) {
+                            element.textContent = '-';
+                        } else {
+                            element.innerHTML = events.map(event => 
+                                `<div class="schedule-event ${event.enabled ? 'enabled' : 'disabled'}">
+                                    {"${event.time}", ${event.value}, ${event.enabled}}
+                                </div>`
+                            ).join('');
+                        }
+                    }
+                });
+            }
         });
 
         // Also update on state changes
