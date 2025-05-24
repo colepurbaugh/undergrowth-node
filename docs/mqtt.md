@@ -64,7 +64,7 @@ Topic: undergrowth/server/commands/node-ABC123/data/get
 Payload: {
   "startSequence": 1000,
   "endSequence": 2000,
-  "limit": 500,
+  "limit": 1000,
   "requestId": "req-12345"  // For tracking the response
 }
 
@@ -465,4 +465,10 @@ All server commands to nodes and node responses should have the retain flag set 
 - For data retrieval, always include a unique requestId to match responses with requests
 - The client and server MQTT implementations should be configured to disable persistence of QoS=0 messages
 - For QoS 2, be aware of higher resource usage and implement proper timeouts
+
+### Sequence ID Characteristics
+- Sequence IDs start at 1 for new installations
+- Sequence IDs increment by 1 for each new reading
+- Sequence IDs are guaranteed to be sequential with no gaps
+- Each node maintains its own sequence counter in the sequence_tracker table
 

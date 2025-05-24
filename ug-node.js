@@ -644,13 +644,19 @@ function handleHistoryRequest(request) {
                 });
                 
                 const response = { 
-                    node_id: nodeId, 
+                    nodeId: nodeId, 
+                    timestamp: new Date().toISOString(),
                     requestId: request.requestId, 
-                    startSequence, 
+                    startSequence: startSequence, 
                     endSequence: rows.length > 0 ? rows[rows.length - 1].sequence_id : startSequence, 
-                    maxSequence: sequenceRangeData.maxSequence, 
-                    dataPoints: dataPoints,
-                    recordCount: rows.length 
+                    recordCount: rows.length,
+                    data: rows.map(r => ({
+                        timestamp: r.timestamp,
+                        address: r.address,
+                        type: r.type,
+                        value: r.value,
+                        sequence_id: r.sequence_id
+                    }))
                 };
                 console.log(`Sending sequence-based history response with ${rows.length} records (max sequence: ${sequenceRangeData.maxSequence})`);
                 
