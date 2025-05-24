@@ -1,5 +1,12 @@
 # Undergrowth Node Troubleshooting Commands
 
+
+
+```bash
+# socket statistics
+ss -tuln
+```
+
 ## System Services (systemctl)
 
 ```bash
@@ -40,6 +47,9 @@ sqlite3 database/ug-data.db "SELECT MIN(timestamp), MAX(timestamp) FROM sensor_r
 
 ## Database "ug-config.db"  (SQLite3)
 ```bash
+sqlite3 ./database/ug-config.db .tables
+#auto_pwm_states, safety_state, server_sync, events, sensor_config, system_state, pwm_states, sequence_tracker, timezone
+
 
 # *********************************** modes ***********************************
 # Check system mode (0=automatic, 1=manual)

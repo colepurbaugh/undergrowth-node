@@ -43,7 +43,7 @@ class GpioController {
             return;
         }
         return new Promise((resolve, reject) => {
-            this.configDb.all('SELECT pin, value, enabled FROM pwm_states', [], (err, rows) => {
+            this.configDb.all('SELECT pin, value, enabled FROM manual_pwm_states', [], (err, rows) => {
                 if (err) {
                     console.error('GpioController: Error loading PWM states:', err);
                     reject(err);
@@ -140,7 +140,7 @@ class GpioController {
             const mode = await this._getCurrentMode();
             console.log(`GpioController: Current mode for DB apply: ${mode === 0 ? 'automatic' : 'manual'} (${mode})`);
             
-            const statesTable = mode === 0 ? 'auto_pwm_states' : 'pwm_states';
+            const statesTable = mode === 0 ? 'auto_pwm_states' : 'manual_pwm_states';
             
             this.configDb.all(`SELECT pin, value, enabled FROM ${statesTable}`, [], (err, rows) => {
                 if (err) {
@@ -205,8 +205,8 @@ class GpioController {
 
         console.log(`GpioController: Setting PWM for pin ${pin} to ${value}`);
         this.configDb.run(
-            'UPDATE pwm_states SET value = ?, last_modified = CURRENT_TIMESTAMP WHERE pin = ?',
-            // 'INSERT OR REPLACE INTO pwm_states (pin, value, enabled, last_modified) VALUES (?, ?, (SELECT enabled FROM pwm_states WHERE pin = ?), CURRENT_TIMESTAMP)',
+            'UPDATE manual_pwm_states SET value = ?, last_modified = CURRENT_TIMESTAMP WHERE pin = ?',
+            // 'INSERT OR REPLACE INTO manual_pwm_states (pin, value, enabled, last_modified) VALUES (?, ?, (SELECT enabled FROM manual_pwm_states WHERE pin = ?), CURRENT_TIMESTAMP)',
             [value, pin], // Using UPDATE ensures enabled state is preserved
             (err) => {
                 if (err) {
@@ -215,7 +215,7 @@ class GpioController {
                     return;
                 }
                 
-                this.configDb.get('SELECT enabled FROM pwm_states WHERE pin = ?', [pin], (err, row) => {
+                this.configDb.get('SELECT enabled FROM manual_pwm_states WHERE pin = ?', [pin], (err, row) => {
                     if (err || !row) {
                         console.error('GpioController: Error getting enabled state for hardware update:', err);
                         return; // Still broadcast, DB is updated
@@ -262,14 +262,14 @@ class GpioController {
         }
 
         console.log(`GpioController: Toggling PWM for pin ${pin} to ${enabled ? 'enabled' : 'disabled'}`);
-        this.configDb.run('UPDATE pwm_states SET enabled = ? WHERE pin = ?', [enabled ? 1 : 0, pin], (err) => {
+        this.configDb.run('UPDATE manual_pwm_states SET enabled = ? WHERE pin = ?', [enabled ? 1 : 0, pin], (err) => {
             if (err) {
                 console.error('GpioController: Error updating PWM enabled state in database:', err);
                 return; // DB error, don't proceed to hardware or broadcast
             }
 
             if (enabled) {
-                this.configDb.get('SELECT value FROM pwm_states WHERE pin = ?', [pin], (err, row) => {
+                this.configDb.get('SELECT value FROM manual_pwm_states WHERE pin = ?', [pin], (err, row) => {
                     if (err || !row) {
                         console.error('GpioController: Error getting value for enabling PWM:', err);
                         this.broadcastPwmStateCallback(); // Broadcast state even if value fetch fails
@@ -362,7 +362,7 @@ class GpioController {
             }
         } else { // Manual mode
             const manualStates = await new Promise((resolve, reject) => {
-                this.configDb.all('SELECT pin, value, enabled FROM pwm_states', [], (err, rows) => {
+                this.configDb.all('SELECT pin, value, enabled FROM manual_pwm_states', [], (err, rows) => {
                     if (err) reject(err);
                     else {
                         const states = rows.reduce((acc, row) => {
@@ -418,7 +418,7 @@ class GpioController {
 
     async getPwmStatesForStatus() {
         return new Promise((resolve, reject) => {
-            this.configDb.all('SELECT pin, value, enabled FROM pwm_states', [], (err, rows) => {
+            this.configDb.all('SELECT pin, value, enabled FROM manual_pwm_states', [], (err, rows) => {
                 if (err) {
                     console.error('GpioController: Error fetching PWM states for status:', err);
                     reject(err);

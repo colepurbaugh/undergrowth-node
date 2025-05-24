@@ -1,5 +1,13 @@
 # MQTT Error Handling
+------------------------------------------------------------------
+## Error Code Categories
 
+Error codes follow this naming convention:
+- `GENERAL_*`:  General errors applicable to any command
+- `INFO_*`:     Errors specific to info/get
+- `CONFIG_*`:   Errors specific to config operations
+- `DATA_*`:     Errors specific to data operations
+------------------------------------------------------------------
 ## Standard Error Response Format
 
 ```json
@@ -15,14 +23,7 @@
   }
 }
 ```
-
-## Error Code Categories
-
-Error codes follow this naming convention:
-- `GENERAL_*`:  General errors applicable to any command
-- `INFO_*`:     Errors specific to info/get
-- `CONFIG_*`:   Errors specific to config operations
-- `DATA_*`:     Errors specific to data operations
+------------------------------------------------------------------
 
 ## General Errors
 

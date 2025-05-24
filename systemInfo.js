@@ -39,6 +39,12 @@ class SystemInfo {
         }
     };
 
+    static dataDb = null;
+
+    static setDataDb(db) {
+        this.dataDb = db;
+    }
+
     static async getSystemInfo() {
         try {
             // Check internet connectivity
@@ -443,54 +449,37 @@ class SystemInfo {
     // Method to handle "info get" requests
     static async getInfoResponse() {
         const systemInfo = await this.getSystemInfo();
-        const nodeInfo = await this.getNodeInfo();
+        const networkInfo = this.getNetworkInfo();
+        const nodeId = networkInfo.macAddress ? `node-${networkInfo.macAddress.split(':').slice(-3).join('').toUpperCase()}` : 'unknown';
         
-        return {
-            timestamp: new Date().toISOString(),
-            system: {
-                ip_address: systemInfo.system.ipAddress,
-                hostname: systemInfo.system.hostname,
-                uptime: systemInfo.system.piUptime,
-                cpu_temp: systemInfo.system.cpuTemp,
-                memory_usage: process.memoryUsage().heapUsed / 1024 / 1024,
-                internet_connected: systemInfo.system.internetConnected
-            },
-            sensors: {
-                total_count: nodeInfo.sensors.total_sensors,
-                active_count: nodeInfo.sensors.active_sensors,
-                readings: {
-                    total: nodeInfo.sensors.sensor_stats.totalReadings,
-                    temperature: nodeInfo.sensors.sensor_stats.temperatureReadings,
-                    humidity: nodeInfo.sensors.sensor_stats.humidityReadings,
-                    last_reading_time: nodeInfo.sensors.last_reading_time
-                },
-                reading_interval: 10000 // 10 seconds
-            },
-            mqtt: {
-                connected: nodeInfo.mqtt.connected,
-                broker_address: nodeInfo.mqtt.broker_address,
-                message_count: nodeInfo.mqtt.message_count,
-                last_message_time: nodeInfo.mqtt.last_message_time
-            },
-            sync: {
-                status: nodeInfo.sync.sync_status,
-                records: {
-                    total: nodeInfo.sync.total_records,
-                    pending: nodeInfo.sync.pending_records
-                },
-                last_sync: {
-                    time: nodeInfo.sync.last_sync_time,
-                    sequence: nodeInfo.sync.last_sync_sequence
-                }
-            },
-            safety: {
-                emergency_stop: false, // To be updated with actual data
-                normal_enable: true    // To be updated with actual data
-            },
-            pwm: {
-                active_channels: 0,    // To be updated with actual data
-                last_update: null      // To be updated with actual data
+        // Get total values from database using the same query as getSequenceRange
+        const totalValues = await new Promise((resolve) => {
+            if (!this.dataDb) {
+                console.error('Database not initialized');
+                resolve(0);
+                return;
             }
+            this.dataDb.get('SELECT MIN(sequence_id) as min_seq, MAX(sequence_id) as max_seq, COUNT(*) as count FROM sensor_readings', [], (err, row) => {
+                if (err) {
+                    console.error('Error getting total values:', err);
+                    resolve(0);
+                } else {
+                    resolve(row ? row.count : 0);
+                }
+            });
+        });
+
+        return {
+            nodeId: nodeId,
+            timestamp: new Date().toISOString(),
+            ipAddress: networkInfo.ipAddress,
+            hostname: os.hostname(),
+            uptime: this.formatUptime(Math.floor((Date.now() - this.serverStartTime) / 1000)),
+            systemTimezone: await this.getSystemTimezone(),
+            localValues: totalValues,
+            cpuTemp: systemInfo.system.cpuTemp,
+            internetStatus: systemInfo.system.internetStatus,
+            protocol_version: "1.0"
         };
     }
 }

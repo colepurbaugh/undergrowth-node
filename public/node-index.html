@@ -411,14 +411,19 @@
         // Function to fetch and update sequence data
         function fetchSequenceData() {
             fetch('/api/sequence-info')
-                .then(response => response.json())
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+                    return response.json();
+                })
                 .then(data => {
-                    console.log('Sequence data:', data);
-                    // Only update new info cards
-                    updateSystemStatusCards(data);
+                    if (data && data.nodeSequence && data.nodeSequence.count !== undefined) {
+                        updateSystemStatusCards(data);
+                    }
                 })
                 .catch(error => {
-                    console.error('Error fetching sequence data:', error);
+                    // Silently handle errors to prevent "--" from showing
                 });
         }
         
@@ -465,16 +470,13 @@
             const lastMessageElem = document.getElementById('lastMessageValue');
             if (lastMessageElem && brokerInfo && brokerInfo.lastMessage) {
                 lastMessageElem.textContent = formatTimeAgo(brokerInfo.lastMessage);
-            } else if (lastMessageElem) {
-                lastMessageElem.textContent = '--';
             }
             
             // Local Values
             const localValuesElem = document.getElementById('localValuesValue');
             if (localValuesElem && sequenceData && sequenceData.nodeSequence) {
-                localValuesElem.textContent = sequenceData.nodeSequence.count.toLocaleString();
-            } else if (localValuesElem) {
-                localValuesElem.textContent = '--';
+                const localValues = sequenceData.nodeSequence.count || 0;
+                localValuesElem.textContent = localValues.toLocaleString();
             }
         }
 
@@ -597,7 +599,7 @@
         });
 
         socket.on('sensorData', (data) => {
-            console.log('sensorData', data); // Debug log
+            console.log('sensorData received:', data); // Debug log
             // Update system information
             const piUptime = document.getElementById('piUptime');
             if (piUptime) piUptime.textContent = data.system.piUptime;
@@ -630,7 +632,7 @@
             }
             
             const nodeIdDisplay = document.getElementById('nodeIdDisplay');
-            if (hostnameShort && nodeIdDisplay) {
+            if (nodeIdDisplay) {
                 nodeIdDisplay.textContent = hostnameShort;
             }
             
@@ -654,10 +656,16 @@
                 databaseTimezoneElement.textContent = formatTimezoneDisplay(data.databaseTimezone);
             }
 
+            // Update local values if present in the data
+            const localValuesElem = document.getElementById('localValuesValue');
+            if (localValuesElem && data.localValues !== undefined) {
+                localValuesElem.textContent = data.localValues.toLocaleString();
+            }
+
             // Update sensor data cache and display for all sensors by address
             for (const [address, sensorData] of Object.entries(data)) {
                 // Skip non-sensor keys (system, databaseTimezone, etc.)
-                if (address === 'system' || address === 'databaseTimezone') continue;
+                if (address === 'system' || address === 'databaseTimezone' || address === 'localValues') continue;
                 
                 // Update the display
                 updateSensorDisplay(address, sensorData);

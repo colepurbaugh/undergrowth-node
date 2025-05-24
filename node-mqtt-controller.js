@@ -266,6 +266,11 @@ class MQTTController extends EventEmitter {
             }
 
             try {
+                // Add protocol version to all object messages
+                if (typeof message === 'object') {
+                    message.protocol_version = "1.0";
+                }
+                
                 // Convert message to string if it's an object
                 const messageStr = typeof message === 'object' ? JSON.stringify(message) : message;
 
@@ -375,8 +380,8 @@ class MQTTController extends EventEmitter {
             readings: readings
         };
         
-        // Publish to the sensor data topic
-        return await this.publish(`undergrowth/nodes/${this.nodeId}/sensors`, data);
+        // Publish to the sensor data topic according to documentation
+        return await this.publish(`undergrowth/nodes/${this.nodeId}/responses/sensors`, data);
     }
 
     /**
@@ -395,7 +400,7 @@ class MQTTController extends EventEmitter {
             delete status.nodeId;
         }
         
-        return await this.publish(`undergrowth/nodes/${this.nodeId}/status`, status, { qos: 1, retain: true });
+        return await this.publish(`undergrowth/nodes/${this.nodeId}/responses/status`, status, { qos: 1, retain: true });
     }
 
     /**

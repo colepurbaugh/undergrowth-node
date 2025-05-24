@@ -117,7 +117,7 @@ configDb = new sqlite3.Database('./database/ug-config.db', (err) => {
     }
     configDb.serialize(() => {
         configDb.run(`CREATE TABLE IF NOT EXISTS events (id INTEGER PRIMARY KEY AUTOINCREMENT, gpio INTEGER NOT NULL, time TEXT NOT NULL, pwm_value INTEGER NOT NULL, enabled INTEGER DEFAULT 1)`);
-        configDb.run(`CREATE TABLE IF NOT EXISTS pwm_states (pin INTEGER PRIMARY KEY, value INTEGER DEFAULT 0, enabled INTEGER DEFAULT 0, last_modified DATETIME DEFAULT CURRENT_TIMESTAMP)`);
+        configDb.run(`CREATE TABLE IF NOT EXISTS manual_pwm_states (pin INTEGER PRIMARY KEY, value INTEGER DEFAULT 0, enabled INTEGER DEFAULT 0, last_modified DATETIME DEFAULT CURRENT_TIMESTAMP)`);
         configDb.run(`CREATE TABLE IF NOT EXISTS auto_pwm_states (pin INTEGER PRIMARY KEY, value INTEGER DEFAULT 0, enabled INTEGER DEFAULT 0, last_modified DATETIME DEFAULT CURRENT_TIMESTAMP)`);
         configDb.run(`CREATE TABLE IF NOT EXISTS sensor_config (
             address TEXT PRIMARY KEY,
@@ -140,7 +140,7 @@ configDb = new sqlite3.Database('./database/ug-config.db', (err) => {
 
         const pins = [12, 13, 18, 19];
         pins.forEach(pin => {
-            configDb.run('INSERT OR IGNORE INTO pwm_states (pin, value, enabled) VALUES (?, 0, 0)', [pin]);
+            configDb.run('INSERT OR IGNORE INTO manual_pwm_states (pin, value, enabled) VALUES (?, 0, 0)', [pin]);
             configDb.run('INSERT OR IGNORE INTO auto_pwm_states (pin, value, enabled) VALUES (?, 0, 0)', [pin]);
         });
         configDb.run('INSERT OR IGNORE INTO safety_state (key, value) VALUES (?, 0)', ['emergency_stop']);
@@ -169,6 +169,8 @@ dataDb = new sqlite3.Database('./database/ug-data.db', (err) => {
         dataDb.run(`CREATE INDEX IF NOT EXISTS idx_sequence_id ON sensor_readings(sequence_id)`);
         dataDb.run(`CREATE INDEX IF NOT EXISTS idx_address ON sensor_readings(address)`);
     });
+    // Initialize SystemInfo with the database connection
+    SystemInfo.setDataDb(dataDb);
 });
 
 function getNextSequenceId() {
@@ -211,6 +213,10 @@ function getSequenceRange() {
 }
 
 function getDataBySequenceRange(startSequence, endSequence, limit = 1000) {
+    // Cap the limit to 5000 records maximum
+    const maxLimit = 5000;
+    const actualLimit = Math.min(limit, maxLimit);
+    
     return new Promise((resolve, reject) => {
         dataDb.all(
             `SELECT timestamp, address, type, value, sequence_id
@@ -218,7 +224,7 @@ function getDataBySequenceRange(startSequence, endSequence, limit = 1000) {
              WHERE sequence_id >= ? AND sequence_id <= ?
              ORDER BY sequence_id ASC
              LIMIT ?`,
-            [startSequence, endSequence, limit],
+            [startSequence, endSequence, actualLimit],
             (err, rows) => {
                 if (err) {
                     console.error('Error getting data by sequence range:', err);
@@ -369,8 +375,8 @@ function broadcastSafetyState() {
 
 function broadcastPWMState() {
     console.log('Server: Broadcasting PWM state...');
-    Promise.all([
-        new Promise((resolve) => configDb.all('SELECT pin, value, enabled FROM pwm_states', [], (err, rows) => {
+                Promise.all([
+                new Promise((resolve) => configDb.all('SELECT pin, value, enabled FROM manual_pwm_states', [], (err, rows) => {
             if (err) { console.error('Server: Error fetching manual PWM states:', err); resolve({}); }
             else { const pwmStates = {}; rows.forEach(row => pwmStates[row.pin] = { value: row.value, enabled: row.enabled === 1 }); resolve(pwmStates); }
         })),
@@ -523,26 +529,34 @@ async function initializeMqtt() {
         if (initialized) {
             mqttController.on('message', (topic, message) => {
                 console.log(`Received message on ${topic}:`, message.toString());
-                if (topic === `undergrowth/server/requests/${nodeId}/history`) {
+                if (topic === `undergrowth/server/commands/${nodeId}/data/get`) {
                     try {
                         const request = JSON.parse(message.toString());
-                        console.log(`Processing server history request:`, request.startSequence !== undefined ? `sequence-based (${request.startSequence} to ${request.endSequence || 'latest'})` : `time-based (${request.startTime} to ${request.endTime})`);
+                        console.log(`Processing server data request:`, request.startSequence !== undefined ? `sequence-based (${request.startSequence} to ${request.endSequence || 'latest'})` : `time-based (${request.startTime} to ${request.endTime})`);
                         handleHistoryRequest(request);
                     } catch (error) {
-                        console.error('Error handling history request:', error);
+                        console.error('Error handling data request:', error);
                     }
-                } else if (topic === `undergrowth/server/requests/${nodeId}/info`) {
+                } else if (topic === `undergrowth/server/commands/${nodeId}/info/get`) {
                     try {
                         console.log('Received info get request');
-                        handleInfoGetRequest();
+                        let request = {};
+                        try {
+                            // Try to parse the message as JSON, but don't fail if it's not valid
+                            request = JSON.parse(message.toString());
+                        } catch (parseError) {
+                            console.log('Info request did not contain valid JSON, using empty object');
+                        }
+                        handleInfoGetRequest(request);
                     } catch (error) {
                         console.error('Error handling info get request:', error);
                     }
                 }
             });
             
-            // Subscribe to required topics
-            await mqttController.subscribe(`undergrowth/server/requests/${nodeId}/info`);
+            // Subscribe to required Version 1.0 topics
+            await mqttController.subscribe(`undergrowth/server/commands/${nodeId}/info/get`);
+            await mqttController.subscribe(`undergrowth/server/commands/${nodeId}/data/get`);
             
             console.log('MQTT successfully initialized');
             
@@ -582,12 +596,31 @@ async function initializeMqtt() {
 
 function handleHistoryRequest(request) {
     console.log('Received history request:', request);
+    
+    // Validate that request is a proper object
+    if (!request || typeof request !== 'object') {
+        console.error('Invalid history request: not a valid object');
+        return;
+    }
+    
+    // Check for required protocol version
+    if (!request.protocol_version) {
+        console.log('Warning: Missing protocol_version in request, assuming 1.0');
+    }
+    
     const isSequenceBased = request.startSequence !== undefined;
     if (isSequenceBased) {
+        // Validate required fields for sequence-based requests
         if (!request.requestId) {
             console.error('Invalid sequence-based request, missing requestId');
             return;
         }
+        
+        if (request.startSequence === undefined) {
+            console.error('Invalid sequence-based request, missing startSequence');
+            return;
+        }
+        
         const startSequence = request.startSequence;
         const endSequence = request.endSequence || Number.MAX_SAFE_INTEGER;
         const limit = request.limit || 1000;
@@ -621,8 +654,8 @@ function handleHistoryRequest(request) {
                 };
                 console.log(`Sending sequence-based history response with ${rows.length} records (max sequence: ${sequenceRangeData.maxSequence})`);
                 
-                // Use the updated publish API that doesn't throw errors
-                mqttController.publish(`undergrowth/nodes/${nodeId}/history`, response)
+                // Use the updated publish API with the correct topic according to documentation
+                mqttController.publish(`undergrowth/nodes/${nodeId}/responses/data/get`, response)
                     .then((result) => {
                         if (result.sent) {
                             const now = new Date().toISOString();
@@ -637,8 +670,9 @@ function handleHistoryRequest(request) {
             })).catch(err => {
                 console.error('Error querying sequence-based sensor history:', err);
                 // Use publish without throwing errors
-                mqttController.publish(`undergrowth/nodes/${nodeId}/history/error`, { 
+                mqttController.publish(`undergrowth/nodes/${nodeId}/responses/data/get/error`, { 
                     node_id: nodeId, 
+                    protocol_version: "1.0",
                     requestId: request.requestId, 
                     error: 'Database query error', 
                     message: err.message 
@@ -653,8 +687,9 @@ function handleHistoryRequest(request) {
         dataDb.all(query, [request.startTime, request.endTime], (err, rows) => {
             if (err) {
                 console.error('Error querying sensor history:', err);
-                mqttController.publish(`undergrowth/nodes/${nodeId}/history/error`, { 
+                mqttController.publish(`undergrowth/nodes/${nodeId}/responses/data/get/error`, { 
                     node_id: nodeId, 
+                    protocol_version: "1.0",
                     requestId: request.requestId, 
                     error: 'Database query error', 
                     message: err.message 
@@ -689,8 +724,8 @@ function handleHistoryRequest(request) {
                 };
                 console.log(`Sending time-based history response with ${rows.length} records (max sequence: ${sequenceRangeData.maxSequence})`);
                 
-                // Use the updated publish API
-                mqttController.publish(`undergrowth/nodes/${nodeId}/history`, response)
+                // Use the updated publish API with the correct topic according to documentation
+                mqttController.publish(`undergrowth/nodes/${nodeId}/responses/data/get`, response)
                     .then((result) => {
                         if (result.sent) {
                             const now = new Date().toISOString();
@@ -728,63 +763,24 @@ function handleHistoryRequest(request) {
                     dataPoints: dataPoints, 
                     recordCount: rows.length 
                 };
-                mqttController.publish(`undergrowth/nodes/${nodeId}/history`, response);
+                mqttController.publish(`undergrowth/nodes/${nodeId}/responses/data/get`, response);
             });
         });
     }
 }
 
-async function handleInfoGetRequest() {
+async function handleInfoGetRequest(request = {}) {
     try {
+        // Check for protocol version in request
+        if (request && !request.protocol_version) {
+            console.log('Warning: Info request missing protocol_version, assuming 1.0');
+        }
+        
         // Get comprehensive node info from SystemInfo
         const infoResponse = await SystemInfo.getInfoResponse();
         
-        // Get safety state from database
-        const safetyState = await new Promise((resolve, reject) => {
-            configDb.all('SELECT key, value FROM safety_state', [], (err, rows) => {
-                if (err) {
-                    console.error('Error fetching safety state for info request:', err);
-                    resolve({});
-                    return;
-                }
-                const state = {};
-                rows.forEach(row => {
-                    state[row.key] = row.value === 1;
-                });
-                resolve(state);
-            });
-        });
-        
-        // Update safety info with actual data
-        infoResponse.safety = {
-            emergency_stop: safetyState.emergency_stop || false,
-            normal_enable: safetyState.normal_enable !== false // Default to true if not found
-        };
-        
-        // Get PWM info if available
-        if (gpioController) {
-            const pwmStates = await gpioController.getPwmStatesForStatus();
-            let activeChannels = 0;
-            let lastUpdate = null;
-            
-            // Count active channels and get last update time
-            Object.values(pwmStates).forEach(state => {
-                if (state.enabled) {
-                    activeChannels++;
-                    if (state.last_update && (!lastUpdate || new Date(state.last_update) > new Date(lastUpdate))) {
-                        lastUpdate = state.last_update;
-                    }
-                }
-            });
-            
-            infoResponse.pwm = {
-                active_channels: activeChannels,
-                last_update: lastUpdate
-            };
-        }
-        
-        // Publish info response
-        await mqttController.publish(`undergrowth/nodes/${nodeId}/info`, infoResponse);
+        // Publish info response to the correct topic according to the documentation
+        await mqttController.publish(`undergrowth/nodes/${nodeId}/responses/info/get`, infoResponse);
         console.log('Published info response');
         
         // Also update SystemInfo's MQTT stats
@@ -792,9 +788,10 @@ async function handleInfoGetRequest() {
         
     } catch (error) {
         console.error('Error in handleInfoGetRequest:', error);
-        // Send error response
-        await mqttController.publish(`undergrowth/nodes/${nodeId}/info/error`, {
+        // Send error response to the correct topic according to the documentation
+        await mqttController.publish(`undergrowth/nodes/${nodeId}/responses/info/get/error`, {
             node_id: nodeId,
+            protocol_version: "1.0",
             error: 'Failed to get node info',
             message: error.message
         });
@@ -961,7 +958,7 @@ io.on('connection', (socket) => {
         try {
             const safetyStatesDb = await new Promise((resolve) => configDb.all('SELECT key,value FROM safety_state',[],(e,r)=>resolve(e?{}:r.reduce((acc,rw)=>{acc[rw.key]=rw.value;return acc;},{}))));
             const mode = await new Promise((resolve) => configDb.get('SELECT value FROM system_state WHERE key = ?', ['mode'], (e,r)=>resolve(e||!r?1:r.value)));
-            const manualPwmStates = await new Promise((resolve) => configDb.all('SELECT pin,value,enabled FROM pwm_states',[],(e,r)=>resolve(e?{}:r.reduce((acc,rw)=>{acc[rw.pin]={value:rw.value,enabled:rw.enabled===1};return acc;},{}))));
+            const manualPwmStates = await new Promise((resolve) => configDb.all('SELECT pin,value,enabled FROM manual_pwm_states',[],(e,r)=>resolve(e?{}:r.reduce((acc,rw)=>{acc[rw.pin]={value:rw.value,enabled:rw.enabled===1};return acc;},{}))));
             const autoPwmStates = await new Promise((resolve) => configDb.all('SELECT pin,value,enabled FROM auto_pwm_states',[],(e,r)=>resolve(e?{}:r.reduce((acc,rw)=>{acc[rw.pin]={value:rw.value,enabled:rw.enabled===1};return acc;},{}))));
             
             socket.emit('initialState', {
@@ -1051,3 +1048,8 @@ io.on('connection', (socket) => {
         }
     });
 });
+
+// Export dataDb for other modules
+module.exports = {
+    dataDb: dataDb
+};
