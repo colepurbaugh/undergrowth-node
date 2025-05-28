@@ -39,6 +39,11 @@ let configDb;
 let dataDb;
 let gpioController;
 
+function getDataDbPath() {
+    const hostname = os.hostname();
+    return `./database/${hostname}-data.db`;
+}
+
 function createSensor(address, type) {
     const addrHex = address.startsWith('0x') ? parseInt(address, 16) : parseInt(address);
     switch(type) {
@@ -149,7 +154,7 @@ configDb = new sqlite3.Database('./database/ug-config.db', (err) => {
     });
 });
 
-dataDb = new sqlite3.Database('./database/ug-data.db', (err) => {
+dataDb = new sqlite3.Database(getDataDbPath(), (err) => {
     if (err) {
         console.error('Error opening data database:', err);
         process.exit(1);

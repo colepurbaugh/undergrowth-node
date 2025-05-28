@@ -250,32 +250,80 @@
         }
         
         // Helper function to create chart
-        function createChart(ctx, type) {
-            // Determine appropriate time unit based on selected time range
-            const timeRange = parseInt(document.getElementById('timeRange').value);
-            let timeUnit = 'minute';
-            let unitStepSize = 5;
-            
-            if (timeRange >= 168) { // Week
-                timeUnit = 'hour';
-                unitStepSize = 6;
-            } else if (timeRange >= 48) { // 2+ days
-                timeUnit = 'hour';
-                unitStepSize = 4;
-            } else if (timeRange >= 24) { // Day
-                timeUnit = 'hour';
-                unitStepSize = 2;
-            } else if (timeRange >= 6) { // Several hours
-                timeUnit = 'minute';
-                unitStepSize = 30;
-            } else { // Hour or less
-                timeUnit = 'minute';
-                unitStepSize = 5;
+        function createChart(ctx, type, timeRange, startDateMs, endDateMs) {
+            // Function to generate clean tick timestamps
+            function generateTicks(timeRange, startDateMs, endDateMs) {
+                const ticks = [];
+                const startDate = new Date(startDateMs);
+                const endDate = new Date(endDateMs);
+                
+                if (timeRange === 1) { // Last Hour - every 5 minutes
+                    // Start from the nearest 5-minute mark before startDate
+                    const start = new Date(startDate);
+                    start.setMinutes(Math.floor(start.getMinutes() / 5) * 5, 0, 0);
+                    
+                    for (let time = new Date(start); time <= endDate; time.setMinutes(time.getMinutes() + 5)) {
+                        if (time >= startDate) {
+                            ticks.push(time.getTime());
+                        }
+                    }
+                } else if (timeRange === 24) { // Last 24 Hours - every hour
+                    // Start from the nearest hour before startDate
+                    const start = new Date(startDate);
+                    start.setMinutes(0, 0, 0);
+                    
+                    for (let time = new Date(start); time <= endDate; time.setHours(time.getHours() + 1)) {
+                        if (time >= startDate) {
+                            ticks.push(time.getTime());
+                        }
+                    }
+                } else if (timeRange === 168) { // Last Week - every 12 hours (midnight & noon)
+                    // Start from the nearest 12-hour mark before startDate
+                    const start = new Date(startDate);
+                    const hour = start.getHours();
+                    if (hour < 12) {
+                        start.setHours(0, 0, 0, 0);
+                    } else {
+                        start.setHours(12, 0, 0, 0);
+                    }
+                    
+                    for (let time = new Date(start); time <= endDate; time.setHours(time.getHours() + 12)) {
+                        if (time >= startDate) {
+                            ticks.push(time.getTime());
+                        }
+                    }
+                }
+                
+                return ticks;
             }
             
-            console.log(`Chart timeUnit: ${timeUnit}, stepSize: ${unitStepSize}`);
+            console.log(`Chart timeRange: ${timeRange} hours`);
             
-            const config = {
+            // Generate custom ticks for clean time boundaries
+            const customTicks = generateTicks(timeRange, startDateMs, endDateMs);
+            
+            // Calculate clean starting boundary
+            let cleanStartMs = startDateMs;
+            if (timeRange === 1) { // Last Hour - round to nearest 5 minutes
+                const startDate = new Date(startDateMs);
+                startDate.setMinutes(Math.floor(startDate.getMinutes() / 5) * 5, 0, 0);
+                cleanStartMs = startDate.getTime();
+            } else if (timeRange === 24) { // Last 24 Hours - round to nearest hour
+                const startDate = new Date(startDateMs);
+                startDate.setMinutes(0, 0, 0);
+                cleanStartMs = startDate.getTime();
+            } else if (timeRange === 168) { // Last Week - round to nearest 12 hours
+                const startDate = new Date(startDateMs);
+                const hour = startDate.getHours();
+                if (hour < 12) {
+                    startDate.setHours(0, 0, 0, 0);
+                } else {
+                    startDate.setHours(12, 0, 0, 0);
+                }
+                cleanStartMs = startDate.getTime();
+            }
+            
+            const chartConfig = {
                 type: 'line',
                 data: {
                     datasets: []
@@ -302,9 +350,9 @@
                     scales: {
                         x: {
                             type: 'time',
+                            min: cleanStartMs,
+                            max: endDateMs,
                             time: {
-                                unit: timeUnit,
-                                stepSize: unitStepSize,
                                 displayFormats: {
                                     millisecond: 'h:mm:ss.SSS a',
                                     second: 'h:mm:ss a',
@@ -333,21 +381,18 @@
                                 color: '#e8e6e3',
                                 maxRotation: 45,
                                 minRotation: 45,
-                                autoSkip: false,
-                                maxTicksLimit: 40,
-                                callback: function(value, index, values) {
-                                    // Show every n-th label to avoid overcrowding
-                                    if (values.length <= 40) return value;
-                                    if (values.length <= 80) return index % 2 === 0 ? value : '';
-                                    if (values.length <= 120) return index % 3 === 0 ? value : '';
-                                    return index % 4 === 0 ? value : '';
-                                },
-                                source: 'data',
                                 major: {
                                     enabled: true
                                 },
                                 font: {
                                     size: 10
+                                },
+                                afterBuildTicks: function(scale) {
+                                    // Replace Chart.js ticks with our custom ones
+                                    scale.ticks = customTicks.map(tickValue => ({
+                                        value: tickValue,
+                                        major: false
+                                    }));
                                 }
                             }
                         },
@@ -391,11 +436,11 @@
                 }
             };
             
-            return new Chart(ctx, config);
+            return new Chart(ctx, chartConfig);
         }
 
         // Function to fetch and display data for a chart
-        function fetchAndUpdateChart(url, type, startDateMs, endDateMs) {
+        function fetchAndUpdateChart(url, type, timeRange, startDateMs, endDateMs) {
             if (selectedSensors.length === 0) {
                 // Clear chart if no sensors selected
                 if (type === 'temperature' && tempChart) {
@@ -447,7 +492,7 @@
                     const ctx = document.getElementById(canvasId).getContext('2d');
                     
                     // Create new chart
-                    const chart = createChart(ctx, type);
+                    const chart = createChart(ctx, type, timeRange, startDateMs, endDateMs);
                     
                     if (type === 'temperature') {
                         tempChart = chart;
@@ -641,8 +686,8 @@
             humidityUrl.searchParams.set('type', 'humidity');
             
             // Fetch and update both charts
-            fetchAndUpdateChart(tempUrl, 'temperature', startDateMs, endDateMs);
-            fetchAndUpdateChart(humidityUrl, 'humidity', startDateMs, endDateMs);
+            fetchAndUpdateChart(tempUrl, 'temperature', timeRange, startDateMs, endDateMs);
+            fetchAndUpdateChart(humidityUrl, 'humidity', timeRange, startDateMs, endDateMs);
         }
 
         // Custom initialization for this page
