@@ -16,6 +16,81 @@
     <script src="/socket.io/socket.io.js"></script>
     <link rel="stylesheet" href="/assets/css/main.css">
     <script src="/assets/js/core.js"></script>
+    <style>
+        .color-range-controls {
+            margin: 10px 0;
+            padding: 10px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 5px;
+            background: rgba(0, 0, 0, 0.1);
+        }
+        
+        .color-range-title {
+            margin: 0 0 8px 0;
+            color: #e8e6e3;
+            font-size: 14px;
+            font-weight: bold;
+        }
+        
+        .color-range-group {
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+        }
+        
+        .color-input-group {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            flex: 1;
+            min-width: 200px;
+        }
+        
+        .color-input-group label {
+            color: #e8e6e3;
+            font-size: 12px;
+            min-width: 60px;
+        }
+        
+        .range-input {
+            width: 50px;
+            padding: 2px 4px;
+            border: 1px solid #ccc;
+            border-radius: 3px;
+            background: #fff;
+            color: #333;
+            font-size: 12px;
+        }
+        
+        .color-picker {
+            width: 30px;
+            height: 25px;
+            border: 1px solid #ccc;
+            border-radius: 3px;
+            cursor: pointer;
+            padding: 0;
+        }
+        
+        .color-hex {
+            width: 70px;
+            padding: 2px 4px;
+            border: 1px solid #ccc;
+            border-radius: 3px;
+            background: #fff;
+            color: #333;
+            font-size: 11px;
+            font-family: monospace;
+        }
+        
+        #updateColorsButton {
+            margin-top: 10px;
+            background: #4CAF50;
+        }
+        
+        #updateColorsButton:hover {
+            background: #45a049;
+        }
+    </style>
 </head>
 <body class="normal-state" style="background-image: url('/assets/backgrounds/undergrowth_logo.png') !important; background-repeat: no-repeat !important; background-position: top center !important; background-size: 90vh auto !important; background-attachment: fixed !important;">
     <div class="container">
@@ -65,6 +140,46 @@
                 <button id="selectAllSensors" class="sensor-button">Select All</button>
                 <button id="deselectAllSensors" class="sensor-button">Deselect All</button>
                 <button id="averageSensors" class="sensor-button">Show Average</button>
+                
+                <!-- Temperature Color Range Controls -->
+                <div class="color-range-controls">
+                    <h4 class="color-range-title">Temperature Colors</h4>
+                    <div class="color-range-group">
+                        <div class="color-input-group">
+                            <label for="tempLowValue">Low (°F):</label>
+                            <input type="number" id="tempLowValue" value="40" min="0" max="120" class="range-input">
+                            <input type="color" id="tempLowColor" value="#0064ff" class="color-picker">
+                            <input type="text" id="tempLowColorHex" value="#0064ff" class="color-hex" maxlength="7">
+                        </div>
+                        <div class="color-input-group">
+                            <label for="tempHighValue">High (°F):</label>
+                            <input type="number" id="tempHighValue" value="85" min="0" max="120" class="range-input">
+                            <input type="color" id="tempHighColor" value="#ff0000" class="color-picker">
+                            <input type="text" id="tempHighColorHex" value="#ff0000" class="color-hex" maxlength="7">
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Humidity Color Range Controls -->
+                <div class="color-range-controls">
+                    <h4 class="color-range-title">Humidity Colors</h4>
+                    <div class="color-range-group">
+                        <div class="color-input-group">
+                            <label for="humidLowValue">Low (%):</label>
+                            <input type="number" id="humidLowValue" value="0" min="0" max="100" class="range-input">
+                            <input type="color" id="humidLowColor" value="#ffffff" class="color-picker">
+                            <input type="text" id="humidLowColorHex" value="#ffffff" class="color-hex" maxlength="7">
+                        </div>
+                        <div class="color-input-group">
+                            <label for="humidHighValue">High (%):</label>
+                            <input type="number" id="humidHighValue" value="100" min="0" max="100" class="range-input">
+                            <input type="color" id="humidHighColor" value="#1e40af" class="color-picker">
+                            <input type="text" id="humidHighColorHex" value="#1e40af" class="color-hex" maxlength="7">
+                        </div>
+                    </div>
+                </div>
+                
+                <button id="updateColorsButton" class="sensor-button">Update Colors</button>
             </div>
         </div>
 
@@ -94,6 +209,22 @@
         let selectedSensors = []; // To store selected sensors
         let showAverage = false; // Whether to show average of selected sensors
         
+        // Customizable color settings
+        let colorSettings = {
+            temperature: {
+                lowValue: 40,
+                highValue: 85,
+                lowColor: '#0064ff', // Blue
+                highColor: '#ff0000'  // Red
+            },
+            humidity: {
+                lowValue: 0,
+                highValue: 100,
+                lowColor: '#ffffff', // White
+                highColor: '#1e40af' // Dark blue
+            }
+        };
+
         // Chart colors for different sensors (can add more as needed)
         const tempColors = [
             { border: 'rgb(255, 99, 132)', background: 'rgba(255, 99, 132, 0.1)' },  // Red
@@ -109,6 +240,89 @@
             { border: 'rgb(191, 219, 254)', background: 'rgba(191, 219, 254, 0.1)' }, // Light Blue
             { border: 'rgb(30, 64, 175)', background: 'rgba(30, 64, 175, 0.1)' }    // Deep Blue
         ];
+
+        // Function to get color based on temperature value
+        function getTemperatureColor(tempF) {
+            if (tempF === null || tempF === undefined) return 'rgba(128, 128, 128, 0.5)'; // Gray for null values
+            
+            const settings = colorSettings.temperature;
+            const lowValue = settings.lowValue;
+            const highValue = settings.highValue;
+            const lowColor = settings.lowColor;
+            const highColor = settings.highColor;
+            
+            // Convert hex colors to RGB
+            const lowRGB = hexToRgb(lowColor);
+            const highRGB = hexToRgb(highColor);
+            
+            // Clamp temperature to range
+            const clampedTemp = Math.max(lowValue, Math.min(highValue, tempF));
+            
+            // Calculate interpolation ratio
+            const ratio = (clampedTemp - lowValue) / (highValue - lowValue);
+            
+            // Interpolate between low and high colors
+            const r = Math.round(lowRGB.r + (highRGB.r - lowRGB.r) * ratio);
+            const g = Math.round(lowRGB.g + (highRGB.g - lowRGB.g) * ratio);
+            const b = Math.round(lowRGB.b + (highRGB.b - lowRGB.b) * ratio);
+            
+            return `rgb(${r}, ${g}, ${b})`;
+        }
+
+        // Function to get color based on humidity value
+        function getHumidityColor(humidity) {
+            if (humidity === null || humidity === undefined) return 'rgba(128, 128, 128, 0.5)'; // Gray for null values
+            
+            const settings = colorSettings.humidity;
+            const lowValue = settings.lowValue;
+            const highValue = settings.highValue;
+            const lowColor = settings.lowColor;
+            const highColor = settings.highColor;
+            
+            // Convert hex colors to RGB
+            const lowRGB = hexToRgb(lowColor);
+            const highRGB = hexToRgb(highColor);
+            
+            // Clamp humidity to range
+            const clampedHumidity = Math.max(lowValue, Math.min(highValue, humidity));
+            
+            // Calculate interpolation ratio
+            const ratio = (clampedHumidity - lowValue) / (highValue - lowValue);
+            
+            // Interpolate between low and high colors
+            const r = Math.round(lowRGB.r + (highRGB.r - lowRGB.r) * ratio);
+            const g = Math.round(lowRGB.g + (highRGB.g - lowRGB.g) * ratio);
+            const b = Math.round(lowRGB.b + (highRGB.b - lowRGB.b) * ratio);
+            
+            return `rgb(${r}, ${g}, ${b})`;
+        }
+
+        // Helper function to convert hex color to RGB
+        function hexToRgb(hex) {
+            const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+            return result ? {
+                r: parseInt(result[1], 16),
+                g: parseInt(result[2], 16),
+                b: parseInt(result[3], 16)
+            } : { r: 0, g: 0, b: 0 };
+        }
+
+        // Function to create point colors array based on data values
+        function createPointColors(dataPoints, type) {
+            return dataPoints.map(point => {
+                if (point.y === null || point.y === undefined) {
+                    return 'rgba(128, 128, 128, 0.5)'; // Gray for null values
+                }
+                
+                if (type === 'temperature') {
+                    return getTemperatureColor(point.y);
+                } else if (type === 'humidity') {
+                    return getHumidityColor(point.y);
+                }
+                
+                return 'rgba(128, 128, 128, 0.8)'; // Default gray
+            });
+        }
 
         // Initialize socket connection
         const socket = io();
@@ -246,6 +460,47 @@
             document.getElementById('averageSensors').textContent = showAverage ? 'Show Individual' : 'Show Average';
             
             // Clear and regenerate charts with new mode
+            updateCharts();
+        }
+
+        // Function to sync color picker with hex input
+        function syncColorInputs(colorPickerId, hexInputId) {
+            const colorPicker = document.getElementById(colorPickerId);
+            const hexInput = document.getElementById(hexInputId);
+            
+            colorPicker.addEventListener('input', function() {
+                hexInput.value = this.value;
+            });
+            
+            hexInput.addEventListener('input', function() {
+                const hex = this.value;
+                if (/^#[0-9A-F]{6}$/i.test(hex)) {
+                    colorPicker.value = hex;
+                }
+            });
+        }
+
+        // Function to update color settings from UI controls
+        function updateColorSettings() {
+            colorSettings.temperature.lowValue = parseInt(document.getElementById('tempLowValue').value);
+            colorSettings.temperature.highValue = parseInt(document.getElementById('tempHighValue').value);
+            colorSettings.temperature.lowColor = document.getElementById('tempLowColor').value;
+            colorSettings.temperature.highColor = document.getElementById('tempHighColor').value;
+            
+            colorSettings.humidity.lowValue = parseInt(document.getElementById('humidLowValue').value);
+            colorSettings.humidity.highValue = parseInt(document.getElementById('humidHighValue').value);
+            colorSettings.humidity.lowColor = document.getElementById('humidLowColor').value;
+            colorSettings.humidity.highColor = document.getElementById('humidHighColor').value;
+            
+            // Update hex inputs to match color pickers
+            document.getElementById('tempLowColorHex').value = colorSettings.temperature.lowColor;
+            document.getElementById('tempHighColorHex').value = colorSettings.temperature.highColor;
+            document.getElementById('humidLowColorHex').value = colorSettings.humidity.lowColor;
+            document.getElementById('humidHighColorHex').value = colorSettings.humidity.highColor;
+            
+            console.log('Color settings updated:', colorSettings);
+            
+            // Regenerate charts with new colors
             updateCharts();
         }
         
@@ -537,13 +792,21 @@
                             chart.options.scales.y.min = type === 'humidity' ? Math.max(0, min - padding) : Math.max(50, min - padding);
                             chart.options.scales.y.max = type === 'humidity' ? Math.min(100, max + padding) : max + padding;
                         
+                            // Create point colors based on values
+                            const pointColors = createPointColors(dataPoints, type);
+                            
                             chart.data.datasets.push({
                                 label: `Average ${type === 'temperature' ? 'Temperature (°F)' : 'Humidity (%)'}`,
                                 data: dataPoints,
-                                borderColor: 'rgb(255, 255, 255)',
-                                backgroundColor: 'rgba(255, 255, 255, 0.1)',
+                                borderColor: 'rgba(255, 255, 255, 0.3)', // Light border for connection lines
+                                backgroundColor: pointColors, // Use value-based colors for points
+                                pointBackgroundColor: pointColors, // Ensure points use the colors
+                                pointBorderColor: pointColors, // Border color matches background
+                                pointRadius: 4, // Slightly larger points to show colors better
+                                pointHoverRadius: 6,
                                 tension: 0.1,
-                                fill: true
+                                fill: false, // Don't fill the area, just show colored points
+                                showLine: false // Remove connecting lines
                             });
                             
                             // Set min/max on x-axis with a small margin
@@ -629,13 +892,20 @@
                             }
                             // Sort data points by timestamp
                             const sortedData = sensorGroups[sensorId].sort((a, b) => a.x - b.x);
+                            
+                            // Create point colors based on values
+                            const pointColors = createPointColors(sortedData, type);
+                            
                             chart.data.datasets.push({
                                 label: `${sensor.name || `${sensor.type} ${sensor.address}`}${type === 'temperature' ? ' Temperature (°F)' : ' Humidity (%)'}`,
                                 data: sortedData,
-                                borderColor: color.border,
-                                backgroundColor: color.background,
-                                pointRadius: 3,
-                                showLine: false,
+                                borderColor: color.border, // Keep sensor-specific border color for lines
+                                backgroundColor: pointColors, // Use value-based colors for points
+                                pointBackgroundColor: pointColors, // Ensure points use the colors
+                                pointBorderColor: pointColors, // Border color matches background
+                                pointRadius: 4, // Slightly larger points to show colors better
+                                pointHoverRadius: 6,
+                                showLine: false, // Remove connecting lines
                                 fill: false
                             });
                         });
@@ -735,6 +1005,18 @@
             document.getElementById('averageSensors').addEventListener('click', () => {
                 console.log('Average button clicked');
                 toggleAverageMode();
+            });
+            
+            // Set up color input synchronization
+            syncColorInputs('tempLowColor', 'tempLowColorHex');
+            syncColorInputs('tempHighColor', 'tempHighColorHex');
+            syncColorInputs('humidLowColor', 'humidLowColorHex');
+            syncColorInputs('humidHighColor', 'humidHighColorHex');
+            
+            // Add event listener for update colors button
+            document.getElementById('updateColorsButton').addEventListener('click', () => {
+                console.log('Update Colors button clicked');
+                updateColorSettings();
             });
             
             // Request timezone
