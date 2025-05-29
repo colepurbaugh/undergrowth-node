@@ -82,6 +82,14 @@
             font-family: monospace;
         }
         
+        .mid-checkbox {
+            width: 16px;
+            height: 16px;
+            margin-right: 5px;
+            cursor: pointer;
+            accent-color: #4CAF50;
+        }
+        
         #updateColorsButton {
             margin-top: 10px;
             background: #4CAF50;
@@ -152,6 +160,13 @@
                             <input type="text" id="tempLowColorHex" value="#0064ff" class="color-hex" maxlength="7">
                         </div>
                         <div class="color-input-group">
+                            <input type="checkbox" id="tempUseMid" class="mid-checkbox">
+                            <label for="tempMidValue">Mid (°F):</label>
+                            <input type="number" id="tempMidValue" value="70" min="0" max="120" class="range-input">
+                            <input type="color" id="tempMidColor" value="#800080" class="color-picker">
+                            <input type="text" id="tempMidColorHex" value="#800080" class="color-hex" maxlength="7">
+                        </div>
+                        <div class="color-input-group">
                             <label for="tempHighValue">High (°F):</label>
                             <input type="number" id="tempHighValue" value="85" min="0" max="120" class="range-input">
                             <input type="color" id="tempHighColor" value="#ff0000" class="color-picker">
@@ -169,6 +184,13 @@
                             <input type="number" id="humidLowValue" value="0" min="0" max="100" class="range-input">
                             <input type="color" id="humidLowColor" value="#ffffff" class="color-picker">
                             <input type="text" id="humidLowColorHex" value="#ffffff" class="color-hex" maxlength="7">
+                        </div>
+                        <div class="color-input-group">
+                            <input type="checkbox" id="humidUseMid" class="mid-checkbox">
+                            <label for="humidMidValue">Mid (%):</label>
+                            <input type="number" id="humidMidValue" value="50" min="0" max="100" class="range-input">
+                            <input type="color" id="humidMidColor" value="#87ceeb" class="color-picker">
+                            <input type="text" id="humidMidColorHex" value="#87ceeb" class="color-hex" maxlength="7">
                         </div>
                         <div class="color-input-group">
                             <label for="humidHighValue">High (%):</label>
@@ -213,15 +235,21 @@
         let colorSettings = {
             temperature: {
                 lowValue: 40,
+                midValue: 70,
                 highValue: 85,
                 lowColor: '#0064ff', // Blue
-                highColor: '#ff0000'  // Red
+                midColor: '#800080', // Purple
+                highColor: '#ff0000', // Red
+                useMid: false
             },
             humidity: {
                 lowValue: 0,
+                midValue: 50,
                 highValue: 100,
                 lowColor: '#ffffff', // White
-                highColor: '#1e40af' // Dark blue
+                midColor: '#87ceeb', // Sky blue
+                highColor: '#1e40af', // Dark blue
+                useMid: false
             }
         };
 
@@ -247,26 +275,52 @@
             
             const settings = colorSettings.temperature;
             const lowValue = settings.lowValue;
+            const midValue = settings.midValue;
             const highValue = settings.highValue;
             const lowColor = settings.lowColor;
+            const midColor = settings.midColor;
             const highColor = settings.highColor;
+            const useMid = settings.useMid;
             
             // Convert hex colors to RGB
             const lowRGB = hexToRgb(lowColor);
+            const midRGB = hexToRgb(midColor);
             const highRGB = hexToRgb(highColor);
             
-            // Clamp temperature to range
-            const clampedTemp = Math.max(lowValue, Math.min(highValue, tempF));
-            
-            // Calculate interpolation ratio
-            const ratio = (clampedTemp - lowValue) / (highValue - lowValue);
-            
-            // Interpolate between low and high colors
-            const r = Math.round(lowRGB.r + (highRGB.r - lowRGB.r) * ratio);
-            const g = Math.round(lowRGB.g + (highRGB.g - lowRGB.g) * ratio);
-            const b = Math.round(lowRGB.b + (highRGB.b - lowRGB.b) * ratio);
-            
-            return `rgb(${r}, ${g}, ${b})`;
+            if (!useMid) {
+                // Simple interpolation between low and high (ignore mid)
+                const clampedTemp = Math.max(lowValue, Math.min(highValue, tempF));
+                const ratio = (clampedTemp - lowValue) / (highValue - lowValue);
+                
+                const r = Math.round(lowRGB.r + (highRGB.r - lowRGB.r) * ratio);
+                const g = Math.round(lowRGB.g + (highRGB.g - lowRGB.g) * ratio);
+                const b = Math.round(lowRGB.b + (highRGB.b - lowRGB.b) * ratio);
+                
+                return `rgb(${r}, ${g}, ${b})`;
+            } else {
+                // Two-stage interpolation: low->mid and mid->high
+                if (tempF <= midValue) {
+                    // Interpolate between low and mid
+                    const clampedTemp = Math.max(lowValue, Math.min(midValue, tempF));
+                    const ratio = (clampedTemp - lowValue) / (midValue - lowValue);
+                    
+                    const r = Math.round(lowRGB.r + (midRGB.r - lowRGB.r) * ratio);
+                    const g = Math.round(lowRGB.g + (midRGB.g - lowRGB.g) * ratio);
+                    const b = Math.round(lowRGB.b + (midRGB.b - lowRGB.b) * ratio);
+                    
+                    return `rgb(${r}, ${g}, ${b})`;
+                } else {
+                    // Interpolate between mid and high
+                    const clampedTemp = Math.max(midValue, Math.min(highValue, tempF));
+                    const ratio = (clampedTemp - midValue) / (highValue - midValue);
+                    
+                    const r = Math.round(midRGB.r + (highRGB.r - midRGB.r) * ratio);
+                    const g = Math.round(midRGB.g + (highRGB.g - midRGB.g) * ratio);
+                    const b = Math.round(midRGB.b + (highRGB.b - midRGB.b) * ratio);
+                    
+                    return `rgb(${r}, ${g}, ${b})`;
+                }
+            }
         }
 
         // Function to get color based on humidity value
@@ -275,26 +329,52 @@
             
             const settings = colorSettings.humidity;
             const lowValue = settings.lowValue;
+            const midValue = settings.midValue;
             const highValue = settings.highValue;
             const lowColor = settings.lowColor;
+            const midColor = settings.midColor;
             const highColor = settings.highColor;
+            const useMid = settings.useMid;
             
             // Convert hex colors to RGB
             const lowRGB = hexToRgb(lowColor);
+            const midRGB = hexToRgb(midColor);
             const highRGB = hexToRgb(highColor);
             
-            // Clamp humidity to range
-            const clampedHumidity = Math.max(lowValue, Math.min(highValue, humidity));
-            
-            // Calculate interpolation ratio
-            const ratio = (clampedHumidity - lowValue) / (highValue - lowValue);
-            
-            // Interpolate between low and high colors
-            const r = Math.round(lowRGB.r + (highRGB.r - lowRGB.r) * ratio);
-            const g = Math.round(lowRGB.g + (highRGB.g - lowRGB.g) * ratio);
-            const b = Math.round(lowRGB.b + (highRGB.b - lowRGB.b) * ratio);
-            
-            return `rgb(${r}, ${g}, ${b})`;
+            if (!useMid) {
+                // Simple interpolation between low and high (ignore mid)
+                const clampedHumidity = Math.max(lowValue, Math.min(highValue, humidity));
+                const ratio = (clampedHumidity - lowValue) / (highValue - lowValue);
+                
+                const r = Math.round(lowRGB.r + (highRGB.r - lowRGB.r) * ratio);
+                const g = Math.round(lowRGB.g + (highRGB.g - lowRGB.g) * ratio);
+                const b = Math.round(lowRGB.b + (highRGB.b - lowRGB.b) * ratio);
+                
+                return `rgb(${r}, ${g}, ${b})`;
+            } else {
+                // Two-stage interpolation: low->mid and mid->high
+                if (humidity <= midValue) {
+                    // Interpolate between low and mid
+                    const clampedHumidity = Math.max(lowValue, Math.min(midValue, humidity));
+                    const ratio = (clampedHumidity - lowValue) / (midValue - lowValue);
+                    
+                    const r = Math.round(lowRGB.r + (midRGB.r - lowRGB.r) * ratio);
+                    const g = Math.round(lowRGB.g + (midRGB.g - lowRGB.g) * ratio);
+                    const b = Math.round(lowRGB.b + (midRGB.b - lowRGB.b) * ratio);
+                    
+                    return `rgb(${r}, ${g}, ${b})`;
+                } else {
+                    // Interpolate between mid and high
+                    const clampedHumidity = Math.max(midValue, Math.min(highValue, humidity));
+                    const ratio = (clampedHumidity - midValue) / (highValue - midValue);
+                    
+                    const r = Math.round(midRGB.r + (highRGB.r - midRGB.r) * ratio);
+                    const g = Math.round(midRGB.g + (highRGB.g - midRGB.g) * ratio);
+                    const b = Math.round(midRGB.b + (highRGB.b - midRGB.b) * ratio);
+                    
+                    return `rgb(${r}, ${g}, ${b})`;
+                }
+            }
         }
 
         // Helper function to convert hex color to RGB
@@ -483,19 +563,27 @@
         // Function to update color settings from UI controls
         function updateColorSettings() {
             colorSettings.temperature.lowValue = parseInt(document.getElementById('tempLowValue').value);
+            colorSettings.temperature.midValue = parseInt(document.getElementById('tempMidValue').value);
             colorSettings.temperature.highValue = parseInt(document.getElementById('tempHighValue').value);
             colorSettings.temperature.lowColor = document.getElementById('tempLowColor').value;
+            colorSettings.temperature.midColor = document.getElementById('tempMidColor').value;
             colorSettings.temperature.highColor = document.getElementById('tempHighColor').value;
+            colorSettings.temperature.useMid = document.getElementById('tempUseMid').checked;
             
             colorSettings.humidity.lowValue = parseInt(document.getElementById('humidLowValue').value);
+            colorSettings.humidity.midValue = parseInt(document.getElementById('humidMidValue').value);
             colorSettings.humidity.highValue = parseInt(document.getElementById('humidHighValue').value);
             colorSettings.humidity.lowColor = document.getElementById('humidLowColor').value;
+            colorSettings.humidity.midColor = document.getElementById('humidMidColor').value;
             colorSettings.humidity.highColor = document.getElementById('humidHighColor').value;
+            colorSettings.humidity.useMid = document.getElementById('humidUseMid').checked;
             
             // Update hex inputs to match color pickers
             document.getElementById('tempLowColorHex').value = colorSettings.temperature.lowColor;
+            document.getElementById('tempMidColorHex').value = colorSettings.temperature.midColor;
             document.getElementById('tempHighColorHex').value = colorSettings.temperature.highColor;
             document.getElementById('humidLowColorHex').value = colorSettings.humidity.lowColor;
+            document.getElementById('humidMidColorHex').value = colorSettings.humidity.midColor;
             document.getElementById('humidHighColorHex').value = colorSettings.humidity.highColor;
             
             console.log('Color settings updated:', colorSettings);
@@ -1009,8 +1097,10 @@
             
             // Set up color input synchronization
             syncColorInputs('tempLowColor', 'tempLowColorHex');
+            syncColorInputs('tempMidColor', 'tempMidColorHex');
             syncColorInputs('tempHighColor', 'tempHighColorHex');
             syncColorInputs('humidLowColor', 'humidLowColorHex');
+            syncColorInputs('humidMidColor', 'humidMidColorHex');
             syncColorInputs('humidHighColor', 'humidHighColorHex');
             
             // Add event listener for update colors button
