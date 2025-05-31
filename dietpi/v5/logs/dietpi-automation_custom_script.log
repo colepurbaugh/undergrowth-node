@@ -1,0 +1,1013 @@
+root@node-D1B950:/home/dietpi/git# sudo cat /var/tmp/dietpi/logs/dietpi-automation_custom_script.log
+Starting undergrowth-node installation...
+Installing required system packages...
+Hit:1 https://deb.debian.org/debian bookworm InRelease
+Hit:2 https://deb.debian.org/debian bookworm-updates InRelease
+Hit:3 https://deb.debian.org/debian-security bookworm-security InRelease
+Hit:4 https://deb.debian.org/debian bookworm-backports InRelease
+Hit:5 https://dietpi.com/apt bookworm InRelease
+Hit:6 https://dietpi.com/apt all InRelease
+Hit:7 https://archive.raspberrypi.com/debian bookworm InRelease
+Reading package lists...
+Reading package lists...
+Building dependency tree...
+Reading state information...
+unzip is already the newest version (6.0-28).
+wget is already the newest version (1.21.3-1+deb12u1).
+htop is already the newest version (3.2.2-2).
+The following additional packages will be installed:
+  binutils binutils-aarch64-linux-gnu binutils-common cpp cpp-12 dpkg-dev g++
+  g++-12 gcc gcc-12 git-man libasan8 libatomic1 libbinutils libc-dev-bin
+  libc6-dev libcc1-0 libcrypt-dev libctf-nobfd0 libctf0 libcurl3-gnutls
+  libdpkg-perl liberror-perl libexpat1 libexpat1-dev libgcc-12-dev
+  libgdbm-compat4 libgdbm6 libgomp1 libgprofng0 libhwasan0 libi2c0 libisl23
+  libitm1 libjansson4 libjs-jquery libjs-sphinxdoc libjs-underscore liblsan0
+  libmpc3 libmpfr6 libnsl-dev libnsl2 libperl5.36 libpython3-dev
+  libpython3-stdlib libpython3.11 libpython3.11-dev libpython3.11-minimal
+  libpython3.11-stdlib libstdc++-12-dev libtirpc-dev libtsan2 libubsan1
+  linux-libc-dev make media-types patch perl perl-modules-5.36 python3
+  python3-lib2to3 python3-minimal python3.11 python3.11-dev python3.11-minimal
+  rpcsvc-proto xz-utils zlib1g-dev
+Suggested packages:
+  binutils-doc cpp-doc gcc-12-locales cpp-12-doc debian-keyring gcc-12-doc
+  gcc-multilib manpages-dev autoconf automake libtool flex bison gdb gcc-doc
+  gettext-base git-daemon-run | git-daemon-sysvinit git-doc git-email git-gui
+  gitk gitweb git-cvs git-mediawiki git-svn libi2c-dev python3-smbus glibc-doc
+  gnupg | sq | sqop | pgpainless-cli | sequoia-chameleon-gnupg bzr gdbm-l10n
+  libstdc++-12-doc make-doc ed diffutils-doc perl-doc
+  libterm-readline-gnu-perl | libterm-readline-perl-perl
+  libtap-harness-archive-perl python3-doc python3-tk python3-venv
+  python3.11-venv python3.11-doc binfmt-support sqlite3-doc
+Recommended packages:
+  fakeroot gnupg | sq | sqop | pgpainless-cli | sequoia-chameleon-gnupg
+  libalgorithm-merge-perl less ssh-client read-edid manpages manpages-dev
+  libc-devtools libfile-fcntllock-perl javascript-common netbase
+The following NEW packages will be installed:
+  binutils binutils-aarch64-linux-gnu binutils-common build-essential cpp
+  cpp-12 dpkg-dev g++ g++-12 gcc gcc-12 git git-man i2c-tools libasan8
+  libatomic1 libbinutils libc-dev-bin libc6-dev libcc1-0 libcrypt-dev
+  libctf-nobfd0 libctf0 libcurl3-gnutls libdpkg-perl liberror-perl libexpat1
+  libexpat1-dev libgcc-12-dev libgdbm-compat4 libgdbm6 libgomp1 libgprofng0
+  libhwasan0 libi2c0 libisl23 libitm1 libjansson4 libjs-jquery libjs-sphinxdoc
+  libjs-underscore liblsan0 libmpc3 libmpfr6 libnsl-dev libnsl2 libperl5.36
+  libpython3-dev libpython3-stdlib libpython3.11 libpython3.11-dev
+  libpython3.11-minimal libpython3.11-stdlib libstdc++-12-dev libtirpc-dev
+  libtsan2 libubsan1 linux-libc-dev make media-types patch perl
+  perl-modules-5.36 python3 python3-dev python3-distutils python3-lib2to3
+  python3-minimal python3.11 python3.11-dev python3.11-minimal rpcsvc-proto
+  sqlite3 xz-utils zlib1g-dev
+0 upgraded, 75 newly installed, 0 to remove and 0 not upgraded.
+Need to get 90.9 MB of archives.
+After this operation, 410 MB of additional disk space will be used.
+Get:1 https://deb.debian.org/debian bookworm/main arm64 perl-modules-5.36 all 5.36.0-7+deb12u2 [2815 kB]
+Get:2 https://archive.raspberrypi.com/debian bookworm/main arm64 libc-dev-bin arm64 2.36-9+rpt2+deb12u10 [49.5 kB]
+Get:3 https://deb.debian.org/debian bookworm/main arm64 libgdbm6 arm64 1.23-3 [70.9 kB]
+Get:4 https://deb.debian.org/debian bookworm/main arm64 libgdbm-compat4 arm64 1.23-3 [48.0 kB]
+Get:5 https://deb.debian.org/debian bookworm/main arm64 libperl5.36 arm64 5.36.0-7+deb12u2 [4027 kB]
+Get:6 https://archive.raspberrypi.com/debian bookworm/main arm64 linux-libc-dev all 1:6.12.25-1+rpt1 [2314 kB]
+Get:7 https://deb.debian.org/debian bookworm/main arm64 perl arm64 5.36.0-7+deb12u2 [239 kB]
+Get:8 https://archive.raspberrypi.com/debian bookworm/main arm64 libc6-dev arm64 2.36-9+rpt2+deb12u10 [2092 kB]
+Get:9 https://deb.debian.org/debian bookworm/main arm64 libpython3.11-minimal arm64 3.11.2-6+deb12u6 [810 kB]
+Get:10 https://archive.raspberrypi.com/debian bookworm/main arm64 libdpkg-perl all 1.22.6~bpo12+rpt3 [656 kB]
+Get:11 https://archive.raspberrypi.com/debian bookworm/main arm64 dpkg-dev all 1.22.6~bpo12+rpt3 [1393 kB]
+Get:12 https://deb.debian.org/debian bookworm/main arm64 libexpat1 arm64 2.5.0-1+deb12u1 [84.6 kB]
+Get:13 https://deb.debian.org/debian bookworm/main arm64 python3.11-minimal arm64 3.11.2-6+deb12u6 [1859 kB]
+Get:14 https://archive.raspberrypi.com/debian bookworm/main arm64 zlib1g-dev arm64 1:1.2.13.dfsg-1+rpt1 [944 kB]
+Get:15 https://deb.debian.org/debian bookworm/main arm64 python3-minimal arm64 3.11.2-1+b1 [26.3 kB]
+Get:16 https://deb.debian.org/debian bookworm/main arm64 media-types all 10.0.0 [26.1 kB]
+Get:17 https://deb.debian.org/debian bookworm/main arm64 libnsl2 arm64 1.3.0-2 [36.9 kB]
+Get:18 https://deb.debian.org/debian bookworm/main arm64 libpython3.11-stdlib arm64 3.11.2-6+deb12u6 [1746 kB]
+Get:19 https://deb.debian.org/debian bookworm/main arm64 python3.11 arm64 3.11.2-6+deb12u6 [573 kB]
+Get:20 https://deb.debian.org/debian bookworm/main arm64 libpython3-stdlib arm64 3.11.2-1+b1 [9296 B]
+Get:21 https://deb.debian.org/debian bookworm/main arm64 python3 arm64 3.11.2-1+b1 [26.3 kB]
+Get:22 https://deb.debian.org/debian bookworm/main arm64 xz-utils arm64 5.4.1-1 [469 kB]
+Get:23 https://deb.debian.org/debian bookworm/main arm64 binutils-common arm64 2.40-2 [2487 kB]
+Get:24 https://deb.debian.org/debian bookworm/main arm64 libbinutils arm64 2.40-2 [645 kB]
+Get:25 https://deb.debian.org/debian bookworm/main arm64 libctf-nobfd0 arm64 2.40-2 [144 kB]
+Get:26 https://deb.debian.org/debian bookworm/main arm64 libctf0 arm64 2.40-2 [79.2 kB]
+Get:27 https://deb.debian.org/debian bookworm/main arm64 libgprofng0 arm64 2.40-2 [680 kB]
+Get:28 https://deb.debian.org/debian bookworm/main arm64 libjansson4 arm64 2.14-2 [40.2 kB]
+Get:29 https://deb.debian.org/debian bookworm/main arm64 binutils-aarch64-linux-gnu arm64 2.40-2 [2637 kB]
+Get:30 https://deb.debian.org/debian bookworm/main arm64 binutils arm64 2.40-2 [64.9 kB]
+Get:31 https://deb.debian.org/debian bookworm/main arm64 libcrypt-dev arm64 1:4.4.33-2 [121 kB]
+Get:32 https://deb.debian.org/debian bookworm/main arm64 libtirpc-dev arm64 1.3.3+ds-1 [194 kB]
+Get:33 https://deb.debian.org/debian bookworm/main arm64 libnsl-dev arm64 1.3.0-2 [66.1 kB]
+Get:34 https://deb.debian.org/debian bookworm/main arm64 rpcsvc-proto arm64 1.4.3-1 [59.7 kB]
+Get:35 https://deb.debian.org/debian bookworm/main arm64 libisl23 arm64 0.25-1.1 [610 kB]
+Get:36 https://deb.debian.org/debian bookworm/main arm64 libmpfr6 arm64 4.2.0-1 [600 kB]
+Get:37 https://deb.debian.org/debian bookworm/main arm64 libmpc3 arm64 1.3.1-1 [49.2 kB]
+Get:38 https://deb.debian.org/debian bookworm/main arm64 cpp-12 arm64 12.2.0-14+deb12u1 [8228 kB]
+Get:39 https://deb.debian.org/debian bookworm/main arm64 cpp arm64 4:12.2.0-3 [6832 B]
+Get:40 https://deb.debian.org/debian bookworm/main arm64 libcc1-0 arm64 12.2.0-14+deb12u1 [37.7 kB]
+Get:41 https://deb.debian.org/debian bookworm/main arm64 libgomp1 arm64 12.2.0-14+deb12u1 [104 kB]
+Get:42 https://deb.debian.org/debian bookworm/main arm64 libitm1 arm64 12.2.0-14+deb12u1 [24.0 kB]
+Get:43 https://deb.debian.org/debian bookworm/main arm64 libatomic1 arm64 12.2.0-14+deb12u1 [9568 B]
+Get:44 https://deb.debian.org/debian bookworm/main arm64 libasan8 arm64 12.2.0-14+deb12u1 [2096 kB]
+Get:45 https://deb.debian.org/debian bookworm/main arm64 liblsan0 arm64 12.2.0-14+deb12u1 [926 kB]
+Get:46 https://deb.debian.org/debian bookworm/main arm64 libtsan2 arm64 12.2.0-14+deb12u1 [2178 kB]
+Get:47 https://deb.debian.org/debian bookworm/main arm64 libubsan1 arm64 12.2.0-14+deb12u1 [862 kB]
+Get:48 https://deb.debian.org/debian bookworm/main arm64 libhwasan0 arm64 12.2.0-14+deb12u1 [999 kB]
+Get:49 https://deb.debian.org/debian bookworm/main arm64 libgcc-12-dev arm64 12.2.0-14+deb12u1 [956 kB]
+Get:50 https://deb.debian.org/debian bookworm/main arm64 gcc-12 arm64 12.2.0-14+deb12u1 [16.3 MB]
+Get:51 https://deb.debian.org/debian bookworm/main arm64 gcc arm64 4:12.2.0-3 [5244 B]
+Get:52 https://deb.debian.org/debian bookworm/main arm64 libstdc++-12-dev arm64 12.2.0-14+deb12u1 [2007 kB]
+Get:53 https://deb.debian.org/debian bookworm/main arm64 g++-12 arm64 12.2.0-14+deb12u1 [9072 kB]
+Get:54 https://deb.debian.org/debian bookworm/main arm64 g++ arm64 4:12.2.0-3 [1336 B]
+Get:55 https://deb.debian.org/debian bookworm/main arm64 make arm64 4.3-4.1 [391 kB]
+Get:56 https://deb.debian.org/debian bookworm/main arm64 patch arm64 2.7.6-7 [121 kB]
+Get:57 https://deb.debian.org/debian bookworm/main arm64 build-essential arm64 12.9 [7704 B]
+Get:58 https://deb.debian.org/debian bookworm/main arm64 libcurl3-gnutls arm64 7.88.1-10+deb12u12 [362 kB]
+Get:59 https://deb.debian.org/debian bookworm/main arm64 liberror-perl all 0.17029-2 [29.0 kB]
+Get:60 https://deb.debian.org/debian bookworm/main arm64 git-man all 1:2.39.5-0+deb12u2 [2053 kB]
+Get:61 https://deb.debian.org/debian bookworm/main arm64 git arm64 1:2.39.5-0+deb12u2 [7148 kB]
+Get:62 https://deb.debian.org/debian bookworm/main arm64 libi2c0 arm64 4.3-2+b3 [9456 B]
+Get:63 https://deb.debian.org/debian bookworm/main arm64 i2c-tools arm64 4.3-2+b3 [78.6 kB]
+Get:64 https://deb.debian.org/debian bookworm/main arm64 libexpat1-dev arm64 2.5.0-1+deb12u1 [134 kB]
+Get:65 https://deb.debian.org/debian bookworm/main arm64 libjs-jquery all 3.6.1+dfsg+~3.5.14-1 [326 kB]
+Get:66 https://deb.debian.org/debian bookworm/main arm64 libjs-underscore all 1.13.4~dfsg+~1.11.4-3 [116 kB]
+Get:67 https://deb.debian.org/debian bookworm/main arm64 libjs-sphinxdoc all 5.3.0-4 [130 kB]
+Get:68 https://deb.debian.org/debian bookworm/main arm64 libpython3.11 arm64 3.11.2-6+deb12u6 [1841 kB]
+Get:69 https://deb.debian.org/debian bookworm/main arm64 libpython3.11-dev arm64 3.11.2-6+deb12u6 [4390 kB]
+Get:70 https://deb.debian.org/debian bookworm/main arm64 libpython3-dev arm64 3.11.2-1+b1 [9564 B]
+Get:71 https://deb.debian.org/debian bookworm/main arm64 python3.11-dev arm64 3.11.2-6+deb12u6 [617 kB]
+Get:72 https://deb.debian.org/debian bookworm/main arm64 python3-lib2to3 all 3.11.2-3 [76.3 kB]
+Get:73 https://deb.debian.org/debian bookworm/main arm64 python3-distutils all 3.11.2-3 [131 kB]
+Get:74 https://deb.debian.org/debian bookworm/main arm64 python3-dev arm64 3.11.2-1+b1 [26.2 kB]
+Get:75 https://deb.debian.org/debian bookworm/main arm64 sqlite3 arm64 3.40.1-2+deb12u1 [341 kB]
+debconf: delaying package configuration, since apt-utils is not installed
+Fetched 90.9 MB in 1min 2s (1460 kB/s)
+Selecting previously unselected package perl-modules-5.36.
+(Reading database ... 15999 files and directories currently installed.)
+Preparing to unpack .../0-perl-modules-5.36_5.36.0-7+deb12u2_all.deb ...
+Unpacking perl-modules-5.36 (5.36.0-7+deb12u2) ...
+Selecting previously unselected package libgdbm6:arm64.
+Preparing to unpack .../1-libgdbm6_1.23-3_arm64.deb ...
+Unpacking libgdbm6:arm64 (1.23-3) ...
+Selecting previously unselected package libgdbm-compat4:arm64.
+Preparing to unpack .../2-libgdbm-compat4_1.23-3_arm64.deb ...
+Unpacking libgdbm-compat4:arm64 (1.23-3) ...
+Selecting previously unselected package libperl5.36:arm64.
+Preparing to unpack .../3-libperl5.36_5.36.0-7+deb12u2_arm64.deb ...
+Unpacking libperl5.36:arm64 (5.36.0-7+deb12u2) ...
+Selecting previously unselected package perl.
+Preparing to unpack .../4-perl_5.36.0-7+deb12u2_arm64.deb ...
+Unpacking perl (5.36.0-7+deb12u2) ...
+Selecting previously unselected package libpython3.11-minimal:arm64.
+Preparing to unpack .../5-libpython3.11-minimal_3.11.2-6+deb12u6_arm64.deb ...
+Unpacking libpython3.11-minimal:arm64 (3.11.2-6+deb12u6) ...
+Selecting previously unselected package libexpat1:arm64.
+Preparing to unpack .../6-libexpat1_2.5.0-1+deb12u1_arm64.deb ...
+Unpacking libexpat1:arm64 (2.5.0-1+deb12u1) ...
+Selecting previously unselected package python3.11-minimal.
+Preparing to unpack .../7-python3.11-minimal_3.11.2-6+deb12u6_arm64.deb ...
+Unpacking python3.11-minimal (3.11.2-6+deb12u6) ...
+Setting up libpython3.11-minimal:arm64 (3.11.2-6+deb12u6) ...
+Setting up libexpat1:arm64 (2.5.0-1+deb12u1) ...
+Setting up python3.11-minimal (3.11.2-6+deb12u6) ...
+Selecting previously unselected package python3-minimal.
+(Reading database ... 18325 files and directories currently installed.)
+Preparing to unpack .../0-python3-minimal_3.11.2-1+b1_arm64.deb ...
+Unpacking python3-minimal (3.11.2-1+b1) ...
+Selecting previously unselected package media-types.
+Preparing to unpack .../1-media-types_10.0.0_all.deb ...
+Unpacking media-types (10.0.0) ...
+Selecting previously unselected package libnsl2:arm64.
+Preparing to unpack .../2-libnsl2_1.3.0-2_arm64.deb ...
+Unpacking libnsl2:arm64 (1.3.0-2) ...
+Selecting previously unselected package libpython3.11-stdlib:arm64.
+Preparing to unpack .../3-libpython3.11-stdlib_3.11.2-6+deb12u6_arm64.deb ...
+Unpacking libpython3.11-stdlib:arm64 (3.11.2-6+deb12u6) ...
+Selecting previously unselected package python3.11.
+Preparing to unpack .../4-python3.11_3.11.2-6+deb12u6_arm64.deb ...
+Unpacking python3.11 (3.11.2-6+deb12u6) ...
+Selecting previously unselected package libpython3-stdlib:arm64.
+Preparing to unpack .../5-libpython3-stdlib_3.11.2-1+b1_arm64.deb ...
+Unpacking libpython3-stdlib:arm64 (3.11.2-1+b1) ...
+Setting up python3-minimal (3.11.2-1+b1) ...
+Selecting previously unselected package python3.
+(Reading database ... 18740 files and directories currently installed.)
+Preparing to unpack .../00-python3_3.11.2-1+b1_arm64.deb ...
+Unpacking python3 (3.11.2-1+b1) ...
+Selecting previously unselected package xz-utils.
+Preparing to unpack .../01-xz-utils_5.4.1-1_arm64.deb ...
+Unpacking xz-utils (5.4.1-1) ...
+Selecting previously unselected package binutils-common:arm64.
+Preparing to unpack .../02-binutils-common_2.40-2_arm64.deb ...
+Unpacking binutils-common:arm64 (2.40-2) ...
+Selecting previously unselected package libbinutils:arm64.
+Preparing to unpack .../03-libbinutils_2.40-2_arm64.deb ...
+Unpacking libbinutils:arm64 (2.40-2) ...
+Selecting previously unselected package libctf-nobfd0:arm64.
+Preparing to unpack .../04-libctf-nobfd0_2.40-2_arm64.deb ...
+Unpacking libctf-nobfd0:arm64 (2.40-2) ...
+Selecting previously unselected package libctf0:arm64.
+Preparing to unpack .../05-libctf0_2.40-2_arm64.deb ...
+Unpacking libctf0:arm64 (2.40-2) ...
+Selecting previously unselected package libgprofng0:arm64.
+Preparing to unpack .../06-libgprofng0_2.40-2_arm64.deb ...
+Unpacking libgprofng0:arm64 (2.40-2) ...
+Selecting previously unselected package libjansson4:arm64.
+Preparing to unpack .../07-libjansson4_2.14-2_arm64.deb ...
+Unpacking libjansson4:arm64 (2.14-2) ...
+Selecting previously unselected package binutils-aarch64-linux-gnu.
+Preparing to unpack .../08-binutils-aarch64-linux-gnu_2.40-2_arm64.deb ...
+Unpacking binutils-aarch64-linux-gnu (2.40-2) ...
+Selecting previously unselected package binutils.
+Preparing to unpack .../09-binutils_2.40-2_arm64.deb ...
+Unpacking binutils (2.40-2) ...
+Selecting previously unselected package libc-dev-bin.
+Preparing to unpack .../10-libc-dev-bin_2.36-9+rpt2+deb12u10_arm64.deb ...
+Unpacking libc-dev-bin (2.36-9+rpt2+deb12u10) ...
+Selecting previously unselected package linux-libc-dev.
+Preparing to unpack .../11-linux-libc-dev_1%3a6.12.25-1+rpt1_all.deb ...
+Unpacking linux-libc-dev (1:6.12.25-1+rpt1) ...
+Selecting previously unselected package libcrypt-dev:arm64.
+Preparing to unpack .../12-libcrypt-dev_1%3a4.4.33-2_arm64.deb ...
+Unpacking libcrypt-dev:arm64 (1:4.4.33-2) ...
+Selecting previously unselected package libtirpc-dev:arm64.
+Preparing to unpack .../13-libtirpc-dev_1.3.3+ds-1_arm64.deb ...
+Unpacking libtirpc-dev:arm64 (1.3.3+ds-1) ...
+Selecting previously unselected package libnsl-dev:arm64.
+Preparing to unpack .../14-libnsl-dev_1.3.0-2_arm64.deb ...
+Unpacking libnsl-dev:arm64 (1.3.0-2) ...
+Selecting previously unselected package rpcsvc-proto.
+Preparing to unpack .../15-rpcsvc-proto_1.4.3-1_arm64.deb ...
+Unpacking rpcsvc-proto (1.4.3-1) ...
+Selecting previously unselected package libc6-dev:arm64.
+Preparing to unpack .../16-libc6-dev_2.36-9+rpt2+deb12u10_arm64.deb ...
+Unpacking libc6-dev:arm64 (2.36-9+rpt2+deb12u10) ...
+Selecting previously unselected package libisl23:arm64.
+Preparing to unpack .../17-libisl23_0.25-1.1_arm64.deb ...
+Unpacking libisl23:arm64 (0.25-1.1) ...
+Selecting previously unselected package libmpfr6:arm64.
+Preparing to unpack .../18-libmpfr6_4.2.0-1_arm64.deb ...
+Unpacking libmpfr6:arm64 (4.2.0-1) ...
+Selecting previously unselected package libmpc3:arm64.
+Preparing to unpack .../19-libmpc3_1.3.1-1_arm64.deb ...
+Unpacking libmpc3:arm64 (1.3.1-1) ...
+Selecting previously unselected package cpp-12.
+Preparing to unpack .../20-cpp-12_12.2.0-14+deb12u1_arm64.deb ...
+Unpacking cpp-12 (12.2.0-14+deb12u1) ...
+Selecting previously unselected package cpp.
+Preparing to unpack .../21-cpp_4%3a12.2.0-3_arm64.deb ...
+Unpacking cpp (4:12.2.0-3) ...
+Selecting previously unselected package libcc1-0:arm64.
+Preparing to unpack .../22-libcc1-0_12.2.0-14+deb12u1_arm64.deb ...
+Unpacking libcc1-0:arm64 (12.2.0-14+deb12u1) ...
+Selecting previously unselected package libgomp1:arm64.
+Preparing to unpack .../23-libgomp1_12.2.0-14+deb12u1_arm64.deb ...
+Unpacking libgomp1:arm64 (12.2.0-14+deb12u1) ...
+Selecting previously unselected package libitm1:arm64.
+Preparing to unpack .../24-libitm1_12.2.0-14+deb12u1_arm64.deb ...
+Unpacking libitm1:arm64 (12.2.0-14+deb12u1) ...
+Selecting previously unselected package libatomic1:arm64.
+Preparing to unpack .../25-libatomic1_12.2.0-14+deb12u1_arm64.deb ...
+Unpacking libatomic1:arm64 (12.2.0-14+deb12u1) ...
+Selecting previously unselected package libasan8:arm64.
+Preparing to unpack .../26-libasan8_12.2.0-14+deb12u1_arm64.deb ...
+Unpacking libasan8:arm64 (12.2.0-14+deb12u1) ...
+Selecting previously unselected package liblsan0:arm64.
+Preparing to unpack .../27-liblsan0_12.2.0-14+deb12u1_arm64.deb ...
+Unpacking liblsan0:arm64 (12.2.0-14+deb12u1) ...
+Selecting previously unselected package libtsan2:arm64.
+Preparing to unpack .../28-libtsan2_12.2.0-14+deb12u1_arm64.deb ...
+Unpacking libtsan2:arm64 (12.2.0-14+deb12u1) ...
+Selecting previously unselected package libubsan1:arm64.
+Preparing to unpack .../29-libubsan1_12.2.0-14+deb12u1_arm64.deb ...
+Unpacking libubsan1:arm64 (12.2.0-14+deb12u1) ...
+Selecting previously unselected package libhwasan0:arm64.
+Preparing to unpack .../30-libhwasan0_12.2.0-14+deb12u1_arm64.deb ...
+Unpacking libhwasan0:arm64 (12.2.0-14+deb12u1) ...
+Selecting previously unselected package libgcc-12-dev:arm64.
+Preparing to unpack .../31-libgcc-12-dev_12.2.0-14+deb12u1_arm64.deb ...
+Unpacking libgcc-12-dev:arm64 (12.2.0-14+deb12u1) ...
+Selecting previously unselected package gcc-12.
+Preparing to unpack .../32-gcc-12_12.2.0-14+deb12u1_arm64.deb ...
+Unpacking gcc-12 (12.2.0-14+deb12u1) ...
+Selecting previously unselected package gcc.
+Preparing to unpack .../33-gcc_4%3a12.2.0-3_arm64.deb ...
+Unpacking gcc (4:12.2.0-3) ...
+Selecting previously unselected package libstdc++-12-dev:arm64.
+Preparing to unpack .../34-libstdc++-12-dev_12.2.0-14+deb12u1_arm64.deb ...
+Unpacking libstdc++-12-dev:arm64 (12.2.0-14+deb12u1) ...
+Selecting previously unselected package g++-12.
+Preparing to unpack .../35-g++-12_12.2.0-14+deb12u1_arm64.deb ...
+Unpacking g++-12 (12.2.0-14+deb12u1) ...
+Selecting previously unselected package g++.
+Preparing to unpack .../36-g++_4%3a12.2.0-3_arm64.deb ...
+Unpacking g++ (4:12.2.0-3) ...
+Selecting previously unselected package make.
+Preparing to unpack .../37-make_4.3-4.1_arm64.deb ...
+Unpacking make (4.3-4.1) ...
+Selecting previously unselected package libdpkg-perl.
+Preparing to unpack .../38-libdpkg-perl_1.22.6~bpo12+rpt3_all.deb ...
+Unpacking libdpkg-perl (1.22.6~bpo12+rpt3) ...
+Selecting previously unselected package patch.
+Preparing to unpack .../39-patch_2.7.6-7_arm64.deb ...
+Unpacking patch (2.7.6-7) ...
+Selecting previously unselected package dpkg-dev.
+Preparing to unpack .../40-dpkg-dev_1.22.6~bpo12+rpt3_all.deb ...
+Unpacking dpkg-dev (1.22.6~bpo12+rpt3) ...
+Selecting previously unselected package build-essential.
+Preparing to unpack .../41-build-essential_12.9_arm64.deb ...
+Unpacking build-essential (12.9) ...
+Selecting previously unselected package libcurl3-gnutls:arm64.
+Preparing to unpack .../42-libcurl3-gnutls_7.88.1-10+deb12u12_arm64.deb ...
+Unpacking libcurl3-gnutls:arm64 (7.88.1-10+deb12u12) ...
+Selecting previously unselected package liberror-perl.
+Preparing to unpack .../43-liberror-perl_0.17029-2_all.deb ...
+Unpacking liberror-perl (0.17029-2) ...
+Selecting previously unselected package git-man.
+Preparing to unpack .../44-git-man_1%3a2.39.5-0+deb12u2_all.deb ...
+Unpacking git-man (1:2.39.5-0+deb12u2) ...
+Selecting previously unselected package git.
+Preparing to unpack .../45-git_1%3a2.39.5-0+deb12u2_arm64.deb ...
+Unpacking git (1:2.39.5-0+deb12u2) ...
+Selecting previously unselected package libi2c0:arm64.
+Preparing to unpack .../46-libi2c0_4.3-2+b3_arm64.deb ...
+Unpacking libi2c0:arm64 (4.3-2+b3) ...
+Selecting previously unselected package i2c-tools.
+Preparing to unpack .../47-i2c-tools_4.3-2+b3_arm64.deb ...
+Unpacking i2c-tools (4.3-2+b3) ...
+Selecting previously unselected package libexpat1-dev:arm64.
+Preparing to unpack .../48-libexpat1-dev_2.5.0-1+deb12u1_arm64.deb ...
+Unpacking libexpat1-dev:arm64 (2.5.0-1+deb12u1) ...
+Selecting previously unselected package libjs-jquery.
+Preparing to unpack .../49-libjs-jquery_3.6.1+dfsg+~3.5.14-1_all.deb ...
+Unpacking libjs-jquery (3.6.1+dfsg+~3.5.14-1) ...
+Selecting previously unselected package libjs-underscore.
+Preparing to unpack .../50-libjs-underscore_1.13.4~dfsg+~1.11.4-3_all.deb ...
+Unpacking libjs-underscore (1.13.4~dfsg+~1.11.4-3) ...
+Selecting previously unselected package libjs-sphinxdoc.
+Preparing to unpack .../51-libjs-sphinxdoc_5.3.0-4_all.deb ...
+Unpacking libjs-sphinxdoc (5.3.0-4) ...
+Selecting previously unselected package libpython3.11:arm64.
+Preparing to unpack .../52-libpython3.11_3.11.2-6+deb12u6_arm64.deb ...
+Unpacking libpython3.11:arm64 (3.11.2-6+deb12u6) ...
+Selecting previously unselected package zlib1g-dev:arm64.
+Preparing to unpack .../53-zlib1g-dev_1%3a1.2.13.dfsg-1+rpt1_arm64.deb ...
+Unpacking zlib1g-dev:arm64 (1:1.2.13.dfsg-1+rpt1) ...
+Selecting previously unselected package libpython3.11-dev:arm64.
+Preparing to unpack .../54-libpython3.11-dev_3.11.2-6+deb12u6_arm64.deb ...
+Unpacking libpython3.11-dev:arm64 (3.11.2-6+deb12u6) ...
+Selecting previously unselected package libpython3-dev:arm64.
+Preparing to unpack .../55-libpython3-dev_3.11.2-1+b1_arm64.deb ...
+Unpacking libpython3-dev:arm64 (3.11.2-1+b1) ...
+Selecting previously unselected package python3.11-dev.
+Preparing to unpack .../56-python3.11-dev_3.11.2-6+deb12u6_arm64.deb ...
+Unpacking python3.11-dev (3.11.2-6+deb12u6) ...
+Selecting previously unselected package python3-lib2to3.
+Preparing to unpack .../57-python3-lib2to3_3.11.2-3_all.deb ...
+Unpacking python3-lib2to3 (3.11.2-3) ...
+Selecting previously unselected package python3-distutils.
+Preparing to unpack .../58-python3-distutils_3.11.2-3_all.deb ...
+Unpacking python3-distutils (3.11.2-3) ...
+Selecting previously unselected package python3-dev.
+Preparing to unpack .../59-python3-dev_3.11.2-1+b1_arm64.deb ...
+Unpacking python3-dev (3.11.2-1+b1) ...
+Selecting previously unselected package sqlite3.
+Preparing to unpack .../60-sqlite3_3.40.1-2+deb12u1_arm64.deb ...
+Unpacking sqlite3 (3.40.1-2+deb12u1) ...
+Setting up media-types (10.0.0) ...
+Setting up libi2c0:arm64 (4.3-2+b3) ...
+Setting up binutils-common:arm64 (2.40-2) ...
+Setting up linux-libc-dev (1:6.12.25-1+rpt1) ...
+Setting up libctf-nobfd0:arm64 (2.40-2) ...
+Setting up libcurl3-gnutls:arm64 (7.88.1-10+deb12u12) ...
+Setting up libgomp1:arm64 (12.2.0-14+deb12u1) ...
+Setting up libjansson4:arm64 (2.14-2) ...
+Setting up perl-modules-5.36 (5.36.0-7+deb12u2) ...
+Setting up libtirpc-dev:arm64 (1.3.3+ds-1) ...
+Setting up rpcsvc-proto (1.4.3-1) ...
+Setting up make (4.3-4.1) ...
+Setting up libmpfr6:arm64 (4.2.0-1) ...
+Setting up xz-utils (5.4.1-1) ...
+update-alternatives: using /usr/bin/xz to provide /usr/bin/lzma (lzma) in auto mode
+Setting up libmpc3:arm64 (1.3.1-1) ...
+Setting up libatomic1:arm64 (12.2.0-14+deb12u1) ...
+Setting up patch (2.7.6-7) ...
+Setting up libubsan1:arm64 (12.2.0-14+deb12u1) ...
+Setting up libhwasan0:arm64 (12.2.0-14+deb12u1) ...
+Setting up libcrypt-dev:arm64 (1:4.4.33-2) ...
+Setting up libasan8:arm64 (12.2.0-14+deb12u1) ...
+Setting up libnsl2:arm64 (1.3.0-2) ...
+Setting up git-man (1:2.39.5-0+deb12u2) ...
+Setting up libtsan2:arm64 (12.2.0-14+deb12u1) ...
+Setting up libjs-jquery (3.6.1+dfsg+~3.5.14-1) ...
+Setting up libbinutils:arm64 (2.40-2) ...
+Setting up libisl23:arm64 (0.25-1.1) ...
+Setting up libc-dev-bin (2.36-9+rpt2+deb12u10) ...
+Setting up libcc1-0:arm64 (12.2.0-14+deb12u1) ...
+Setting up sqlite3 (3.40.1-2+deb12u1) ...
+Setting up liblsan0:arm64 (12.2.0-14+deb12u1) ...
+Setting up libitm1:arm64 (12.2.0-14+deb12u1) ...
+Setting up libgdbm6:arm64 (1.23-3) ...
+Setting up libjs-underscore (1.13.4~dfsg+~1.11.4-3) ...
+Setting up libctf0:arm64 (2.40-2) ...
+Setting up cpp-12 (12.2.0-14+deb12u1) ...
+Setting up libpython3.11-stdlib:arm64 (3.11.2-6+deb12u6) ...
+Setting up libgprofng0:arm64 (2.40-2) ...
+Setting up libgcc-12-dev:arm64 (12.2.0-14+deb12u1) ...
+Setting up libgdbm-compat4:arm64 (1.23-3) ...
+Setting up libjs-sphinxdoc (5.3.0-4) ...
+Setting up libnsl-dev:arm64 (1.3.0-2) ...
+Setting up cpp (4:12.2.0-3) ...
+Setting up libc6-dev:arm64 (2.36-9+rpt2+deb12u10) ...
+Setting up libperl5.36:arm64 (5.36.0-7+deb12u2) ...
+Setting up libpython3-stdlib:arm64 (3.11.2-1+b1) ...
+Setting up python3.11 (3.11.2-6+deb12u6) ...
+Setting up libpython3.11:arm64 (3.11.2-6+deb12u6) ...
+Setting up libstdc++-12-dev:arm64 (12.2.0-14+deb12u1) ...
+Setting up binutils-aarch64-linux-gnu (2.40-2) ...
+Setting up python3 (3.11.2-1+b1) ...
+running python rtupdate hooks for python3.11...
+running python post-rtupdate hooks for python3.11...
+Setting up binutils (2.40-2) ...
+Setting up perl (5.36.0-7+deb12u2) ...
+Setting up libexpat1-dev:arm64 (2.5.0-1+deb12u1) ...
+Setting up gcc-12 (12.2.0-14+deb12u1) ...
+Setting up i2c-tools (4.3-2+b3) ...
+Setting up libdpkg-perl (1.22.6~bpo12+rpt3) ...
+Setting up zlib1g-dev:arm64 (1:1.2.13.dfsg-1+rpt1) ...
+Setting up python3-lib2to3 (3.11.2-3) ...
+Setting up g++-12 (12.2.0-14+deb12u1) ...
+Setting up python3-distutils (3.11.2-3) ...
+Setting up gcc (4:12.2.0-3) ...
+Setting up dpkg-dev (1.22.6~bpo12+rpt3) ...
+Setting up liberror-perl (0.17029-2) ...
+Setting up libpython3.11-dev:arm64 (3.11.2-6+deb12u6) ...
+Setting up git (1:2.39.5-0+deb12u2) ...
+Setting up g++ (4:12.2.0-3) ...
+update-alternatives: using /usr/bin/g++ to provide /usr/bin/c++ (c++) in auto mode
+Setting up build-essential (12.9) ...
+Setting up libpython3-dev:arm64 (3.11.2-1+b1) ...
+Setting up python3.11-dev (3.11.2-6+deb12u6) ...
+Setting up python3-dev (3.11.2-1+b1) ...
+Processing triggers for systemd (252.38-1~deb12u1) ...
+Processing triggers for libc-bin (2.36-9+rpt2+deb12u10) ...
+Setting hostname based on MAC address...
+Setting hostname to node-D1B950 based on MAC address 2CCF67D1B950
+Enabling I2C interface...
+[ SUB1 ] DietPi-Set_hardware > i2c (enable)
+[ INFO ] DietPi-Set_hardware | Checking for required APT packages: python3-smbus i2c-tools
+[ INFO ] DietPi-Set_hardware | APT update, please wait...
+Hit:1 https://deb.debian.org/debian bookworm InRelease
+Hit:2 https://deb.debian.org/debian bookworm-updates InRelease
+Hit:3 https://deb.debian.org/debian-security bookworm-security InRelease
+Hit:4 https://deb.debian.org/debian bookworm-backports InRelease
+Hit:5 https://archive.raspberrypi.com/debian bookworm InRelease
+Hit:6 https://dietpi.com/apt bookworm InRelease
+Hit:7 https://dietpi.com/apt all InRelease
+Reading package lists...
+[  OK  ] DietPi-Set_hardware | APT update
+[ INFO ] DietPi-Set_hardware | APT install python3-smbus, please wait...
+Reading package lists...
+Building dependency tree...
+Reading state information...
+The following NEW packages will be installed:
+  python3-smbus
+0 upgraded, 1 newly installed, 0 to remove and 0 not upgraded.
+Need to get 11.8 kB of archives.
+After this operation, 89.1 kB of additional disk space will be used.
+Get:1 https://deb.debian.org/debian bookworm/main arm64 python3-smbus arm64 4.3-2+b3 [11.8 kB]
+debconf: delaying package configuration, since apt-utils is not installed
+Fetched 11.8 kB in 0s (40.5 kB/s)
+Selecting previously unselected package python3-smbus:arm64.
+(Reading database ... 24676 files and directories currently installed.)
+Preparing to unpack .../python3-smbus_4.3-2+b3_arm64.deb ...
+Unpacking python3-smbus:arm64 (4.3-2+b3) ...
+Setting up python3-smbus:arm64 (4.3-2+b3) ...
+[  OK  ] DietPi-Set_hardware | APT install python3-smbus
+[  OK  ] DietPi-Set_hardware | Added setting i2c-bcm2708 to end of file /etc/modules
+[  OK  ] DietPi-Set_hardware | Added setting i2c-dev to end of file /etc/modules
+[  OK  ] DietPi-Set_hardware | Desired setting in /boot/config.txt was already set: dtparam=i2c_arm=on
+[      ] DietPi-Set_hardware | sed --follow-symlinks -i /^aSOFTWARE_INSTALL_STATE\[72\]=/c\aSOFTWARE_IN[  OK  ] DietPi-Set_hardware | sed --follow-symlinks -i /^aSOFTWARE_INSTALL_STATE\[72\]=/c\aSOFTWARE_INSTALL_STATE\[72\]=2 /boot/dietpi/.installed
+[  OK  ] i2c enable | Completed
+Enabling GPIO in config.txt...
+GPIO already enabled in config.txt
+Enabling SPI in config.txt...
+SPI already enabled in config.txt
+Installing Pigpio C Library...
+--2025-05-31 00:29:24--  https://github.com/joan2937/pigpio/archive/master.zip
+Resolving github.com (github.com)... 140.82.116.4
+Connecting to github.com (github.com)|140.82.116.4|:443... connected.
+HTTP request sent, awaiting response... 302 Found
+Location: https://codeload.github.com/joan2937/pigpio/zip/refs/heads/master [following]
+--2025-05-31 00:29:25--  https://codeload.github.com/joan2937/pigpio/zip/refs/heads/master
+Resolving codeload.github.com (codeload.github.com)... 140.82.116.9
+Connecting to codeload.github.com (codeload.github.com)|140.82.116.9|:443... connected.
+HTTP request sent, awaiting response... 200 OK
+Length: unspecified [application/zip]
+Saving to: ‘master.zip’
+
+     0K .......... .......... .......... .......... .......... 1.52M
+    50K .......... .......... .......... .......... .......... 5.76M
+   100K .......... .......... .......... .......... .......... 3.14M
+   150K .......... .......... .......... .......... .......... 2.06M
+   200K .......... .......... .......... .......... .......... 11.9M
+   250K .......... .......... .......... .......... .......... 4.14M
+   300K .......... .......... .......... .......... .......... 1.19M
+   350K .......... .......... .......... .......... .......... 11.9M
+   400K .......... .......... .......... .......... .......... 3.82M
+   450K .......... .......... .......... .......... .......... 4.18M
+   500K .......... .......... .......... .......... .......... 3.88M
+   550K .......... .......... .......... .......... .......... 2.88M
+   600K .......... .......... .......... .......... .......... 2.93M
+   650K .......... .......... .......... .......... .......... 2.93M
+   700K .......... .......... .......... .......... .......... 2.96M
+   750K .......... .......... .......... .......... .......... 2.95M
+   800K .......... .......... .......... .......... .......... 2.71M
+   850K .......... .......... .......... .......... .......... 3.08M
+   900K .......... .......... .......... .......... .......... 2.97M
+   950K .......... .......... .......... .......... .......... 3.04M
+  1000K .......... .......... .......... .......... .......... 7.14M
+  1050K .......... .......... .......... .......... .......... 2.92M
+  1100K .......... .......... .......... .......... .......... 3.02M
+  1150K .......... .......... .......... .......... .......... 2.93M
+  1200K .......... .......... .......... .......... .......... 2.96M
+  1250K .......... .......... .......... .......... .......... 3.03M
+  1300K .......... .......... .......... .......... .......... 7.08M
+  1350K .......... .......... .......... .......... .......... 2.93M
+  1400K .......... .......... .......... .......... .......... 3.00M
+  1450K .......... .......... .......... .......... .......... 2.94M
+  1500K .......... .......... .......... .......... .......... 3.00M
+  1550K .......... .......... .......... .......... .......... 6.78M
+  1600K .......... .......... .......... .......... .......... 2.96M
+  1650K .......... .......... .......... .......... .......... 2.42M
+  1700K .......... .......... .......... .......... .......... 3.09M
+  1750K .......... .......... .......... .......... .......... 2.88M
+  1800K .......... .......... .......... .......... .......... 7.83M
+  1850K .......... .......... .......... .......... .......... 2.92M
+  1900K .......... .......... .......... .......... .......... 2.96M
+  1950K .......... .......... .......... .......... .......... 7.22M
+  2000K .......... .......... .......... .......... .......... 2.32M
+  2050K .......... .......... .......... .......... .......... 2.97M
+  2100K .......... .......... .......... .......... .......... 2.94M
+  2150K .......... .......... .......... .......... .......... 7.05M
+  2200K .......... .......... .......... .......... .......... 3.21M
+  2250K .......... .......... .......... .......... .......... 2.94M
+  2300K .......... .......... .......... .......... .......... 1.41M
+  2350K .......... .......... .......... .......... .......... 7.79M
+  2400K .......... .......... .......... .......... .......... 3.23M
+  2450K .......... .......... .......... .......... .......... 4.87M
+  2500K .......... .......... .......... .......... .......... 3.02M
+  2550K .......... .......... .......... .......... .......... 2.07M
+  2600K .......... .......... .......... .......... .......... 2.84M
+  2650K .......... .......... .......... .......... .......... 3.12M
+  2700K .......... .......... .......... .......... .......... 1.91M
+  2750K .......... .......... .......... .......... .......... 3.04M
+  2800K .......... .......... .......... .......... .......... 2.99M
+  2850K .......... .......... .......... .......... .......... 1.93M
+  2900K .......... .......... ...                              7.62M=0.9s
+
+2025-05-31 00:29:26 (3.07 MB/s) - ‘master.zip’ saved [2993705]
+
+Archive:  master.zip
+c33738a320a3e28824af7807edafda440952c05d
+   creating: pigpio-master/
+  inflating: pigpio-master/.gitignore
+  inflating: pigpio-master/CMakeLists.txt
+  inflating: pigpio-master/CONTRIBUTING.md
+   creating: pigpio-master/DOC/
+   creating: pigpio-master/DOC/HTML/
+   creating: pigpio-master/DOC/HTML/images/
+  inflating: pigpio-master/DOC/HTML/images/LDR-fritz.png
+  inflating: pigpio-master/DOC/HTML/images/LDR-gnup-1.png
+  inflating: pigpio-master/DOC/HTML/images/LDR-gnup-2.png
+  inflating: pigpio-master/DOC/HTML/images/LDR-photo.jpg
+  inflating: pigpio-master/DOC/HTML/images/LDR-wave-1.png
+  inflating: pigpio-master/DOC/HTML/images/LDR-wave-2.png
+  inflating: pigpio-master/DOC/HTML/images/LDR-wave-3.png
+  inflating: pigpio-master/DOC/HTML/images/breadboard.jpg
+  inflating: pigpio-master/DOC/HTML/images/caps.jpg
+  inflating: pigpio-master/DOC/HTML/images/driver.jpg
+  inflating: pigpio-master/DOC/HTML/images/faq-i2c-ss.png
+  inflating: pigpio-master/DOC/HTML/images/faq-i2c.jpg
+  inflating: pigpio-master/DOC/HTML/images/faq-serial.jpg
+  inflating: pigpio-master/DOC/HTML/images/faq-spi.jpg
+  inflating: pigpio-master/DOC/HTML/images/faq1.jpg
+  inflating: pigpio-master/DOC/HTML/images/faq2.jpg
+  inflating: pigpio-master/DOC/HTML/images/faq3.jpg
+  inflating: pigpio-master/DOC/HTML/images/imu-1.jpg
+  inflating: pigpio-master/DOC/HTML/images/imu-2.jpg
+  inflating: pigpio-master/DOC/HTML/images/imu-3.jpg
+  inflating: pigpio-master/DOC/HTML/images/ir-fritz.png
+  inflating: pigpio-master/DOC/HTML/images/ir-motion.jpg
+  inflating: pigpio-master/DOC/HTML/images/ir-photo.jpg
+  inflating: pigpio-master/DOC/HTML/images/ir-rx.jpg
+  inflating: pigpio-master/DOC/HTML/images/ir-wave-1.png
+  inflating: pigpio-master/DOC/HTML/images/ir-wave-2.png
+  inflating: pigpio-master/DOC/HTML/images/ir-wave-3.png
+  inflating: pigpio-master/DOC/HTML/images/keypad.jpg
+  inflating: pigpio-master/DOC/HTML/images/lcd.jpg
+  inflating: pigpio-master/DOC/HTML/images/ldr-cap.jpg
+  inflating: pigpio-master/DOC/HTML/images/ldr.jpg
+  inflating: pigpio-master/DOC/HTML/images/leds.jpg
+  inflating: pigpio-master/DOC/HTML/images/meter.jpg
+  inflating: pigpio-master/DOC/HTML/images/motor.jpg
+  inflating: pigpio-master/DOC/HTML/images/msp430.jpg
+  inflating: pigpio-master/DOC/HTML/images/nano.jpg
+  inflating: pigpio-master/DOC/HTML/images/oled-2.jpg
+  inflating: pigpio-master/DOC/HTML/images/oled.jpg
+ extracting: pigpio-master/DOC/HTML/images/pigpio-logo.gif
+  inflating: pigpio-master/DOC/HTML/images/pins.jpg
+  inflating: pigpio-master/DOC/HTML/images/pisc-1.jpg
+  inflating: pigpio-master/DOC/HTML/images/pisc-2.jpg
+  inflating: pigpio-master/DOC/HTML/images/pisc-3.jpg
+  inflating: pigpio-master/DOC/HTML/images/pot.jpg
+  inflating: pigpio-master/DOC/HTML/images/pro-mini.jpg
+  inflating: pigpio-master/DOC/HTML/images/psu.jpg
+  inflating: pigpio-master/DOC/HTML/images/re-fritz.png
+  inflating: pigpio-master/DOC/HTML/images/re-photo.jpg
+  inflating: pigpio-master/DOC/HTML/images/re-wave-1.png
+  inflating: pigpio-master/DOC/HTML/images/re-wave-2.png
+  inflating: pigpio-master/DOC/HTML/images/remote-1.jpg
+  inflating: pigpio-master/DOC/HTML/images/remote-2.jpg
+  inflating: pigpio-master/DOC/HTML/images/reverse.jpg
+  inflating: pigpio-master/DOC/HTML/images/rf-rx-2.jpg
+  inflating: pigpio-master/DOC/HTML/images/rf-rx.jpg
+  inflating: pigpio-master/DOC/HTML/images/rf-tx.jpg
+  inflating: pigpio-master/DOC/HTML/images/rotary.jpg
+  inflating: pigpio-master/DOC/HTML/images/rpi.jpg
+  inflating: pigpio-master/DOC/HTML/images/serial.jpg
+  inflating: pigpio-master/DOC/HTML/images/servo.jpg
+ extracting: pigpio-master/DOC/HTML/images/sidebar.gif
+  inflating: pigpio-master/DOC/HTML/images/son-fritz.png
+  inflating: pigpio-master/DOC/HTML/images/son-gnup-1.png
+  inflating: pigpio-master/DOC/HTML/images/son-gnup-2.png
+  inflating: pigpio-master/DOC/HTML/images/son-photo.jpg
+  inflating: pigpio-master/DOC/HTML/images/son-wave-1.png
+  inflating: pigpio-master/DOC/HTML/images/son-wave-2.png
+  inflating: pigpio-master/DOC/HTML/images/son-wave-3.png
+  inflating: pigpio-master/DOC/HTML/images/son-wave-4.png
+  inflating: pigpio-master/DOC/HTML/images/speaker.jpg
+  inflating: pigpio-master/DOC/HTML/images/spi-lnx-pi3b.png
+  inflating: pigpio-master/DOC/HTML/images/spi-lnx-pibr1.png
+  inflating: pigpio-master/DOC/HTML/images/spi-pig-pi3b.png
+  inflating: pigpio-master/DOC/HTML/images/spi-pig-pibr1.png
+  inflating: pigpio-master/DOC/HTML/images/srf02.jpg
+  inflating: pigpio-master/DOC/HTML/images/srf04.jpg
+  inflating: pigpio-master/DOC/HTML/images/stepper.jpg
+  inflating: pigpio-master/DOC/HTML/images/switches.jpg
+  inflating: pigpio-master/DOC/HTML/images/topbar.gif
+  inflating: pigpio-master/DOC/HTML/images/transistors.jpg
+  inflating: pigpio-master/DOC/HTML/images/ubec-2.jpg
+  inflating: pigpio-master/DOC/HTML/images/uln2003a.jpg
+  inflating: pigpio-master/DOC/HTML/images/wheel.jpg
+  inflating: pigpio-master/DOC/HTML/images/wires.jpg
+  inflating: pigpio-master/DOC/HTML/images/yl-40.jpg
+   creating: pigpio-master/DOC/HTML/scripts/
+  inflating: pigpio-master/DOC/HTML/scripts/index.css
+  inflating: pigpio-master/DOC/HTML/scripts/standard.css
+   creating: pigpio-master/DOC/MAN/
+ extracting: pigpio-master/DOC/MAN/README
+  inflating: pigpio-master/DOC/README
+   creating: pigpio-master/DOC/bin/
+  inflating: pigpio-master/DOC/bin/backup.sh
+  inflating: pigpio-master/DOC/bin/body.py
+  inflating: pigpio-master/DOC/bin/build_site.py
+  inflating: pigpio-master/DOC/bin/cmakdoc.py
+  inflating: pigpio-master/DOC/bin/examples.py
+  inflating: pigpio-master/DOC/bin/html.py
+  inflating: pigpio-master/DOC/bin/purge.sh
+  inflating: pigpio-master/DOC/bin/pymakdoc.py
+  inflating: pigpio-master/DOC/bin/smakdoc.py
+  inflating: pigpio-master/DOC/bin/tidy.py
+  inflating: pigpio-master/DOC/bin/updatesql.py
+   creating: pigpio-master/DOC/dbase/
+  inflating: pigpio-master/DOC/dbase/pigpio.sqlite
+  inflating: pigpio-master/DOC/makedoc
+   creating: pigpio-master/DOC/src/
+   creating: pigpio-master/DOC/src/defs/
+  inflating: pigpio-master/DOC/src/defs/examples.def
+  inflating: pigpio-master/DOC/src/defs/pig2vcd.def
+  inflating: pigpio-master/DOC/src/defs/pigpiod.def
+  inflating: pigpio-master/DOC/src/defs/pigs.def
+   creating: pigpio-master/DOC/src/html/
+  inflating: pigpio-master/DOC/src/html/download.html
+  inflating: pigpio-master/DOC/src/html/ex_LDR.html
+  inflating: pigpio-master/DOC/src/html/ex_ir_remote.html
+  inflating: pigpio-master/DOC/src/html/ex_motor_shield.html
+  inflating: pigpio-master/DOC/src/html/ex_rotary_encoder.html
+  inflating: pigpio-master/DOC/src/html/ex_sonar_ranger.html
+  inflating: pigpio-master/DOC/src/html/faq.html
+  inflating: pigpio-master/DOC/src/html/index.html
+  inflating: pigpio-master/DOC/src/html/misc.html
+  inflating: pigpio-master/DOC/src/html/pif.html
+  inflating: pigpio-master/DOC/src/html/piscope.html
+  inflating: pigpio-master/DOC/src/html/sif.html
+   creating: pigpio-master/EXAMPLES/
+   creating: pigpio-master/EXAMPLES/C/
+   creating: pigpio-master/EXAMPLES/C/COUNTER_1/
+  inflating: pigpio-master/EXAMPLES/C/COUNTER_1/README
+  inflating: pigpio-master/EXAMPLES/C/COUNTER_1/freq_count_1.c
+   creating: pigpio-master/EXAMPLES/C/COUNTER_2/
+  inflating: pigpio-master/EXAMPLES/C/COUNTER_2/README
+  inflating: pigpio-master/EXAMPLES/C/COUNTER_2/freq_count_2.c
+   creating: pigpio-master/EXAMPLES/C/HALL_EFFECT_SENSOR/
+ extracting: pigpio-master/EXAMPLES/C/HALL_EFFECT_SENSOR/README
+  inflating: pigpio-master/EXAMPLES/C/HALL_EFFECT_SENSOR/hall.c
+   creating: pigpio-master/EXAMPLES/C/I2C_SNIFFER/
+  inflating: pigpio-master/EXAMPLES/C/I2C_SNIFFER/README
+  inflating: pigpio-master/EXAMPLES/C/I2C_SNIFFER/pig2i2c.c
+   creating: pigpio-master/EXAMPLES/C/IR_RECEIVER/
+  inflating: pigpio-master/EXAMPLES/C/IR_RECEIVER/README
+  inflating: pigpio-master/EXAMPLES/C/IR_RECEIVER/ir_hasher.c
+  inflating: pigpio-master/EXAMPLES/C/IR_RECEIVER/ir_hasher.h
+  inflating: pigpio-master/EXAMPLES/C/IR_RECEIVER/test_ir_hasher.c
+   creating: pigpio-master/EXAMPLES/C/PCF8591_YL-40/
+  inflating: pigpio-master/EXAMPLES/C/PCF8591_YL-40/PCF8591.c
+ extracting: pigpio-master/EXAMPLES/C/PCF8591_YL-40/README
+   creating: pigpio-master/EXAMPLES/C/POT_CAP_RECHARGE/
+  inflating: pigpio-master/EXAMPLES/C/POT_CAP_RECHARGE/README
+  inflating: pigpio-master/EXAMPLES/C/POT_CAP_RECHARGE/pot_cap_charge.c
+   creating: pigpio-master/EXAMPLES/C/ROTARY_ENCODER/
+  inflating: pigpio-master/EXAMPLES/C/ROTARY_ENCODER/README
+  inflating: pigpio-master/EXAMPLES/C/ROTARY_ENCODER/rotary_encoder.c
+  inflating: pigpio-master/EXAMPLES/C/ROTARY_ENCODER/rotary_encoder.h
+  inflating: pigpio-master/EXAMPLES/C/ROTARY_ENCODER/test_rotary_encoder.c
+   creating: pigpio-master/EXAMPLES/C/WIEGAND_CODE/
+  inflating: pigpio-master/EXAMPLES/C/WIEGAND_CODE/README
+  inflating: pigpio-master/EXAMPLES/C/WIEGAND_CODE/test_wiegand.c
+  inflating: pigpio-master/EXAMPLES/C/WIEGAND_CODE/wiegand.c
+  inflating: pigpio-master/EXAMPLES/C/WIEGAND_CODE/wiegand.h
+   creating: pigpio-master/EXAMPLES/CPP/
+   creating: pigpio-master/EXAMPLES/CPP/IR_RECEIVER/
+  inflating: pigpio-master/EXAMPLES/CPP/IR_RECEIVER/README
+  inflating: pigpio-master/EXAMPLES/CPP/IR_RECEIVER/ir_hasher.cpp
+  inflating: pigpio-master/EXAMPLES/CPP/IR_RECEIVER/ir_hasher.hpp
+  inflating: pigpio-master/EXAMPLES/CPP/IR_RECEIVER/test_ir_hasher.cpp
+   creating: pigpio-master/EXAMPLES/CPP/ROTARY_ENCODER/
+  inflating: pigpio-master/EXAMPLES/CPP/ROTARY_ENCODER/README
+  inflating: pigpio-master/EXAMPLES/CPP/ROTARY_ENCODER/rotary_encoder.cpp
+  inflating: pigpio-master/EXAMPLES/CPP/ROTARY_ENCODER/rotary_encoder.hpp
+  inflating: pigpio-master/EXAMPLES/CPP/ROTARY_ENCODER/test_rotary_encoder.cpp
+   creating: pigpio-master/EXAMPLES/CPP/WIEGAND_CODE/
+  inflating: pigpio-master/EXAMPLES/CPP/WIEGAND_CODE/README
+  inflating: pigpio-master/EXAMPLES/CPP/WIEGAND_CODE/test_wiegand.cpp
+  inflating: pigpio-master/EXAMPLES/CPP/WIEGAND_CODE/wiegand.cpp
+  inflating: pigpio-master/EXAMPLES/CPP/WIEGAND_CODE/wiegand.hpp
+   creating: pigpio-master/EXAMPLES/Python/
+   creating: pigpio-master/EXAMPLES/Python/DHT11_SENSOR/
+  inflating: pigpio-master/EXAMPLES/Python/DHT11_SENSOR/README
+  inflating: pigpio-master/EXAMPLES/Python/DHT11_SENSOR/dht11.py
+   creating: pigpio-master/EXAMPLES/Python/DHT22_AM2302_SENSOR/
+  inflating: pigpio-master/EXAMPLES/Python/DHT22_AM2302_SENSOR/DHT22.py
+  inflating: pigpio-master/EXAMPLES/Python/DHT22_AM2302_SENSOR/README
+   creating: pigpio-master/EXAMPLES/Python/GPIO_STATUS/
+ extracting: pigpio-master/EXAMPLES/Python/GPIO_STATUS/README
+  inflating: pigpio-master/EXAMPLES/Python/GPIO_STATUS/gpio_status.py
+   creating: pigpio-master/EXAMPLES/Python/HALL_EFFECT_SENSOR/
+ extracting: pigpio-master/EXAMPLES/Python/HALL_EFFECT_SENSOR/README
+  inflating: pigpio-master/EXAMPLES/Python/HALL_EFFECT_SENSOR/hall.py
+   creating: pigpio-master/EXAMPLES/Python/I2C_SNIFFER/
+  inflating: pigpio-master/EXAMPLES/Python/I2C_SNIFFER/I2C_sniffer.py
+  inflating: pigpio-master/EXAMPLES/Python/I2C_SNIFFER/README
+   creating: pigpio-master/EXAMPLES/Python/IR_RECEIVER/
+  inflating: pigpio-master/EXAMPLES/Python/IR_RECEIVER/README
+  inflating: pigpio-master/EXAMPLES/Python/IR_RECEIVER/ir_hasher.py
+   creating: pigpio-master/EXAMPLES/Python/MORSE_CODE/
+  inflating: pigpio-master/EXAMPLES/Python/MORSE_CODE/README
+  inflating: pigpio-master/EXAMPLES/Python/MORSE_CODE/morse_code.py
+   creating: pigpio-master/EXAMPLES/Python/PCF8591_YL-40/
+  inflating: pigpio-master/EXAMPLES/Python/PCF8591_YL-40/PCF8591.py
+ extracting: pigpio-master/EXAMPLES/Python/PCF8591_YL-40/README
+   creating: pigpio-master/EXAMPLES/Python/PIGPIO_BENCHMARK/
+ extracting: pigpio-master/EXAMPLES/Python/PIGPIO_BENCHMARK/README
+  inflating: pigpio-master/EXAMPLES/Python/PIGPIO_BENCHMARK/bench_1.py
+   creating: pigpio-master/EXAMPLES/Python/ROTARY_ENCODER/
+ extracting: pigpio-master/EXAMPLES/Python/ROTARY_ENCODER/README
+  inflating: pigpio-master/EXAMPLES/Python/ROTARY_ENCODER/rotary_encoder.py
+   creating: pigpio-master/EXAMPLES/Python/SENT_PROTOCOL/
+  inflating: pigpio-master/EXAMPLES/Python/SENT_PROTOCOL/README.md
+  inflating: pigpio-master/EXAMPLES/Python/SENT_PROTOCOL/read_SENT.py
+   creating: pigpio-master/EXAMPLES/Python/SONAR_RANGER/
+  inflating: pigpio-master/EXAMPLES/Python/SONAR_RANGER/README
+  inflating: pigpio-master/EXAMPLES/Python/SONAR_RANGER/sonar_trigger_echo.py
+   creating: pigpio-master/EXAMPLES/Python/VIRTUAL_WIRE/
+  inflating: pigpio-master/EXAMPLES/Python/VIRTUAL_WIRE/README
+  inflating: pigpio-master/EXAMPLES/Python/VIRTUAL_WIRE/vw.py
+   creating: pigpio-master/EXAMPLES/Python/WIEGAND_CODE/
+  inflating: pigpio-master/EXAMPLES/Python/WIEGAND_CODE/README
+  inflating: pigpio-master/EXAMPLES/Python/WIEGAND_CODE/wiegand.py
+   creating: pigpio-master/EXAMPLES/Shell/
+   creating: pigpio-master/EXAMPLES/Shell/GPIOTEST/
+  inflating: pigpio-master/EXAMPLES/Shell/GPIOTEST/README
+  inflating: pigpio-master/EXAMPLES/Shell/GPIOTEST/gpiotest
+  inflating: pigpio-master/MakeRemote
+  inflating: pigpio-master/Makefile
+  inflating: pigpio-master/README
+  inflating: pigpio-master/README.md
+  inflating: pigpio-master/SUPPORT.md
+  inflating: pigpio-master/UNLICENCE
+   creating: pigpio-master/cmake/
+  inflating: pigpio-master/cmake/FindRT.cmake
+ extracting: pigpio-master/cmake/pigpioConfig.cmake
+  inflating: pigpio-master/cmake/setup.py.in
+  inflating: pigpio-master/command.c
+  inflating: pigpio-master/command.h
+  inflating: pigpio-master/custom.cext
+  inflating: pigpio-master/pig2vcd.1
+  inflating: pigpio-master/pig2vcd.c
+  inflating: pigpio-master/pigpio.3
+  inflating: pigpio-master/pigpio.c
+  inflating: pigpio-master/pigpio.h
+  inflating: pigpio-master/pigpio.py
+  inflating: pigpio-master/pigpiod.1
+  inflating: pigpio-master/pigpiod.c
+  inflating: pigpio-master/pigpiod_if.3
+  inflating: pigpio-master/pigpiod_if.c
+  inflating: pigpio-master/pigpiod_if.h
+  inflating: pigpio-master/pigpiod_if2.3
+  inflating: pigpio-master/pigpiod_if2.c
+  inflating: pigpio-master/pigpiod_if2.h
+  inflating: pigpio-master/pigs.1
+  inflating: pigpio-master/pigs.c
+  inflating: pigpio-master/pigs.h
+  inflating: pigpio-master/setup.py
+   creating: pigpio-master/util/
+  inflating: pigpio-master/util/Findpigpio.cmake
+  inflating: pigpio-master/util/pigpiod.service
+  inflating: pigpio-master/util/readme.md
+  inflating: pigpio-master/x_pigpio.c
+  inflating: pigpio-master/x_pigpio.py
+  inflating: pigpio-master/x_pigpiod_if.c
+  inflating: pigpio-master/x_pigpiod_if2.c
+  inflating: pigpio-master/x_pigs
+  inflating: pigpio-master/x_pipe
+gcc -O3 -Wall -pthread -fpic -c -o pigpio.o pigpio.c
+gcc -O3 -Wall -pthread -fpic -c -o command.o command.c
+gcc -shared -pthread -Wl,-soname,libpigpio.so.1 -o libpigpio.so.1 pigpio.o command.o
+ln -fs libpigpio.so.1 libpigpio.so
+strip --strip-unneeded libpigpio.so
+size     libpigpio.so
+   text    data     bss     dec     hex filename
+ 295483   10656  611640  917779   e0113 libpigpio.so
+gcc -O3 -Wall -pthread -fpic -c -o pigpiod_if.o pigpiod_if.c
+gcc -shared -pthread -Wl,-soname,libpigpiod_if.so.1 -o libpigpiod_if.so.1 pigpiod_if.o command.o
+ln -fs libpigpiod_if.so.1 libpigpiod_if.so
+strip --strip-unneeded libpigpiod_if.so
+size     libpigpiod_if.so
+   text    data     bss     dec     hex filename
+  60595    8696   49304  118595   1cf43 libpigpiod_if.so
+gcc -O3 -Wall -pthread -fpic -c -o pigpiod_if2.o pigpiod_if2.c
+gcc -shared -pthread -Wl,-soname,libpigpiod_if2.so.1 -o libpigpiod_if2.so.1 pigpiod_if2.o command.o
+ln -fs libpigpiod_if2.so.1 libpigpiod_if2.so
+strip --strip-unneeded libpigpiod_if2.so
+size     libpigpiod_if2.so
+   text    data     bss     dec     hex filename
+  83049    8704    2936   94689   171e1 libpigpiod_if2.so
+gcc -O3 -Wall -pthread   -c -o x_pigpio.o x_pigpio.c
+gcc -o x_pigpio x_pigpio.o -L. -lpigpio -pthread -lrt
+gcc -O3 -Wall -pthread   -c -o x_pigpiod_if.o x_pigpiod_if.c
+gcc -o x_pigpiod_if x_pigpiod_if.o -L. -lpigpiod_if -pthread -lrt
+gcc -O3 -Wall -pthread   -c -o x_pigpiod_if2.o x_pigpiod_if2.c
+gcc -o x_pigpiod_if2 x_pigpiod_if2.o -L. -lpigpiod_if2 -pthread -lrt
+gcc -O3 -Wall -pthread   -c -o pig2vcd.o pig2vcd.c
+gcc -o pig2vcd pig2vcd.o
+strip pig2vcd
+gcc -O3 -Wall -pthread   -c -o pigpiod.o pigpiod.c
+gcc -o pigpiod pigpiod.o -L. -lpigpio -pthread -lrt
+strip pigpiod
+gcc -O3 -Wall -pthread   -c -o pigs.o pigs.c
+gcc -o pigs pigs.o command.o
+strip pigs
+install -m 0755 -d                             /opt/pigpio/cgi
+install -m 0755 -d                             /usr/local/include
+install -m 0644 pigpio.h                       /usr/local/include
+install -m 0644 pigpiod_if.h                   /usr/local/include
+install -m 0644 pigpiod_if2.h                  /usr/local/include
+install -m 0755 -d                             /usr/local/lib
+install -m 0755 libpigpio.so.1      /usr/local/lib
+install -m 0755 libpigpiod_if.so.1  /usr/local/lib
+install -m 0755 libpigpiod_if2.so.1 /usr/local/lib
+cd /usr/local/lib && ln -fs libpigpio.so.1      libpigpio.so
+cd /usr/local/lib && ln -fs libpigpiod_if.so.1  libpigpiod_if.so
+cd /usr/local/lib && ln -fs libpigpiod_if2.so.1 libpigpiod_if2.so
+install -m 0755 -d                             /usr/local/bin
+install -m 0755 pig2vcd                        /usr/local/bin
+install -m 0755 pigpiod                        /usr/local/bin
+install -m 0755 pigs                           /usr/local/bin
+if which python2; then python2 setup.py install ; fi
+if which python3; then python3 setup.py install ; fi
+/usr/bin/python3
+/tmp/pigpio-master/setup.py:3: DeprecationWarning: The distutils package is deprecated and slated for removal in Python 3.12. Use setuptools or check PEP 632 for potential alternatives
+  from distutils.core import setup
+running install
+running build
+running build_py
+creating build
+creating build/lib
+copying pigpio.py -> build/lib
+running install_lib
+copying build/lib/pigpio.py -> /usr/local/lib/python3.11/dist-packages
+byte-compiling /usr/local/lib/python3.11/dist-packages/pigpio.py to pigpio.cpython-311.pyc
+running install_egg_info
+Writing /usr/local/lib/python3.11/dist-packages/pigpio-1.78.egg-info
+install -m 0755 -d                             /usr/local/man/man1
+install -m 0644 p*.1                           /usr/local/man/man1
+install -m 0755 -d                             /usr/local/man/man3
+install -m 0644 p*.3                           /usr/local/man/man3
+ldconfig
+Creating socket directory for pigpio...
+No pigpiod service to stop
+Creating pigpiod service...
+Created symlink /etc/systemd/system/multi-user.target.wants/pigpiod.service → /etc/systemd/system/pigpiod.service.
+Testing pigpio socket connection...
+socket connect failed
+Pigpio socket connection failed. Will retry after completing setup.
+Installing sqlite3...
+Reading package lists...
+Building dependency tree...
+Reading state information...
+sqlite3 is already the newest version (3.40.1-2+deb12u1).
+0 upgraded, 0 newly installed, 0 to remove and 0 not upgraded.
+Installing NVM...
+  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
+                                 Dload  Upload   Total   Spent    Left  Speed
+100 15916  100 15916    0     0  35820      0 --:--:-- --:--:-- --:--:-- 35927
+=> Downloading nvm from git to '/home/dietpi/.nvm'
+=> Cloning into '/home/dietpi/.nvm'...
+* (HEAD detached at FETCH_HEAD)
+  master
+=> Compressing and cleaning up git repository
+
+=> Appending nvm source string to /home/dietpi/.bashrc
+=> Appending bash_completion source string to /home/dietpi/.bashrc
+=> Close and reopen your terminal to start using nvm or run the following to use it now:
+
+export NVM_DIR="$HOME/.nvm"
+[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"  # This loads nvm
+[ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"  # This loads nvm bash_completion
+Installing Node.js...
+Installing latest LTS version.
+Downloading and installing node v22.16.0...
+Downloading https://nodejs.org/dist/v22.16.0/node-v22.16.0-linux-arm64.tar.xz...
+#=#=-  #      #                                                                                                                                                                                               #                                                                                                                                                                                                             #####                                                                                                                                                                                                         ##########                                                                                                                                                                                                    #################                                                                                                                                                                                             ####################                                                                                                                                                                                          ##############################                                                                                                                                                                                #################################                                                                                                                                                                             #########################################                                                                                                                                                                     #############################################                                                                                                                                                                 ####################################################                                                                                                                                                          ###############################################################                                                                                                                                               #######################################################################                                                                                                                                       #############################################################################                                                                                                                                 #####################################################################################                                                                                                                         ##############################################################################################                                                                                                                ####################################################################################################                                                                                                          ##########################################################################################################                                                                                                    ##############################################################################################################                                                                                                ####################################################################################################################                                                                                          ##########################################################################################################################                                                                                    ################################################################################################################################                                                                              #########################################################################################################################################                                                                     ####################################################################################################################################################                                                          #########################################################################################################################################################                                                     ##############################################################################################################################################################                                                ####################################################################################################################################################################                                          ##########################################################################################################################################################################                                    ###############################################################################################################################################################################                               #####################################################################################################################################################################################                         ##########################################################################################################################################################################################                    ###############################################################################################################################################################################################               ######################################################################################################################################################################################################        ###########################################################################################################################################################################################################   ################################################################################################################################################################################################################################################################################################################################################################################################################################################################################################################################################################################################################################################################################################################################################################################################################################################################################################################################################################################################################################################################################################# 100.0%
+Computing checksum with sha256sum
+Checksums matched!
+Now using node v22.16.0 (npm v10.9.2)
+Creating default alias: default -> lts/* (-> v22.16.0)
+Now using node v22.16.0 (npm v10.9.2)
+default -> v22.16.0
+Cloning undergrowth-node repository...
+Cloning into 'undergrowth-node'...
+Installing npm dependencies...
+npm warn deprecated npmlog@6.0.2: This package is no longer supported.
+npm warn deprecated rimraf@3.0.2: Rimraf versions prior to v4 are no longer supported
+npm warn deprecated inflight@1.0.6: This module is not supported, and leaks memory. Do not use it. Check out lru-cache if you want a good and tested way to coalesce async requests by a key value, which is much more comprehensive and powerful.
+npm warn deprecated glob@7.2.3: Glob versions prior to v9 are no longer supported
+npm warn deprecated @npmcli/move-file@1.1.2: This functionality has been moved to @npmcli/fs
+npm warn deprecated are-we-there-yet@3.0.1: This package is no longer supported.
+npm warn deprecated gauge@4.0.4: This package is no longer supported.
+
+added 270 packages, and audited 271 packages in 2m
+
+27 packages are looking for funding
+  run `npm fund` for details
+
+found 0 vulnerabilities
+npm notice
+npm notice New major version of npm available! 10.9.2 -> 11.4.1
+npm notice Changelog: https://github.com/npm/cli/releases/tag/v11.4.1
+npm notice To update run: npm install -g npm@11.4.1
+npm notice
+
+up to date, audited 271 packages in 8s
+
+27 packages are looking for funding
+  run `npm fund` for details
+
+found 0 vulnerabilities
+Determining Node.js path...
+Using Node.js at: /home/dietpi/.nvm/versions/node/v22.16.0/bin/node
+Setting up systemd service...
+Service file created successfully.
+Setting capabilities for Node.js...
+Adding user to required groups...
+Enabling and starting ug-node service...
+Created symlink /etc/systemd/system/multi-user.target.wants/ug-node.service → /etc/systemd/system/ug-node.service.
+● ug-node.service - Undergrowth Node.js Server
+     Loaded: loaded (/etc/systemd/system/ug-node.service; enabled; preset: enabled)
+     Active: active (running) since Sat 2025-05-31 00:34:21 UTC; 58ms ago
+   Main PID: 6381 (node)
+      Tasks: 6 (limit: 474)
+        CPU: 43ms
+     CGroup: /system.slice/ug-node.service
+             └─6381 /home/dietpi/.nvm/versions/node/v22.16.0/bin/node ug-node.js
+
+May 31 00:34:21 node-D1B950 systemd[1]: Started ug-node.service - Undergrowth Node.js Server.
+ug-node service is running.
+Final pigpio test...
+socket connect failed
+Pigpio still not working, manual troubleshooting may be needed.
+Try running: systemctl restart pigpiod
+Then test with: pigs r 0
+Undergrowth node installation completed!
+ug-node service is running.
+Final pigpio test...
+socket connect failed
+Pigpio still not working, manual troubleshooting may be needed.
+Try running: systemctl restart pigpiod
+Then test with: pigs r 0
+Undergrowth node installation completed!

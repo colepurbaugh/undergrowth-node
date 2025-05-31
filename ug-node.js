@@ -244,13 +244,36 @@ function getDataBySequenceRange(startSequence, endSequence, limit = 1000) {
 
 async function initAndRead() {
     try {
-        const [init1, init2] = await Promise.all([
-            sensor1.initSensor(),
-            sensor2.initSensor()
-        ]);
-        if (!init1 || !init2) {
-            console.error('Failed to initialize one or both legacy sensors');
+        // Initialize legacy sensors individually with better error handling
+        let init1 = false;
+        let init2 = false;
+        
+        try {
+            init1 = await sensor1.initSensor();
+            if (init1) {
+                console.log('Legacy sensor 0x38 initialized successfully');
+            } else {
+                console.warn('Failed to initialize legacy sensor 0x38');
+            }
+        } catch (err) {
+            console.error('Error initializing legacy sensor 0x38:', err.message);
         }
+        
+        try {
+            init2 = await sensor2.initSensor();
+            if (init2) {
+                console.log('Legacy sensor 0x39 initialized successfully');
+            } else {
+                console.warn('Failed to initialize legacy sensor 0x39');
+            }
+        } catch (err) {
+            console.error('Error initializing legacy sensor 0x39:', err.message);
+        }
+        
+        if (!init1 && !init2) {
+            console.error('Failed to initialize both legacy sensors - continuing with configured sensors only');
+        }
+        
         await loadSensors();
         for (const key of Object.keys(sensors)) {
             const sensorObj = sensors[key];
@@ -266,11 +289,27 @@ async function initAndRead() {
 
         setInterval(async () => {
             try {
-                const [data1, data2, systemInfoData] = await Promise.all([
-                    sensor1.readTemperatureAndHumidity(),
-                    sensor2.readTemperatureAndHumidity(),
-                    SystemInfo.getSystemInfo()
-                ]);
+                // Read legacy sensors individually with error handling
+                let data1 = null;
+                let data2 = null;
+                
+                if (init1) {
+                    try {
+                        data1 = await sensor1.readTemperatureAndHumidity();
+                    } catch (err) {
+                        console.error('Error reading legacy sensor 0x38:', err.message);
+                    }
+                }
+                
+                if (init2) {
+                    try {
+                        data2 = await sensor2.readTemperatureAndHumidity();
+                    } catch (err) {
+                        console.error('Error reading legacy sensor 0x39:', err.message);
+                    }
+                }
+                
+                const systemInfoData = await SystemInfo.getSystemInfo();
 
                 const sensorReadings = {};
                 const sensorReadPromises = [];
@@ -293,21 +332,32 @@ async function initAndRead() {
                 }
                 await Promise.all(sensorReadPromises);
 
-                if (data1 && data2) {
+                // Process legacy sensors individually (don't require both)
+                if (data1) {
                     try {
                         const seqId1 = await getNextSequenceId();
-                        const seqId2 = await getNextSequenceId();
                         const seqId3 = await getNextSequenceId();
-                        const seqId4 = await getNextSequenceId();
                         const timestamp = new Date().toISOString();
                         if (dataDb) {
                             dataDb.run('INSERT INTO sensor_readings (timestamp, address, type, value, sequence_id) VALUES (?, ?, ?, ?, ?)',[timestamp, '0x38', 'temperature', data1.temperature, seqId1]);
-                            dataDb.run('INSERT INTO sensor_readings (timestamp, address, type, value, sequence_id) VALUES (?, ?, ?, ?, ?)',[timestamp, '0x39', 'temperature', data2.temperature, seqId2]);
                             dataDb.run('INSERT INTO sensor_readings (timestamp, address, type, value, sequence_id) VALUES (?, ?, ?, ?, ?)',[timestamp, '0x38', 'humidity', data1.humidity, seqId3]);
+                        }
+                    } catch (seqErr) {
+                        console.error('Error getting sequence IDs for sensor 0x38:', seqErr);
+                    }
+                }
+
+                if (data2) {
+                    try {
+                        const seqId2 = await getNextSequenceId();
+                        const seqId4 = await getNextSequenceId();
+                        const timestamp = new Date().toISOString();
+                        if (dataDb) {
+                            dataDb.run('INSERT INTO sensor_readings (timestamp, address, type, value, sequence_id) VALUES (?, ?, ?, ?, ?)',[timestamp, '0x39', 'temperature', data2.temperature, seqId2]);
                             dataDb.run('INSERT INTO sensor_readings (timestamp, address, type, value, sequence_id) VALUES (?, ?, ?, ?, ?)',[timestamp, '0x39', 'humidity', data2.humidity, seqId4]);
                         }
                     } catch (seqErr) {
-                        console.error('Error getting sequence IDs for legacy sensors:', seqErr);
+                        console.error('Error getting sequence IDs for sensor 0x39:', seqErr);
                     }
                 }
 
