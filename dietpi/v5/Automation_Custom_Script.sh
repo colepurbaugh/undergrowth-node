@@ -305,4 +305,9 @@ else
     echo "WARNING: Willa user cannot access database directory"
 fi
 
-echo "Undergrowth node installation completed!" 
+echo "Undergrowth node installation completed!"
+
+# Reboot to ensure all services start cleanly and work around any networking issues
+echo "Rebooting system to finalize installation..."
+sleep 2
+reboot 
