@@ -115,27 +115,21 @@
         <div class="info-section" id="sensors-container">
             <!-- Fixed sensor cards replace the complex UI -->
             <div class="sensor-card" data-id="1" data-address="0x38">
-                <div class="sensor-header">
-                    <div class="sensor-title">Sensor 01</div>
-                </div>
                 <div class="sensor-data">
                     <div class="sensor-readings">
-                        <div class="sensor-info">Address: <span class="sensor-address">0x38</span></div>
-                        <div class="sensor-info">Temperature: <span class="sensor-temp" data-address="0x38">--</span></div>
-                        <div class="sensor-info">Humidity: <span class="sensor-humidity" data-address="0x38">--</span></div>
+                        <div class="sensor-info">Address:&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="sensor-address">0x38</span></div>
+                        <div class="sensor-info">Temperature:&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="sensor-temp" data-address="0x38">--</span></div>
+                        <div class="sensor-info">Humidity:&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="sensor-humidity" data-address="0x38">--</span></div>
                     </div>
                 </div>
             </div>
             
             <div class="sensor-card" data-id="2" data-address="0x39">
-                <div class="sensor-header">
-                    <div class="sensor-title">Sensor 02</div>
-                </div>
                 <div class="sensor-data">
                     <div class="sensor-readings">
-                        <div class="sensor-info">Address: <span class="sensor-address">0x39</span></div>
-                        <div class="sensor-info">Temperature: <span class="sensor-temp" data-address="0x39">--</span></div>
-                        <div class="sensor-info">Humidity: <span class="sensor-humidity" data-address="0x39">--</span></div>
+                        <div class="sensor-info">Address:&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="sensor-address">0x39</span></div>
+                        <div class="sensor-info">Temperature:&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="sensor-temp" data-address="0x39">--</span></div>
+                        <div class="sensor-info">Humidity:&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="sensor-humidity" data-address="0x39">--</span></div>
                     </div>
                 </div>
             </div>
@@ -172,16 +166,26 @@
         }
 
         .sensor-info {
-            display: flex;
-            justify-content: space-between;
+            display: block;
             padding: 5px 15px;
             font-family: monospace;
             font-size: 1.1rem;
+            text-align: left;
+        }
+
+        .sensor-info::before {
+            display: none;
+        }
+
+        .sensor-info {
+            position: static;
         }
 
         .sensor-info span {
             font-weight: bold;
             color: var(--text-secondary);
+            position: static;
+            float: right;
         }
 
         .sensor-stats {
