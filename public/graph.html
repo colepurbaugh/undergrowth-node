@@ -32,47 +32,40 @@
             opacity: 0.8; /* Match other divs */
             border: 1px solid var(--border-color);
             border-radius: 0.25rem; /* Match other divs */
-            text-align: right; /* Right-justify all content */
-        }
-        
-        .sensor-column:first-child {
-            text-align: center; /* Center-justify the Sensors column */
+            text-align: center; /* Center all content in all columns */
         }
         
         .column-title {
-            margin: 0 0 15px 0; /* Reduced bottom margin from 20px to 15px */
+            margin: 0 0 20px 0; /* Reduced bottom margin from 15px to 10px for Sensors column */
             color: #e8e6e3;
             font-size: 18px;
             font-weight: bold;
-            text-align: right; /* Right-justify column titles */
+            text-align: center; /* Center all column titles */
             border-bottom: 1px solid rgba(255, 255, 255, 0.2);
-            padding-bottom: 8px; /* Reduced from 10px to 8px */
-        }
-        
-        .sensor-column:first-child .column-title {
-            text-align: center; /* Center the Sensors column title */
+            padding-bottom: 6px; /* Reduced from 8px to 6px for Sensors column */
         }
         
         .sensor-selection-container {
-            text-align: right; /* Right-justify sensor checkboxes */
-            margin-bottom: 15px; /* Reduced from 20px to 15px */
-        }
-        
-        .sensor-column:first-child .sensor-selection-container {
-            text-align: center; /* Center the sensor checkboxes */
+            text-align: center; /* Center sensor checkboxes in all columns */
+            margin-bottom: 8px; /* Reduced from 10px to 8px for tighter spacing */
         }
         
         .sensor-checkbox-wrapper {
-            justify-content: flex-end; /* Right-justify checkbox content */
-            text-align: right;
-            margin-bottom: 8px; /* Reduced from 12px to 8px */
+            justify-content: center; /* Center checkbox content in all columns */
+            text-align: center !important; /* Force center alignment with !important */
+            margin-bottom: 4px; /* Reduced from 6px to 4px for tighter spacing */
             display: flex;
             align-items: center;
             gap: 8px;
+            width: 100%; /* Ensure full width */
         }
         
-        .sensor-column:first-child .sensor-checkbox-wrapper {
-            justify-content: center; /* Center the checkbox content in Sensors column */
+        /* Additional specificity to override any inherited styles */
+        .sensor-column .sensor-selection-container .sensor-checkbox-wrapper {
+            justify-content: center !important;
+            text-align: center !important;
+            display: flex !important;
+            align-items: center !important;
         }
         
         .sensor-checkbox {
@@ -88,6 +81,7 @@
             font-weight: 500;
             cursor: pointer;
             user-select: none;
+            text-align: center !important; /* Force center alignment */
         }
         
         .sensor-label:hover {
@@ -95,19 +89,15 @@
         }
         
         .sensor-column-actions {
-            margin-top: 15px; /* Reduced from 20px to 15px */
+            margin-top: 8px; /* Reduced from 10px to 8px for tighter spacing */
             display: flex;
             flex-direction: column;
-            gap: 8px; /* Reduced from 12px to 8px */
-            align-items: flex-end; /* Right-align buttons */
-        }
-        
-        .sensor-column:first-child .sensor-column-actions {
-            align-items: center; /* Center-align buttons in Sensors column */
+            gap: 4px; /* Reduced from 6px to 4px for tighter spacing */
+            align-items: center; /* Center-align buttons in all columns */
         }
         
         .sensor-button {
-            padding: 8px 16px;
+            padding: 8px 8px;
             background-color: var(--inactive-color);
             color: var(--text-primary);
             border: 1px solid var(--border-color);
@@ -156,7 +146,7 @@
             gap: 15px;
             flex-wrap: wrap;
             flex-direction: column;
-            align-items: flex-end; /* Right-align color controls */
+            align-items: center; /* Center color controls in all columns */
         }
         
         .color-input-group {
@@ -165,7 +155,7 @@
             gap: 8px;
             flex: 1;
             min-width: 200px;
-            justify-content: flex-end; /* Right-justify color input groups */
+            justify-content: center; /* Center color input groups in all columns */
             margin-bottom: 6px; /* Reduced from 8px to 6px */
         }
         
@@ -194,7 +184,7 @@
             border-radius: 3px;
             background: #fff;
             color: #333;
-            font-size: 12px;
+            font-size: 14px; /* Increased from 12px to 14px */
             font-family: monospace;
             font-weight: 500;
         }
@@ -219,10 +209,10 @@
         
         .color-input-group label {
             color: #e8e6e3;
-            font-size: 13px;
+            font-size: 15px; /* Increased from 13px to 15px */
             font-weight: 500;
             min-width: 70px;
-            text-align: right;
+            text-align: center; /* Center labels in all columns */
         }
         
         .range-input {
@@ -232,12 +222,12 @@
             border-radius: 3px;
             background: #fff;
             color: #333;
-            font-size: 13px;
+            font-size: 15px; /* Increased from 13px to 15px */
             font-weight: 500;
         }
         
         #updateColorsButton {
-            margin-top: 15px;
+            margin-top: 8px;
             padding: 8px 16px;
             background-color: var(--success-color);
             color: var(--text-primary);
@@ -503,7 +493,7 @@
             }
             
             .color-input-group label {
-                text-align: left !important;
+                text-align: center !important;
                 min-width: 60px;
             }
             
@@ -533,7 +523,7 @@
 <body class="normal-state" style="background-image: url('/assets/backgrounds/undergrowth_logo.png') !important; background-repeat: no-repeat !important; background-position: top center !important; background-size: 90vh auto !important; background-attachment: fixed !important;">
     <div class="container">
         <div class="header">
-            <h1 class="title">Sensor Data Graphs</h1>
+            <h1 class="title">Node Sensor Graphs</h1>
             <div class="header-right">
                 <div id="currentTime" class="time-display"></div>
                 <button id="emergencyButton" class="emergency-button">Emergency Stop</button>
@@ -541,7 +531,6 @@
         </div>
         
         <!-- Sensor Selection -->
-        <h2 class="chart-title">Sensor Selection</h2>
         <div class="sensor-controls-row">
             <!-- Column 1: Sensor Selection -->
             <div class="sensor-column">
@@ -572,10 +561,10 @@
                         <label for="tempMidValue">Mid (°F):</label>
                         <input type="number" id="tempMidValue" value="70" min="0" max="120" class="range-input">
                         <div class="color-picker-container">
-                            <input type="color" id="tempMidColor" value="#800080" class="color-picker">
+                            <input type="color" id="tempMidColor" value="#00ff00" class="color-picker">
                             <input type="checkbox" id="tempUseMid" class="mid-checkbox" title="Enable mid-point color">
                         </div>
-                        <input type="text" id="tempMidColorHex" value="#800080" class="color-hex" maxlength="7">
+                        <input type="text" id="tempMidColorHex" value="#00ff00" class="color-hex" maxlength="7">
                     </div>
                     <div class="color-input-group">
                         <label for="tempHighValue">High (°F):</label>
@@ -711,7 +700,7 @@
                 midValue: 70,
                 highValue: 85,
                 lowColor: '#0064ff', // Blue
-                midColor: '#800080', // Purple
+                midColor: '#00ff00', // Purple
                 highColor: '#ff0000', // Red
                 useMid: false
             },
