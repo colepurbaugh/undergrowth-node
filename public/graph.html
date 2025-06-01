@@ -17,18 +17,137 @@
     <link rel="stylesheet" href="/assets/css/main.css">
     <script src="/assets/js/core.js"></script>
     <style>
+        .sensor-controls-row {
+            display: flex;
+            gap: 20px;
+            margin-top: 10px;
+            margin-bottom: 2rem; /* Add more space before Temperature chart */
+        }
+        
+        .sensor-column {
+            flex: 1;
+            min-width: 0; /* Allows flex items to shrink below their content size */
+            padding: 15px 20px; /* Reduced vertical padding from 20px to 15px */
+            background-color: #333; /* Match other divs */
+            opacity: 0.8; /* Match other divs */
+            border: 1px solid var(--border-color);
+            border-radius: 0.25rem; /* Match other divs */
+            text-align: right; /* Right-justify all content */
+        }
+        
+        .sensor-column:first-child {
+            text-align: center; /* Center-justify the Sensors column */
+        }
+        
+        .column-title {
+            margin: 0 0 15px 0; /* Reduced bottom margin from 20px to 15px */
+            color: #e8e6e3;
+            font-size: 18px;
+            font-weight: bold;
+            text-align: right; /* Right-justify column titles */
+            border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+            padding-bottom: 8px; /* Reduced from 10px to 8px */
+        }
+        
+        .sensor-column:first-child .column-title {
+            text-align: center; /* Center the Sensors column title */
+        }
+        
+        .sensor-selection-container {
+            text-align: right; /* Right-justify sensor checkboxes */
+            margin-bottom: 15px; /* Reduced from 20px to 15px */
+        }
+        
+        .sensor-column:first-child .sensor-selection-container {
+            text-align: center; /* Center the sensor checkboxes */
+        }
+        
+        .sensor-checkbox-wrapper {
+            justify-content: flex-end; /* Right-justify checkbox content */
+            text-align: right;
+            margin-bottom: 8px; /* Reduced from 12px to 8px */
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .sensor-column:first-child .sensor-checkbox-wrapper {
+            justify-content: center; /* Center the checkbox content in Sensors column */
+        }
+        
+        .sensor-checkbox {
+            width: 18px;
+            height: 18px;
+            cursor: pointer;
+            accent-color: var(--success-color);
+        }
+        
+        .sensor-label {
+            color: #e8e6e3;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            user-select: none;
+        }
+        
+        .sensor-label:hover {
+            color: #fff;
+        }
+        
+        .sensor-column-actions {
+            margin-top: 15px; /* Reduced from 20px to 15px */
+            display: flex;
+            flex-direction: column;
+            gap: 8px; /* Reduced from 12px to 8px */
+            align-items: flex-end; /* Right-align buttons */
+        }
+        
+        .sensor-column:first-child .sensor-column-actions {
+            align-items: center; /* Center-align buttons in Sensors column */
+        }
+        
+        .sensor-button {
+            padding: 8px 16px;
+            background-color: var(--inactive-color);
+            color: var(--text-primary);
+            border: 1px solid var(--border-color);
+            border-radius: 0.25rem;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            transition: background-color 0.2s;
+            min-width: 120px;
+        }
+        
+        .sensor-button:hover {
+            background-color: var(--active-color);
+        }
+        
+        .loading-message, .error-message, .empty-state {
+            color: #e8e6e3;
+            font-size: 14px;
+            font-style: italic;
+            text-align: center;
+            padding: 20px;
+            opacity: 0.7;
+        }
+        
+        .error-message {
+            color: #ff6b6b;
+        }
+        
         .color-range-controls {
-            margin: 10px 0;
-            padding: 10px;
+            margin: 15px 0;
+            padding: 15px;
             border: 1px solid rgba(255, 255, 255, 0.2);
             border-radius: 5px;
             background: rgba(0, 0, 0, 0.1);
         }
         
         .color-range-title {
-            margin: 0 0 8px 0;
+            margin: 0 0 12px 0;
             color: #e8e6e3;
-            font-size: 14px;
+            font-size: 16px;
             font-weight: bold;
         }
         
@@ -36,35 +155,32 @@
             display: flex;
             gap: 15px;
             flex-wrap: wrap;
+            flex-direction: column;
+            align-items: flex-end; /* Right-align color controls */
         }
         
         .color-input-group {
             display: flex;
             align-items: center;
-            gap: 5px;
+            gap: 8px;
             flex: 1;
             min-width: 200px;
+            justify-content: flex-end; /* Right-justify color input groups */
+            margin-bottom: 6px; /* Reduced from 8px to 6px */
         }
         
-        .color-input-group label {
-            color: #e8e6e3;
-            font-size: 12px;
-            min-width: 60px;
+        .color-input-group.mid-row {
+            position: relative;
         }
         
-        .range-input {
-            width: 50px;
-            padding: 2px 4px;
-            border: 1px solid #ccc;
-            border-radius: 3px;
-            background: #fff;
-            color: #333;
-            font-size: 12px;
+        .color-picker-container {
+            position: relative;
+            display: inline-block;
         }
         
         .color-picker {
-            width: 30px;
-            height: 25px;
+            width: 32px;
+            height: 28px;
             border: 1px solid #ccc;
             border-radius: 3px;
             cursor: pointer;
@@ -72,31 +188,345 @@
         }
         
         .color-hex {
-            width: 70px;
-            padding: 2px 4px;
+            width: 75px;
+            padding: 4px 6px;
             border: 1px solid #ccc;
             border-radius: 3px;
             background: #fff;
             color: #333;
-            font-size: 11px;
+            font-size: 12px;
             font-family: monospace;
+            font-weight: 500;
         }
         
         .mid-checkbox {
-            width: 16px;
-            height: 16px;
-            margin-right: 5px;
+            position: absolute;
+            top: -6px;
+            right: -6px;
+            width: 14px;
+            height: 14px;
             cursor: pointer;
-            accent-color: #4CAF50;
+            accent-color: var(--success-color);
+            background-color: #333;
+            border: 1px solid #ccc;
+            border-radius: 2px;
+            z-index: 1;
+        }
+        
+        .mid-checkbox:checked {
+            background-color: var(--success-color);
+        }
+        
+        .color-input-group label {
+            color: #e8e6e3;
+            font-size: 13px;
+            font-weight: 500;
+            min-width: 70px;
+            text-align: right;
+        }
+        
+        .range-input {
+            width: 55px;
+            padding: 4px 6px;
+            border: 1px solid #ccc;
+            border-radius: 3px;
+            background: #fff;
+            color: #333;
+            font-size: 13px;
+            font-weight: 500;
         }
         
         #updateColorsButton {
-            margin-top: 10px;
-            background: #4CAF50;
+            margin-top: 15px;
+            padding: 8px 16px;
+            background-color: var(--success-color);
+            color: var(--text-primary);
+            border: 1px solid var(--border-color);
+            border-radius: 0.25rem;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            transition: background-color 0.2s;
+            min-width: 120px;
         }
         
         #updateColorsButton:hover {
-            background: #45a049;
+            background-color: #2d6c30;
+        }
+        
+        /* Time Navigation Styles */
+        .time-navigation {
+            background-color: #333;
+            opacity: 0.8;
+            padding: 1rem;
+            border-radius: 0.25rem;
+            margin-top: 1rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 1rem;
+            min-height: 120px;
+        }
+        
+        .time-control-section {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+        
+        .time-control-section.left {
+            flex: 1;
+            align-items: flex-start;
+            text-align: left;
+        }
+        
+        .time-control-section.center {
+            flex: 1;
+            align-items: center;
+            text-align: center;
+            justify-content: center;
+        }
+        
+        .time-control-section.right {
+            flex: 1;
+            align-items: flex-end;
+            text-align: right;
+        }
+        
+        .range-info {
+            margin-bottom: 1rem;
+        }
+        
+        .range-info span {
+            font-weight: bold;
+            font-size: 1.1rem;
+            color: var(--text-primary);
+        }
+        
+        .time-display {
+            margin: 0.5rem 0;
+            font-family: monospace;
+            font-size: 0.9rem;
+            color: var(--text-secondary);
+            min-height: 20px;
+        }
+        
+        .time-info {
+            display: flex;
+            flex-direction: column;
+            gap: 0.25rem;
+        }
+        
+        .time-info span:first-child {
+            font-weight: bold;
+            font-size: 1.1rem;
+            color: var(--text-primary);
+        }
+        
+        .time-info span:last-child {
+            font-family: monospace;
+            font-size: 0.9rem;
+            color: var(--text-secondary);
+        }
+        
+        .nav-controls {
+            display: flex;
+            gap: 1rem;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        
+        .points-control {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            justify-content: center;
+        }
+        
+        .control-label {
+            color: #e8e6e3;
+            font-size: 12px;
+            white-space: nowrap;
+        }
+        
+        .time-details {
+            display: flex;
+            flex-direction: column;
+            gap: 0.25rem;
+            margin-top: 0.5rem;
+        }
+        
+        .time-detail {
+            display: flex;
+            gap: 0.5rem;
+            align-items: center;
+        }
+        
+        .time-label {
+            font-weight: bold;
+            color: var(--text-secondary);
+            min-width: 40px;
+        }
+        
+        .time-controls {
+            display: flex;
+            gap: 1rem;
+            flex-wrap: wrap;
+        }
+        
+        .time-control-group {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+            align-items: inherit;
+        }
+        
+        .time-control-label {
+            font-size: 12px;
+            color: var(--text-secondary);
+            font-weight: bold;
+        }
+        
+        .time-buttons {
+            display: flex;
+            gap: 0.25rem;
+            flex-wrap: wrap;
+        }
+        
+        .time-btn {
+            padding: 0.25rem 0.5rem;
+            background-color: var(--inactive-color);
+            color: var(--text-primary);
+            border: 1px solid var(--border-color);
+            border-radius: 0.25rem;
+            cursor: pointer;
+            font-family: monospace;
+            font-size: 0.8rem;
+            transition: background-color 0.2s;
+            min-width: 50px;
+        }
+        
+        .time-btn:hover:not(:disabled) {
+            background-color: var(--active-color);
+        }
+        
+        .time-btn:disabled {
+            cursor: not-allowed;
+            opacity: 0.5;
+        }
+        
+        .nav-buttons {
+            display: flex;
+            gap: 0.5rem;
+        }
+        
+        .nav-btn {
+            padding: 0.5rem 1rem;
+            background-color: var(--inactive-color);
+            color: var(--text-primary);
+            border: 1px solid var(--border-color);
+            border-radius: 0.25rem;
+            cursor: pointer;
+            font-family: monospace;
+            font-size: 0.9rem;
+            transition: background-color 0.2s, opacity 0.2s;
+        }
+        
+        .nav-btn:hover:not(:disabled) {
+            background-color: var(--active-color);
+        }
+        
+        .nav-btn:disabled {
+            cursor: not-allowed;
+            opacity: 0.5;
+        }
+        
+        .go-live-btn {
+            padding: 0.25rem 0.75rem;
+            background-color: var(--success-color);
+            color: var(--text-primary);
+            border: 1px solid var(--border-color);
+            border-radius: 0.25rem;
+            cursor: pointer;
+            font-size: 0.8rem;
+            font-weight: bold;
+            transition: background-color 0.2s;
+            white-space: nowrap;
+        }
+        
+        .go-live-btn:hover {
+            background-color: #2d6c30;
+        }
+        
+        .go-live-btn:disabled {
+            background-color: var(--inactive-color);
+            cursor: not-allowed;
+            opacity: 0.6;
+        }
+        
+        @media (max-width: 768px) {
+            .sensor-controls-row {
+                flex-direction: column;
+                gap: 15px;
+            }
+            
+            .sensor-column {
+                text-align: center !important;
+                padding: 15px;
+            }
+            
+            .column-title {
+                text-align: center !important;
+                font-size: 16px;
+            }
+            
+            .sensor-selection-container {
+                text-align: center !important;
+            }
+            
+            .sensor-checkbox-wrapper {
+                justify-content: center !important;
+                text-align: center !important;
+            }
+            
+            .sensor-column-actions {
+                align-items: center !important;
+            }
+            
+            .color-range-group {
+                align-items: center !important;
+            }
+            
+            .color-input-group {
+                justify-content: center !important;
+                min-width: auto;
+            }
+            
+            .color-input-group label {
+                text-align: left !important;
+                min-width: 60px;
+            }
+            
+            .time-navigation {
+                flex-direction: column;
+                text-align: center;
+                align-items: center;
+            }
+            
+            .time-control-section {
+                width: 100%;
+                align-items: center !important;
+                text-align: center !important;
+            }
+            
+            .nav-controls {
+                justify-content: center;
+                flex-direction: column;
+            }
+            
+            .time-controls {
+                justify-content: center;
+            }
         }
     </style>
 </head>
@@ -110,98 +540,84 @@
             </div>
         </div>
         
-        <!-- Controls -->
-        <div class="controls">
-            <div class="controls-container">
-                <div class="controls-group">
-                    <div>
-                        <label for="timeRange" class="control-label">Time Range:</label>
-                        <select id="timeRange">
-                            <option value="1">Last Hour</option>
-                            <option value="24">Last 24 Hours</option>
-                            <option value="168">Last Week</option>
-                        </select>
-                    </div>
-                    <div>
-                        <label for="points" class="control-label">Points:</label>
-                        <select id="points">
-                            <option value="100" selected>100 points</option>
-                            <option value="1000">1000 points</option>
-                            <option value="10000">10000 points</option>
-                        </select>
-                    </div>
-                </div>
-                <button id="updateButton" class="update-button">
-                    Update
-                </button>
-            </div>
-        </div>
-        
         <!-- Sensor Selection -->
-        <div class="controls sensor-selection-panel">
-            <h3 class="section-title">Sensor Selection</h3>
-            <div class="sensor-selection-container" id="sensorSelectionContainer">
-                <!-- Sensor checkboxes will be populated here -->
-                <div class="loading-message">Loading sensors...</div>
+        <h2 class="chart-title">Sensor Selection</h2>
+        <div class="sensor-controls-row">
+            <!-- Column 1: Sensor Selection -->
+            <div class="sensor-column">
+                <h4 class="column-title">Sensors</h4>
+                <div class="sensor-selection-container" id="sensorSelectionContainer">
+                    <!-- Sensor checkboxes will be populated here -->
+                    <div class="loading-message">Loading sensors...</div>
+                </div>
+                <div class="sensor-column-actions">
+                    <button id="averageSensors" class="sensor-button">Show Average</button>
+                    <button id="updateColorsButton" class="sensor-button">Update Colors</button>
+                </div>
             </div>
-            <div class="sensor-selection-actions">
-                <button id="selectAllSensors" class="sensor-button">Select All</button>
-                <button id="deselectAllSensors" class="sensor-button">Deselect All</button>
-                <button id="averageSensors" class="sensor-button">Show Average</button>
-                
-                <!-- Temperature Color Range Controls -->
-                <div class="color-range-controls">
-                    <h4 class="color-range-title">Temperature Colors</h4>
-                    <div class="color-range-group">
-                        <div class="color-input-group">
-                            <label for="tempLowValue">Low (°F):</label>
-                            <input type="number" id="tempLowValue" value="40" min="0" max="120" class="range-input">
+            
+            <!-- Column 2: Temperature Color Range Controls -->
+            <div class="sensor-column">
+                <h4 class="column-title">Temperature Colors</h4>
+                <div class="color-range-group">
+                    <div class="color-input-group">
+                        <label for="tempLowValue">Low (°F):</label>
+                        <input type="number" id="tempLowValue" value="40" min="0" max="120" class="range-input">
+                        <div class="color-picker-container">
                             <input type="color" id="tempLowColor" value="#0064ff" class="color-picker">
-                            <input type="text" id="tempLowColorHex" value="#0064ff" class="color-hex" maxlength="7">
                         </div>
-                        <div class="color-input-group">
-                            <input type="checkbox" id="tempUseMid" class="mid-checkbox">
-                            <label for="tempMidValue">Mid (°F):</label>
-                            <input type="number" id="tempMidValue" value="70" min="0" max="120" class="range-input">
+                        <input type="text" id="tempLowColorHex" value="#0064ff" class="color-hex" maxlength="7">
+                    </div>
+                    <div class="color-input-group mid-row">
+                        <label for="tempMidValue">Mid (°F):</label>
+                        <input type="number" id="tempMidValue" value="70" min="0" max="120" class="range-input">
+                        <div class="color-picker-container">
                             <input type="color" id="tempMidColor" value="#800080" class="color-picker">
-                            <input type="text" id="tempMidColorHex" value="#800080" class="color-hex" maxlength="7">
+                            <input type="checkbox" id="tempUseMid" class="mid-checkbox" title="Enable mid-point color">
                         </div>
-                        <div class="color-input-group">
-                            <label for="tempHighValue">High (°F):</label>
-                            <input type="number" id="tempHighValue" value="85" min="0" max="120" class="range-input">
+                        <input type="text" id="tempMidColorHex" value="#800080" class="color-hex" maxlength="7">
+                    </div>
+                    <div class="color-input-group">
+                        <label for="tempHighValue">High (°F):</label>
+                        <input type="number" id="tempHighValue" value="85" min="0" max="120" class="range-input">
+                        <div class="color-picker-container">
                             <input type="color" id="tempHighColor" value="#ff0000" class="color-picker">
-                            <input type="text" id="tempHighColorHex" value="#ff0000" class="color-hex" maxlength="7">
                         </div>
+                        <input type="text" id="tempHighColorHex" value="#ff0000" class="color-hex" maxlength="7">
                     </div>
                 </div>
-                
-                <!-- Humidity Color Range Controls -->
-                <div class="color-range-controls">
-                    <h4 class="color-range-title">Humidity Colors</h4>
-                    <div class="color-range-group">
-                        <div class="color-input-group">
-                            <label for="humidLowValue">Low (%):</label>
-                            <input type="number" id="humidLowValue" value="0" min="0" max="100" class="range-input">
+            </div>
+            
+            <!-- Column 3: Humidity Color Range Controls -->
+            <div class="sensor-column">
+                <h4 class="column-title">Humidity Colors</h4>
+                <div class="color-range-group">
+                    <div class="color-input-group">
+                        <label for="humidLowValue">Low (%):</label>
+                        <input type="number" id="humidLowValue" value="0" min="0" max="100" class="range-input">
+                        <div class="color-picker-container">
                             <input type="color" id="humidLowColor" value="#ffffff" class="color-picker">
-                            <input type="text" id="humidLowColorHex" value="#ffffff" class="color-hex" maxlength="7">
                         </div>
-                        <div class="color-input-group">
-                            <input type="checkbox" id="humidUseMid" class="mid-checkbox">
-                            <label for="humidMidValue">Mid (%):</label>
-                            <input type="number" id="humidMidValue" value="50" min="0" max="100" class="range-input">
+                        <input type="text" id="humidLowColorHex" value="#ffffff" class="color-hex" maxlength="7">
+                    </div>
+                    <div class="color-input-group mid-row">
+                        <label for="humidMidValue">Mid (%):</label>
+                        <input type="number" id="humidMidValue" value="50" min="0" max="100" class="range-input">
+                        <div class="color-picker-container">
                             <input type="color" id="humidMidColor" value="#87ceeb" class="color-picker">
-                            <input type="text" id="humidMidColorHex" value="#87ceeb" class="color-hex" maxlength="7">
+                            <input type="checkbox" id="humidUseMid" class="mid-checkbox" title="Enable mid-point color">
                         </div>
-                        <div class="color-input-group">
-                            <label for="humidHighValue">High (%):</label>
-                            <input type="number" id="humidHighValue" value="100" min="0" max="100" class="range-input">
+                        <input type="text" id="humidMidColorHex" value="#87ceeb" class="color-hex" maxlength="7">
+                    </div>
+                    <div class="color-input-group">
+                        <label for="humidHighValue">High (%):</label>
+                        <input type="number" id="humidHighValue" value="100" min="0" max="100" class="range-input">
+                        <div class="color-picker-container">
                             <input type="color" id="humidHighColor" value="#1e40af" class="color-picker">
-                            <input type="text" id="humidHighColorHex" value="#1e40af" class="color-hex" maxlength="7">
                         </div>
+                        <input type="text" id="humidHighColorHex" value="#1e40af" class="color-hex" maxlength="7">
                     </div>
                 </div>
-                
-                <button id="updateColorsButton" class="sensor-button">Update Colors</button>
             </div>
         </div>
 
@@ -220,6 +636,57 @@
                 <canvas id="humidityChart"></canvas>
             </div>
         </div>
+        
+        <!-- Time Navigation Controls -->
+        <div class="time-navigation">
+            <!-- Left: Start Time Controls -->
+            <div class="time-control-section left">
+                <div class="time-control-group">
+                    <span class="time-control-label">Start Time</span>
+                    <div class="time-display">
+                        <span id="startTimeDisplay"></span>
+                    </div>
+                    <div class="time-buttons">
+                        <button id="startDayMinusBtn" class="time-btn">Day -</button>
+                        <button id="startHourMinusBtn" class="time-btn">Hour -</button>
+                        <button id="startHourPlusBtn" class="time-btn">Hour +</button>
+                        <button id="startDayPlusBtn" class="time-btn">Day +</button>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Center: Range Info and Points -->
+            <div class="time-control-section center">
+                <div class="range-info">
+                    <span id="currentTimeRange">Last 24 Hours (Live)</span>
+                </div>
+                <div class="points-control">
+                    <label for="points" class="control-label">Points:</label>
+                    <select id="points">
+                        <option value="100" selected>100 points</option>
+                        <option value="1000">1000 points</option>
+                        <option value="10000">10000 points</option>
+                    </select>
+                    <button id="goLiveBtn" class="go-live-btn">Go Live</button>
+                </div>
+            </div>
+            
+            <!-- Right: End Time Controls -->
+            <div class="time-control-section right">
+                <div class="time-control-group">
+                    <span class="time-control-label">End Time</span>
+                    <div class="time-display">
+                        <span id="endTimeDisplay"></span>
+                    </div>
+                    <div class="time-buttons">
+                        <button id="endDayMinusBtn" class="time-btn">Day -</button>
+                        <button id="endHourMinusBtn" class="time-btn">Hour -</button>
+                        <button id="endHourPlusBtn" class="time-btn">Hour +</button>
+                        <button id="endDayPlusBtn" class="time-btn">Day +</button>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 
     <script>
@@ -230,6 +697,12 @@
         let availableSensors = []; // To store available sensors
         let selectedSensors = []; // To store selected sensors
         let showAverage = false; // Whether to show average of selected sensors
+        
+        // Time navigation state
+        let isLiveMode = true;
+        let currentStartTime = null; // Will be set to previous whole hour
+        let currentEndTime = null; // Will be set to current time
+        let timeRangeHours = 1; // Current time range in hours
         
         // Customizable color settings
         let colorSettings = {
@@ -252,6 +725,131 @@
                 useMid: false
             }
         };
+
+        // Initialize time navigation
+        function initializeTimeNavigation() {
+            const now = new Date();
+            // End time is current time
+            currentEndTime = new Date(now);
+            // Start time is 1 hour before current time (changed from 24 hours)
+            currentStartTime = new Date(now.getTime() - (1 * 60 * 60 * 1000));
+            timeRangeHours = 1; // Start with 1 hour range instead of 24
+            
+            console.log('Time navigation initialized:');
+            console.log('Start:', currentStartTime.toISOString());
+            console.log('End:', currentEndTime.toISOString());
+            console.log('Range hours:', timeRangeHours);
+            
+            updateTimeDisplay();
+            updateNavigationButtons();
+        }
+        
+        // Update time display
+        function updateTimeDisplay() {
+            const timeRangeElement = document.getElementById('currentTimeRange');
+            const startTimeElement = document.getElementById('startTimeDisplay');
+            const endTimeElement = document.getElementById('endTimeDisplay');
+            
+            if (isLiveMode) {
+                const duration = timeRangeHours === 1 ? 'Last Hour' : 
+                               timeRangeHours === 24 ? 'Last 24 Hours' : 
+                               `Last ${timeRangeHours} Hours`;
+                timeRangeElement.textContent = `${duration} (Live)`;
+                endTimeElement.textContent = 'Now';
+            } else {
+                const duration = timeRangeHours === 1 ? '1 Hour' : 
+                               timeRangeHours === 24 ? '1 Day' : 
+                               `${timeRangeHours} Hours`;
+                timeRangeElement.textContent = `${duration} (Historical)`;
+                endTimeElement.textContent = currentEndTime.toLocaleString();
+            }
+            
+            startTimeElement.textContent = currentStartTime.toLocaleString();
+        }
+        
+        // Update navigation button states
+        function updateNavigationButtons() {
+            const now = new Date();
+            
+            // End time buttons - disabled if we're at or past current time
+            const canIncreaseEndTime = currentEndTime < now;
+            document.getElementById('endHourPlusBtn').disabled = !canIncreaseEndTime;
+            document.getElementById('endDayPlusBtn').disabled = !canIncreaseEndTime;
+            
+            // Start time buttons - disabled if start would be after end
+            const canIncreaseStartTime = (currentStartTime.getTime() + (60 * 60 * 1000)) < currentEndTime.getTime();
+            const canIncreaseStartTimeDay = (currentStartTime.getTime() + (24 * 60 * 60 * 1000)) < currentEndTime.getTime();
+            document.getElementById('startHourPlusBtn').disabled = !canIncreaseStartTime;
+            document.getElementById('startDayPlusBtn').disabled = !canIncreaseStartTimeDay;
+            
+            // Update button styles for disabled state
+            const buttons = ['endHourPlusBtn', 'endDayPlusBtn', 'startHourPlusBtn', 'startDayPlusBtn'];
+            buttons.forEach(btnId => {
+                const btn = document.getElementById(btnId);
+                btn.style.opacity = btn.disabled ? '0.5' : '1';
+            });
+            
+            // Update Go Live button state
+            updateGoLiveButton();
+        }
+        
+        // Go Live function
+        function goLive() {
+            isLiveMode = true;
+            const now = new Date();
+            
+            // Set up live mode: end time is now, start time is 1 hour before
+            currentEndTime = new Date(now);
+            currentStartTime = new Date(now.getTime() - (1 * 60 * 60 * 1000));
+            timeRangeHours = 1;
+            
+            console.log('Switched to live mode');
+            updateTimeDisplay();
+            updateNavigationButtons();
+            updateGoLiveButton();
+            updateCharts();
+        }
+        
+        // Update Go Live button state
+        function updateGoLiveButton() {
+            const goLiveBtn = document.getElementById('goLiveBtn');
+            if (isLiveMode) {
+                goLiveBtn.disabled = true;
+                goLiveBtn.textContent = 'Live';
+            } else {
+                goLiveBtn.disabled = false;
+                goLiveBtn.textContent = 'Go Live';
+            }
+        }
+        
+        // Individual time control functions
+        function adjustStartTime(hours) {
+            isLiveMode = false; // Exit live mode when manually adjusting
+            currentStartTime = new Date(currentStartTime.getTime() + (hours * 60 * 60 * 1000));
+            
+            // Recalculate time range
+            const timeRangeMs = currentEndTime.getTime() - currentStartTime.getTime();
+            timeRangeHours = timeRangeMs / (1000 * 60 * 60);
+            
+            updateTimeDisplay();
+            updateNavigationButtons();
+            updateGoLiveButton();
+            updateCharts();
+        }
+        
+        function adjustEndTime(hours) {
+            isLiveMode = false; // Exit live mode when manually adjusting
+            currentEndTime = new Date(currentEndTime.getTime() + (hours * 60 * 60 * 1000));
+            
+            // Recalculate time range
+            const timeRangeMs = currentEndTime.getTime() - currentStartTime.getTime();
+            timeRangeHours = timeRangeMs / (1000 * 60 * 60);
+            
+            updateTimeDisplay();
+            updateNavigationButtons();
+            updateGoLiveButton();
+            updateCharts();
+        }
 
         // Chart colors for different sensors (can add more as needed)
         const tempColors = [
@@ -448,8 +1046,9 @@
                     console.log('Sensors loaded successfully:', data);
                     availableSensors = data;
                     
-                    // Select all by default
-                    selectedSensors = availableSensors.map(s => s.id.toString());
+                    // Select all by default - use address as the identifier since sensors don't have id
+                    selectedSensors = availableSensors.map(s => s.address);
+                    console.log('Selected sensors:', selectedSensors);
                     
                     // Render sensor selection UI
                     renderSensorSelection();
@@ -468,7 +1067,7 @@
                         { id: 1, address: '0x38', type: 'AHT10', name: 'AHT10 0x38' },
                         { id: 2, address: '0x39', type: 'AHT10', name: 'AHT10 0x39' }
                     ];
-                    selectedSensors = availableSensors.map(s => s.id.toString());
+                    selectedSensors = availableSensors.map(s => s.address);
                     renderSensorSelection();
                     updateCharts();
                 });
@@ -485,7 +1084,7 @@
             }
             
             availableSensors.forEach((sensor, index) => {
-                const isSelected = selectedSensors.includes(sensor.id.toString());
+                const isSelected = selectedSensors.includes(sensor.address);
                 // Always use dark gray for accent color
                 const color = '#333';
                 
@@ -493,10 +1092,10 @@
                 wrapper.className = 'sensor-checkbox-wrapper';
                 
                 wrapper.innerHTML = `
-                    <input type="checkbox" id="sensor-${sensor.id}" class="sensor-checkbox" 
-                           ${isSelected ? 'checked' : ''} data-sensor-id="${sensor.id}"
+                    <input type="checkbox" id="sensor-${sensor.address}" class="sensor-checkbox" 
+                           ${isSelected ? 'checked' : ''} data-sensor-id="${sensor.address}"
                            style="accent-color: ${color};">
-                    <label for="sensor-${sensor.id}" class="sensor-label">
+                    <label for="sensor-${sensor.address}" class="sensor-label">
                         ${sensor.name || `${sensor.type} ${sensor.address}`}
                     </label>
                 `;
@@ -504,9 +1103,9 @@
                 const checkbox = wrapper.querySelector('.sensor-checkbox');
                 checkbox.addEventListener('change', function() {
                     if (this.checked) {
-                        selectedSensors.push(sensor.id.toString());
+                        selectedSensors.push(sensor.address);
                     } else {
-                        selectedSensors = selectedSensors.filter(id => id !== sensor.id.toString());
+                        selectedSensors = selectedSensors.filter(id => id !== sensor.address);
                     }
                     updateCharts();
                 });
@@ -517,7 +1116,7 @@
 
         // Function to handle "Select All" button
         function selectAllSensors() {
-            selectedSensors = availableSensors.map(s => s.id.toString());
+            selectedSensors = availableSensors.map(s => s.address);
             document.querySelectorAll('.sensor-checkbox').forEach(checkbox => {
                 checkbox.checked = true;
             });
@@ -676,14 +1275,41 @@
                     maintainAspectRatio: false,
                     parsing: false,
                     spanGaps: false,
+                    animation: false, // Disable all animations
+                    animations: false, // Disable all animations
+                    transitions: {
+                        active: {
+                            animation: {
+                                duration: 0
+                            }
+                        },
+                        resize: {
+                            animation: {
+                                duration: 0
+                            }
+                        },
+                        show: {
+                            animation: {
+                                duration: 0
+                            }
+                        },
+                        hide: {
+                            animation: {
+                                duration: 0
+                            }
+                        }
+                    },
                     interaction: {
                         mode: 'nearest',
                         intersect: false
                     },
                     elements: {
                         point: {
-                            radius: 3,
-                            hoverRadius: 5
+                            radius: 3, // Smaller default radius
+                            hoverRadius: 5, // Smaller hover radius
+                            pointStyle: 'circle', // Use hollow circles
+                            backgroundColor: 'transparent', // Make points hollow
+                            borderWidth: 2 // Thicker border for hollow rings
                         },
                         line: {
                             tension: 0,
@@ -785,6 +1411,7 @@
         // Function to fetch and display data for a chart
         function fetchAndUpdateChart(url, type, timeRange, startDateMs, endDateMs) {
             if (selectedSensors.length === 0) {
+                console.log('No sensors selected, clearing chart');
                 // Clear chart if no sensors selected
                 if (type === 'temperature' && tempChart) {
                     tempChart.destroy();
@@ -803,11 +1430,14 @@
             // Add selected sensors to URL
             const sensorIds = selectedSensors.join(',');
             url.searchParams.set('sensors', sensorIds);
+            console.log(`Fetching data for sensors: ${sensorIds}`);
             
             // Add average flag if needed
             if (showAverage) {
                 url.searchParams.set('average', 'true');
             }
+
+            console.log(`Fetching URL: ${url.toString()}`);
 
             fetch(url)
                 .then(response => {
@@ -819,29 +1449,35 @@
                 .then(data => {
                     console.log('API Response:', data);
                     
-                    // Destroy existing chart if it exists
-                    if (type === 'temperature' && tempChart) {
-                        tempChart.destroy();
-                        tempChart = null;
-                    } else if (type === 'humidity' && humidityChart) {
-                        humidityChart.destroy();
-                        humidityChart = null;
+                    // Get existing chart reference
+                    let chart = type === 'temperature' ? tempChart : humidityChart;
+                    
+                    // If chart doesn't exist, create it
+                    if (!chart) {
+                        // Recreate canvas to avoid reuse issues
+                        const canvasId = type === 'temperature' ? 'tempChart' : 'humidityChart';
+                        const container = document.getElementById(canvasId).parentNode;
+                        container.innerHTML = `<canvas id="${canvasId}"></canvas>`;
+                        const ctx = document.getElementById(canvasId).getContext('2d');
+                        
+                        // Create new chart
+                        chart = createChart(ctx, type, timeRange, startDateMs, endDateMs);
+                        
+                        if (type === 'temperature') {
+                            tempChart = chart;
+                        } else {
+                            humidityChart = chart;
+                        }
                     }
                     
-                    // Recreate canvas to avoid reuse issues
-                    const canvasId = type === 'temperature' ? 'tempChart' : 'humidityChart';
-                    const container = document.getElementById(canvasId).parentNode;
-                    container.innerHTML = `<canvas id="${canvasId}"></canvas>`;
-                    const ctx = document.getElementById(canvasId).getContext('2d');
+                    // Clear existing datasets
+                    chart.data.datasets = [];
                     
-                    // Create new chart
-                    const chart = createChart(ctx, type, timeRange, startDateMs, endDateMs);
+                    // Update time range - ensure this happens before processing data
+                    chart.options.scales.x.min = startDateMs;
+                    chart.options.scales.x.max = endDateMs;
                     
-                    if (type === 'temperature') {
-                        tempChart = chart;
-                    } else {
-                        humidityChart = chart;
-                    }
+                    console.log(`Chart time range updated: ${new Date(startDateMs).toISOString()} to ${new Date(endDateMs).toISOString()}`);
                     
                     // No data case
                     if (!data || data.length === 0) {
@@ -849,10 +1485,13 @@
                         if (startDateMs && endDateMs) {
                             chart.options.scales.x.min = startDateMs;
                             chart.options.scales.x.max = endDateMs;
-                            chart.update();
+                            chart.update('none'); // Update without animation for immediate response
                         }
                         
                         // Display "No data" message
+                        const canvasId = type === 'temperature' ? 'tempChart' : 'humidityChart';
+                        const container = document.getElementById(canvasId).parentNode;
+                        const ctx = document.getElementById(canvasId).getContext('2d');
                         ctx.font = '16px Arial';
                         ctx.fillStyle = '#e8e6e3';
                         ctx.textAlign = 'center';
@@ -887,11 +1526,12 @@
                                 label: `Average ${type === 'temperature' ? 'Temperature (°F)' : 'Humidity (%)'}`,
                                 data: dataPoints,
                                 borderColor: 'rgba(255, 255, 255, 0.3)', // Light border for connection lines
-                                backgroundColor: pointColors, // Use value-based colors for points
-                                pointBackgroundColor: pointColors, // Ensure points use the colors
-                                pointBorderColor: pointColors, // Border color matches background
-                                pointRadius: 4, // Slightly larger points to show colors better
-                                pointHoverRadius: 6,
+                                backgroundColor: 'transparent', // Transparent background for hollow rings
+                                pointBackgroundColor: 'transparent', // Hollow points
+                                pointBorderColor: pointColors, // Border color matches value-based colors
+                                pointBorderWidth: 2, // Thicker border for visibility
+                                pointRadius: 3, // Consistent smaller radius
+                                pointHoverRadius: 5, // Consistent smaller hover radius
                                 tension: 0.1,
                                 fill: false, // Don't fill the area, just show colored points
                                 showLine: false // Remove connecting lines
@@ -968,7 +1608,7 @@
                         
                         // Create datasets for each sensor
                         Object.keys(sensorGroups).forEach((sensorId, index) => {
-                            const sensor = availableSensors.find(s => s.id.toString() === sensorId.toString()) || 
+                            const sensor = availableSensors.find(s => s.address === sensorId) || 
                                         { name: `Sensor ${sensorId}`, type: 'unknown' };
                             // Use red shades for temperature, blue for humidity
                             let colorIndex = index;
@@ -988,19 +1628,20 @@
                                 label: `${sensor.name || `${sensor.type} ${sensor.address}`}${type === 'temperature' ? ' Temperature (°F)' : ' Humidity (%)'}`,
                                 data: sortedData,
                                 borderColor: color.border, // Keep sensor-specific border color for lines
-                                backgroundColor: pointColors, // Use value-based colors for points
-                                pointBackgroundColor: pointColors, // Ensure points use the colors
-                                pointBorderColor: pointColors, // Border color matches background
-                                pointRadius: 4, // Slightly larger points to show colors better
-                                pointHoverRadius: 6,
+                                backgroundColor: 'transparent', // Transparent background for hollow rings
+                                pointBackgroundColor: 'transparent', // Hollow points
+                                pointBorderColor: pointColors, // Border color matches value-based colors
+                                pointBorderWidth: 2, // Thicker border for visibility
+                                pointRadius: 3, // Consistent smaller radius
+                                pointHoverRadius: 5, // Consistent smaller hover radius
                                 showLine: false, // Remove connecting lines
                                 fill: false
                             });
                         });
                     }
                     
-                    // Update the chart
-                    chart.update();
+                    // Update the chart instantly without animation
+                    chart.update('none'); // Use 'none' for instant updates
                 })
                 .catch(error => {
                     console.error(`Error fetching ${type} data:`, error);
@@ -1018,34 +1659,33 @@
         }
 
         function updateCharts() {
-            const timeRange = document.getElementById('timeRange').value;
             const points = document.getElementById('points').value;
-            const now = new Date();
-            const startDate = new Date(now.getTime() - (timeRange * 3600 * 1000)).toISOString();
             
-            console.log(`Updating charts for timeRange: ${timeRange} hours, points: ${points}`);
+            // Use current time navigation state
+            const startDate = currentStartTime.toISOString();
+            const endDate = currentEndTime.toISOString();
+            const timeRangeMs = currentEndTime.getTime() - currentStartTime.getTime();
+            const timeRangeHours = timeRangeMs / (1000 * 60 * 60);
             
-            // Important: Get the time range in milliseconds for chart min/max calculation
-            const timeRangeMs = timeRange * 3600 * 1000;
-            const endDateMs = now.getTime();
-            const startDateMs = endDateMs - timeRangeMs;
+            console.log(`Updating charts for timeRange: ${timeRangeHours} hours, points: ${points}, live mode: ${isLiveMode}`);
+            console.log(`Time range: ${startDate} to ${endDate}`);
 
             // Create URLs for API calls
             const tempUrl = new URL('/api/readings/binned', window.location.origin);
             tempUrl.searchParams.set('startDate', startDate);
-            tempUrl.searchParams.set('hours', timeRange);
+            tempUrl.searchParams.set('hours', timeRangeHours);
             tempUrl.searchParams.set('points', points);
             tempUrl.searchParams.set('type', 'temperature');
             
             const humidityUrl = new URL('/api/readings/binned', window.location.origin);
             humidityUrl.searchParams.set('startDate', startDate);
-            humidityUrl.searchParams.set('hours', timeRange);
+            humidityUrl.searchParams.set('hours', timeRangeHours);
             humidityUrl.searchParams.set('points', points);
             humidityUrl.searchParams.set('type', 'humidity');
             
             // Fetch and update both charts
-            fetchAndUpdateChart(tempUrl, 'temperature', timeRange, startDateMs, endDateMs);
-            fetchAndUpdateChart(humidityUrl, 'humidity', timeRange, startDateMs, endDateMs);
+            fetchAndUpdateChart(tempUrl, 'temperature', timeRangeHours, currentStartTime.getTime(), currentEndTime.getTime());
+            fetchAndUpdateChart(humidityUrl, 'humidity', timeRangeHours, currentStartTime.getTime(), currentEndTime.getTime());
         }
 
         // Custom initialization for this page
@@ -1075,25 +1715,88 @@
             fetchSensors();
 
             // Add click handlers for buttons
-            document.getElementById('updateButton').addEventListener('click', () => {
-                console.log('Update button clicked');
-                updateCharts();
-            });
-            
-            document.getElementById('selectAllSensors').addEventListener('click', () => {
-                console.log('Select All button clicked');
-                selectAllSensors();
-            });
-            
-            document.getElementById('deselectAllSensors').addEventListener('click', () => {
-                console.log('Deselect All button clicked');
-                deselectAllSensors();
-            });
-            
             document.getElementById('averageSensors').addEventListener('click', () => {
                 console.log('Average button clicked');
                 toggleAverageMode();
             });
+            
+            // Add event listener for update colors button
+            document.getElementById('updateColorsButton').addEventListener('click', () => {
+                console.log('Update Colors button clicked');
+                updateColorSettings();
+            });
+            
+            // Add time control button event listeners
+            document.getElementById('startDayMinusBtn').addEventListener('click', () => {
+                adjustStartTime(-24);
+            });
+            
+            document.getElementById('startHourMinusBtn').addEventListener('click', () => {
+                adjustStartTime(-1);
+            });
+            
+            document.getElementById('startHourPlusBtn').addEventListener('click', () => {
+                adjustStartTime(1);
+            });
+            
+            document.getElementById('startDayPlusBtn').addEventListener('click', () => {
+                adjustStartTime(24);
+            });
+            
+            document.getElementById('endDayMinusBtn').addEventListener('click', () => {
+                adjustEndTime(-24);
+            });
+            
+            document.getElementById('endHourMinusBtn').addEventListener('click', () => {
+                adjustEndTime(-1);
+            });
+            
+            document.getElementById('endHourPlusBtn').addEventListener('click', () => {
+                adjustEndTime(1);
+            });
+            
+            document.getElementById('endDayPlusBtn').addEventListener('click', () => {
+                adjustEndTime(24);
+            });
+            
+            // Add event listener for points dropdown to auto-update charts
+            document.getElementById('points').addEventListener('change', () => {
+                console.log('Points value changed, updating charts');
+                updateCharts();
+            });
+            
+            // Add event listener for Go Live button
+            document.getElementById('goLiveBtn').addEventListener('click', () => {
+                console.log('Go Live button clicked');
+                goLive();
+            });
+            
+            // Set up live data streaming (update every 10 seconds when in live mode)
+            setInterval(() => {
+                if (isLiveMode) {
+                    // Update end time to current time
+                    const now = new Date();
+                    currentEndTime = new Date(now);
+                    // Keep the same time range by updating start time too
+                    currentStartTime = new Date(now.getTime() - (timeRangeHours * 60 * 60 * 1000));
+                    
+                    // Ensure timeRangeHours is properly maintained (should stay the same in live mode)
+                    const calculatedRangeMs = currentEndTime.getTime() - currentStartTime.getTime();
+                    const calculatedRangeHours = calculatedRangeMs / (1000 * 60 * 60);
+                    
+                    console.log('Live mode update:', {
+                        start: currentStartTime.toISOString(),
+                        end: currentEndTime.toISOString(),
+                        rangeHours: timeRangeHours,
+                        calculatedRangeHours: calculatedRangeHours
+                    });
+                    
+                    updateTimeDisplay();
+                    updateNavigationButtons();
+                    updateGoLiveButton();
+                    updateCharts();
+                }
+            }, 10000);
             
             // Set up color input synchronization
             syncColorInputs('tempLowColor', 'tempLowColorHex');
@@ -1103,14 +1806,17 @@
             syncColorInputs('humidMidColor', 'humidMidColorHex');
             syncColorInputs('humidHighColor', 'humidHighColorHex');
             
-            // Add event listener for update colors button
-            document.getElementById('updateColorsButton').addEventListener('click', () => {
-                console.log('Update Colors button clicked');
-                updateColorSettings();
-            });
-            
             // Request timezone
             socket.emit('getTimezone');
+            
+            // Initialize time navigation
+            initializeTimeNavigation();
+            
+            // Initialize Go Live button state
+            updateGoLiveButton();
+            
+            // Load initial chart data
+            updateCharts();
             
             console.log('Graph page initialized');
         }
