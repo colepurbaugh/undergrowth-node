@@ -1,10 +1,11 @@
-# DietPi Configuration v5 for Undergrowth Node
+# DietPi Configuration v1.0 (Stable) for Undergrowth Node
 
-This directory contains the configuration files and automation scripts for setting up Raspberry Pi nodes running the undergrowth-node application using DietPi v5.
+This directory contains the configuration files and automation scripts for setting up Raspberry Pi nodes running the undergrowth-node application using DietPi v1.0.
 
 ## Overview
 
-DietPi v5 represents a significant update from v4, introducing several improvements:
+DietPi v1.0 represents a stable configuration with proven reliability:
+- Based on working backup configuration from successful deployments
 - Automated willa user creation for secure rsync access
 - Enhanced networking service hang detection and recovery
 - Improved sensor initialization and error handling
@@ -41,7 +42,11 @@ DietPi v5 represents a significant update from v4, introducing several improveme
 After flashing, the SD card will have a boot partition accessible from your computer. Copy the configuration files from this directory:
 
 1. Copy `dietpi.txt` to the root of the SD card (replace the existing file)
-2. Copy `Automation_Custom_Script.sh` to the root of the SD card
+2. Copy `config.txt` to the root of the SD card (replace the existing file)
+3. Copy `dietpi-wifi.txt` to the root of the SD card and edit WiFi credentials:
+   - Replace `'your_ssid'` with your WiFi network name
+   - Replace `'your_password'` with your WiFi password
+4. Copy `Automation_Custom_Script.sh` to the root of the SD card
 
 ### Key Configuration Decisions
 
@@ -52,7 +57,7 @@ After flashing, the SD card will have a boot partition accessible from your comp
 
 #### SSH Access
 - **File**: `dietpi.txt` 
-- **Settings**: `AUTO_SETUP_SSH_SERVER_INDEX=1` (Dropbear SSH)
+- **Settings**: `AUTO_SETUP_SSH_SERVER_INDEX=-1` (Dropbear SSH)
 - **Why**: Dropbear is lightweight and sufficient for our needs
 
 #### Automatic Installation
@@ -62,7 +67,7 @@ After flashing, the SD card will have a boot partition accessible from your comp
 
 #### Software Selection
 - **File**: `dietpi.txt`
-- **Settings**: Node.js (ID 9), Git (ID 17), I2C support
+- **Settings**: No pre-installed software (handled by automation script)
 - **Why**: Minimal installation with only required components
 
 ## Step 4: Installation Process
@@ -120,14 +125,14 @@ We implemented a dual-user approach for security:
 - **Username**: `willa`
 - **Password**: `12grow34`
 - **Purpose**: Provides read-only access to database files for server synchronization
-- **Access Method**: Bind mount to `/home/willa/git/undergrowth-node/database/`
+- **Access Method**: Symbolic link to `/home/dietpi/git/undergrowth-node/database/`
 
 ### Why This Approach?
 
 1. **Security Isolation**: Server can access database files without knowing dietpi credentials
 2. **Principle of Least Privilege**: willa user only has access to database directory
 3. **Standardization**: All nodes use the same willa credentials for consistency
-4. **No Traversal Risk**: Bind mount prevents access to parent directories
+4. **No Traversal Risk**: Symbolic linking prevents access to parent directories
 
 ### Database File Access
 
@@ -139,7 +144,7 @@ willa@<node-ip>:~/git/undergrowth-node/database/node-<node-id>-data.db
 This is achieved through:
 1. Creating willa user with home directory `/home/willa`
 2. Creating directory structure: `/home/willa/git/undergrowth-node/`
-3. Bind mounting: `/home/dietpi/git/undergrowth-node/database/` → `/home/willa/git/undergrowth-node/database/`
+3. Symbolic linking: `/home/dietpi/git/undergrowth-node/database/` → `/home/willa/git/undergrowth-node/database/`
 4. Setting read-only permissions for willa user
 
 ### Service Configuration
@@ -212,4 +217,20 @@ For issues or questions:
 - Default dietpi password is set to `dietpi` for initial setup
 - Change default passwords after installation for production use
 - willa user has minimal privileges (read-only database access)
-- SSH is enabled by default - consider key-based authentication for production 
+- SSH is enabled by default - consider key-based authentication for production
+
+## Critical Configuration Notes
+
+### I2C Configuration
+The `config.txt` file includes a critical I2C configuration line:
+```
+dtparam=i2c=on
+```
+This line is essential for sensor operation and must not be removed.
+
+### CPU Frequency Settings
+The configuration uses conservative CPU settings for stability:
+- `arm_freq=1000` (commented out - uses default)
+- `core_freq=400` (commented out - uses default)
+
+These settings have been tested for reliability across multiple deployments. 
