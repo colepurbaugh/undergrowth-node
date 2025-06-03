@@ -1,53 +1,32 @@
-# DietPi Configuration v1.1 for Undergrowth Node
+# DietPi Configuration v1.2 (Stable Hybrid) for Undergrowth Node
 
-This directory contains the configuration files and automation scripts for setting up Raspberry Pi nodes running the undergrowth-node application using DietPi v1.1.
+This directory contains the configuration files and automation scripts for setting up Raspberry Pi nodes running the undergrowth-node application using DietPi v1.2.
 
 ## Overview
 
-DietPi v1.1 represents an improvement over v1.0 with a split automation script architecture:
-- **Pre-Script**: Handles hardware configuration and hostname setting before DietPi's package installation
-- **Post-Script**: Handles application installation and service configuration after DietPi's setup
+DietPi v1.2 represents a stable hybrid approach that combines the proven reliability of v1.0 with critical improvements:
+- **Proven single-script architecture** from v1.0 (reliable)
+- **Critical I2C configuration** from working backup
+- **Higher CPU frequencies** for better stability
+- **Lessons learned** from v1.1 split-script failures
 - Automated willa user creation for secure rsync access
 - Enhanced networking service hang detection and recovery
 - Improved sensor initialization and error handling
 - Better pigpio daemon management
-- Streamlined installation process with proper timing
 
-## Split Script Architecture
+## Why v1.2 Instead of v1.1?
 
-### Why Split the Scripts?
+### v1.1 Split-Script Issues:
+- PreScript modifying `/boot/dietpi.txt` during DietPi setup caused conflicts
+- Redundant hardware configuration conflicted with `config.txt`
+- Complex timing dependencies made troubleshooting difficult
+- "FAILED Unknown Install state/First run setup failed" errors
 
-The original single script had timing issues:
-1. **Package Installation Timing**: Running `apt-get` after DietPi had already completed its package phase
-2. **Hardware Configuration**: Modifying `/boot/config.txt` required a reboot to take effect
-3. **Mixed Responsibilities**: System preparation and application setup in one script
-
-### New Architecture
-
-#### Automation_Custom_PreScript.sh (Pre-Installation)
-**Runs BEFORE DietPi's package installation and networking setup**
-
-Handles:
-- Hardware configuration (`config.txt` modifications for GPIO/SPI/I2C)
-- Hostname setting based on MAC address
-- System-level preparations that need to happen before package installation
-
-#### Automation_Custom_Script.sh (Post-Installation)  
-**Runs AFTER DietPi's package installation and networking setup**
-
-Handles:
-- Pigpio library compilation and installation
-- User creation and permissions (willa user)
-- Application installation (NVM, Node.js, undergrowth-node)
-- Service setup and configuration
-
-#### dietpi.txt Configuration
-**Defines packages for DietPi to install during its package phase**
-
-Uses `AUTO_SETUP_APT_INSTALLS` to install:
-- git, build-essential, unzip, wget
-- i2c-tools, htop
-- python3-distutils, python3-dev, sqlite3
+### v1.2 Hybrid Approach:
+- **Keeps proven v1.0 single-script architecture**
+- **Incorporates critical fixes** (I2C config, CPU frequencies)
+- **Simpler and more reliable** than split-script approach
+- **Easier to troubleshoot** when issues occur
 
 ## What You'll Need
 
@@ -79,8 +58,11 @@ Uses `AUTO_SETUP_APT_INSTALLS` to install:
 After flashing, the SD card will have a boot partition accessible from your computer. Copy the configuration files from this directory:
 
 1. Copy `dietpi.txt` to the root of the SD card (replace the existing file)
-2. Copy `Automation_Custom_PreScript.sh` to the root of the SD card
-3. Copy `Automation_Custom_Script.sh` to the root of the SD card
+2. Copy `config.txt` to the root of the SD card (replace the existing file)
+3. Copy `dietpi-wifi.txt` to the root of the SD card and edit WiFi credentials:
+   - Replace `'your_ssid'` with your WiFi network name
+   - Replace `'your_password'` with your WiFi password
+4. Copy `Automation_Custom_Script.sh` to the root of the SD card
 
 ### Key Configuration Decisions
 
@@ -99,23 +81,16 @@ After flashing, the SD card will have a boot partition accessible from your comp
 - **Settings**: `AUTO_SETUP_AUTOMATED=1`, `AUTO_SETUP_GLOBAL_PASSWORD=dietpi`
 - **Why**: Enables fully automated installation without user interaction
 
-#### Package Installation
+#### Software Selection
 - **File**: `dietpi.txt`
-- **Settings**: `AUTO_SETUP_APT_INSTALLS=git build-essential unzip wget i2c-tools htop python3-distutils python3-dev sqlite3`
-- **Why**: Let DietPi handle package installation during its optimized package phase
+- **Settings**: No pre-installed software (handled by automation script)
+- **Why**: Minimal installation with only required components
 
 ## Step 4: Installation Process
 
 1. Insert the configured SD card into your Raspberry Pi
 2. Power on the Pi (no monitor or keyboard needed)
 3. Wait for the installation to complete (15-30 minutes)
-
-### Installation Flow
-
-1. **Pre-Script Phase**: Hardware configuration and hostname setting
-2. **DietPi Package Phase**: System packages installed by DietPi
-3. **Post-Script Phase**: Application installation and service setup
-4. **Automatic Reboot**: System reboots to finalize all configurations
 
 ### Known Issue: Networking Service Hang
 
@@ -243,7 +218,22 @@ This is achieved through:
 ## Version History
 
 - **v1.0**: Stable single-script configuration with proven reliability
-- **v1.1**: Split-script architecture with improved timing and package management
+- **v1.1**: Split-script architecture (experimental, had reliability issues)
+- **v1.2**: Stable hybrid combining v1.0 reliability with critical improvements
+
+## Lessons Learned
+
+### What Works:
+- Single automation script after DietPi setup
+- Hardware configuration pre-defined in `config.txt`
+- Manual package installation with error handling
+- Simple, sequential approach
+
+### What Doesn't Work:
+- Modifying DietPi configuration files during setup
+- Split-script timing dependencies
+- Redundant hardware configuration
+- Complex automation architectures
 
 ## Support
 
@@ -258,4 +248,27 @@ For issues or questions:
 - Default dietpi password is set to `dietpi` for initial setup
 - Change default passwords after installation for production use
 - willa user has minimal privileges (read-only database access)
-- SSH is enabled by default - consider key-based authentication for production 
+- SSH is enabled by default - consider key-based authentication for production
+
+## Critical Configuration Notes
+
+### I2C Configuration
+The `config.txt` file includes a critical I2C configuration line:
+```
+dtparam=i2c=on
+```
+This line is essential for sensor operation and must not be removed.
+
+### CPU Frequency Settings
+The configuration uses proven stable CPU settings:
+- `arm_freq=1000` (commented out - uses default)
+- `core_freq=400` (commented out - uses default)
+
+These settings have been tested for reliability across multiple deployments.
+
+### Single Script Architecture
+Unlike v1.1's split-script approach, v1.2 uses a single automation script that:
+- Runs after DietPi completes its setup
+- Handles all custom installation tasks in sequence
+- Provides better error handling and recovery
+- Matches the proven v1.0 approach
