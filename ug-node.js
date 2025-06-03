@@ -398,7 +398,6 @@ async function initAndRead() {
                             }
                         }
                         if (io) io.emit('sensorData', { system: systemInfoData.system, databaseTimezone, ...sensorDataForClients });
-                        publishSensorData(data1, data2, sensorReadings);
                     });
                 }
             } catch (error) {
@@ -410,9 +409,10 @@ async function initAndRead() {
     }
 }
 
-function publishSensorData(sensor1Data, sensor2Data, configuredSensorData = {}) {
-    mqttController.publishSensorData(sensor1Data, sensor2Data, configuredSensorData);
-}
+// Sensor data is only published via MQTT when explicitly requested through data-get commands
+// function publishSensorData(sensor1Data, sensor2Data, configuredSensorData = {}) {
+//     mqttController.publishSensorData(sensor1Data, sensor2Data, configuredSensorData);
+// }
 
 function broadcastSafetyState() {
     configDb.all('SELECT key, value FROM safety_state', [], (err, rows) => {
@@ -614,19 +614,6 @@ async function initializeMqtt() {
             await mqttController.subscribe(`undergrowth/server/commands/${nodeId}/data/get`);
             
             console.log('MQTT successfully initialized');
-            
-            // Schedule periodic status updates when connected
-            setInterval(() => {
-                try {
-                    if (mqttController.getBrokerInfo().connected) {
-                        publishNodeStatus().catch(err => {
-                            console.warn('Error during scheduled node status publish:', err.message);
-                        });
-                    }
-                } catch (error) {
-                    console.warn('Error checking MQTT status for scheduled update:', error.message);
-                }
-            }, 60000); // Every minute
             
             return true;
         } else {
