@@ -450,5 +450,56 @@ module.exports = function (app, configDb, dataDb) {
         }
     });
 
+    // API Endpoint to get event triggers for graph markers
+    app.get('/api/event-triggers', (req, res) => {
+        const startDate = req.query.startDate;
+        const endDate = req.query.endDate;
+        
+        if (!startDate || !endDate) {
+            return res.status(400).json({ error: 'startDate and endDate are required' });
+        }
+        
+        // Get event triggers from the database
+        configDb.all(
+            'SELECT * FROM event_triggers WHERE triggered_at >= ? AND triggered_at <= ? ORDER BY triggered_at ASC',
+            [startDate, endDate],
+            (err, rows) => {
+                if (err) {
+                    console.error('API: Error fetching event triggers:', err);
+                    return res.status(500).json({ error: 'Failed to fetch event triggers' });
+                }
+                
+                // Transform the data for the frontend
+                const triggers = rows.map(row => ({
+                    id: row.id,
+                    timestamp: row.triggered_at,
+                    gpio: row.gpio,
+                    pwm_value: row.pwm_value,
+                    trigger_type: row.trigger_type,
+                    sensor_address: row.sensor_address,
+                    sensor_value: row.sensor_value,
+                    threshold_value: row.threshold_value
+                }));
+                
+                console.log(`API: Returning ${triggers.length} event triggers for date range ${startDate} to ${endDate}`);
+                res.json(triggers);
+            }
+        );
+    });
+    
+    // API Endpoint to get error logs for graph markers  
+    app.get('/api/error-logs', (req, res) => {
+        const startDate = req.query.startDate;
+        const endDate = req.query.endDate;
+        
+        if (!startDate || !endDate) {
+            return res.status(400).json({ error: 'startDate and endDate are required' });
+        }
+        
+        // For now, return empty array since we don't have error logging table yet
+        // TODO: Create error_logs table and implement error logging
+        res.json([]);
+    });
+
     console.log('API Controller: API routes initialized.');
 };

@@ -122,6 +122,37 @@ configDb = new sqlite3.Database('./database/ug-config.db', (err) => {
     }
     configDb.serialize(() => {
         configDb.run(`CREATE TABLE IF NOT EXISTS events (id INTEGER PRIMARY KEY AUTOINCREMENT, gpio INTEGER NOT NULL, time TEXT NOT NULL, pwm_value INTEGER NOT NULL, enabled INTEGER DEFAULT 1)`);
+        
+        configDb.run('INSERT OR IGNORE INTO safety_state (key, value) VALUES (?, 0)', ['emergency_stop']);
+        configDb.run('INSERT OR IGNORE INTO safety_state (key, value) VALUES (?, 1)', ['normal_enable']);
+        configDb.run('INSERT OR IGNORE INTO system_state (key, value) VALUES (?, 1)', ['mode']);
+
+        // Add missing columns for threshold events (these will be ignored if columns already exist)
+        configDb.run(`ALTER TABLE events ADD COLUMN trigger_type TEXT DEFAULT 'time'`, (err) => {
+            if (err && !err.message.includes('duplicate column')) console.error('Error adding trigger_type column:', err);
+        });
+        configDb.run(`ALTER TABLE events ADD COLUMN sensor_address TEXT`, (err) => {
+            if (err && !err.message.includes('duplicate column')) console.error('Error adding sensor_address column:', err);
+        });
+        configDb.run(`ALTER TABLE events ADD COLUMN sensor_type TEXT`, (err) => {
+            if (err && !err.message.includes('duplicate column')) console.error('Error adding sensor_type column:', err);
+        });
+        configDb.run(`ALTER TABLE events ADD COLUMN threshold_condition TEXT`, (err) => {
+            if (err && !err.message.includes('duplicate column')) console.error('Error adding threshold_condition column:', err);
+        });
+        configDb.run(`ALTER TABLE events ADD COLUMN threshold_value REAL`, (err) => {
+            if (err && !err.message.includes('duplicate column')) console.error('Error adding threshold_value column:', err);
+        });
+        configDb.run(`ALTER TABLE events ADD COLUMN cooldown_minutes INTEGER DEFAULT 5`, (err) => {
+            if (err && !err.message.includes('duplicate column')) console.error('Error adding cooldown_minutes column:', err);
+        });
+        configDb.run(`ALTER TABLE events ADD COLUMN last_triggered_at DATETIME`, (err) => {
+            if (err && !err.message.includes('duplicate column')) console.error('Error adding last_triggered_at column:', err);
+        });
+        configDb.run(`ALTER TABLE events ADD COLUMN priority INTEGER DEFAULT 1`, (err) => {
+            if (err && !err.message.includes('duplicate column')) console.error('Error adding priority column:', err);
+        });
+        
         configDb.run(`CREATE TABLE IF NOT EXISTS manual_pwm_states (pin INTEGER PRIMARY KEY, value INTEGER DEFAULT 0, enabled INTEGER DEFAULT 0, last_modified DATETIME DEFAULT CURRENT_TIMESTAMP)`);
         configDb.run(`CREATE TABLE IF NOT EXISTS auto_pwm_states (pin INTEGER PRIMARY KEY, value INTEGER DEFAULT 0, enabled INTEGER DEFAULT 0, last_modified DATETIME DEFAULT CURRENT_TIMESTAMP)`);
         configDb.run(`CREATE TABLE IF NOT EXISTS sensor_config (
@@ -139,6 +170,18 @@ configDb = new sqlite3.Database('./database/ug-config.db', (err) => {
         configDb.run(`CREATE TABLE IF NOT EXISTS timezone (key TEXT PRIMARY KEY, value TEXT DEFAULT 'America/Los_Angeles')`);
         configDb.run(`CREATE TABLE IF NOT EXISTS sequence_tracker (key TEXT PRIMARY KEY, value INTEGER DEFAULT 0)`);
         configDb.run(`CREATE TABLE IF NOT EXISTS server_sync (server_id TEXT PRIMARY KEY, last_sync_time DATETIME, last_sequence INTEGER DEFAULT 0, last_seen DATETIME)`);
+        configDb.run(`CREATE TABLE IF NOT EXISTS event_triggers (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            event_id INTEGER,
+            triggered_at DATETIME,
+            gpio INTEGER,
+            pwm_value INTEGER,
+            trigger_type TEXT,
+            sensor_address TEXT,
+            sensor_value REAL,
+            threshold_value REAL,
+            FOREIGN KEY (event_id) REFERENCES events (id)
+        )`);
 
         configDb.run('INSERT OR IGNORE INTO sequence_tracker (key, value) VALUES (?, ?)', ['last_sequence', 0]);
         configDb.run('INSERT OR IGNORE INTO timezone (key, value) VALUES (?, ?)', ['timezone', 'America/Los_Angeles']);
@@ -342,6 +385,12 @@ async function initAndRead() {
                             dataDb.run('INSERT INTO sensor_readings (timestamp, address, type, value, sequence_id) VALUES (?, ?, ?, ?, ?)',[timestamp, '0x38', 'temperature', data1.temperature, seqId1]);
                             dataDb.run('INSERT INTO sensor_readings (timestamp, address, type, value, sequence_id) VALUES (?, ?, ?, ?, ?)',[timestamp, '0x38', 'humidity', data1.humidity, seqId3]);
                         }
+                        // Update legacy sensor reading for threshold checking
+                        if (!sensors['0x38']) {
+                            sensors['0x38'] = { lastReading: data1, config: { calibration_scale: 1, calibration_offset: 0 } };
+                        } else {
+                            sensors['0x38'].lastReading = data1;
+                        }
                     } catch (seqErr) {
                         console.error('Error getting sequence IDs for sensor 0x38:', seqErr);
                     }
@@ -356,8 +405,23 @@ async function initAndRead() {
                             dataDb.run('INSERT INTO sensor_readings (timestamp, address, type, value, sequence_id) VALUES (?, ?, ?, ?, ?)',[timestamp, '0x39', 'temperature', data2.temperature, seqId2]);
                             dataDb.run('INSERT INTO sensor_readings (timestamp, address, type, value, sequence_id) VALUES (?, ?, ?, ?, ?)',[timestamp, '0x39', 'humidity', data2.humidity, seqId4]);
                         }
+                        // Update legacy sensor reading for threshold checking
+                        if (!sensors['0x39']) {
+                            sensors['0x39'] = { lastReading: data2, config: { calibration_scale: 1, calibration_offset: 0 } };
+                        } else {
+                            sensors['0x39'].lastReading = data2;
+                        }
                     } catch (seqErr) {
                         console.error('Error getting sequence IDs for sensor 0x39:', seqErr);
+                    }
+                }
+
+                // Check threshold events for legacy sensors if any data was read
+                if (data1 || data2) {
+                    try {
+                        await checkThresholdEvents();
+                    } catch (thresholdErr) {
+                        console.error('Error checking threshold events after legacy sensor reading:', thresholdErr);
                     }
                 }
 
@@ -376,6 +440,14 @@ async function initAndRead() {
                     } catch (seqErr) {
                         console.error(`Error processing readings for sensor ${address}:`, seqErr);
                     }
+                }
+
+                // Check threshold events immediately after sensor readings are processed
+                // This ensures safety-critical events (like overheating) are handled as soon as possible
+                try {
+                    await checkThresholdEvents();
+                } catch (thresholdErr) {
+                    console.error('Error checking threshold events after sensor reading:', thresholdErr);
                 }
 
                 if (configDb) {
@@ -458,6 +530,143 @@ async function clearEmergencyStop() {
     return new Promise((resolve) => configDb.run('UPDATE safety_state SET value = 0 WHERE key = ?', ['emergency_stop'], resolve));
 }
 
+async function checkThresholdEvents() {
+    try {
+        // Get all enabled threshold events
+        const thresholdEvents = await new Promise((resolve, reject) => {
+            configDb.all('SELECT * FROM events WHERE enabled = 1 AND trigger_type IN (?, ?)', 
+                ['temperature', 'humidity'], (err, rows) => {
+                if (err) reject(err); 
+                else resolve(rows || []);
+            });
+        });
+
+        if (thresholdEvents.length === 0) return;
+
+        // Get current sensor readings
+        const currentReadings = {};
+        
+        for (const [address, sensor] of Object.entries(sensors)) {
+            if (sensor.lastReading && sensor.lastReading.temperature !== undefined && sensor.lastReading.humidity !== undefined) {
+                // Apply calibration if configured
+                const tempValue = (sensor.lastReading.temperature * (sensor.config.calibration_scale || 1)) + (sensor.config.calibration_offset || 0);
+                currentReadings[address] = {
+                    temperature: tempValue,
+                    humidity: sensor.lastReading.humidity
+                };
+            }
+        }
+
+        const now = new Date();
+        
+        for (const event of thresholdEvents) {
+            const sensorReading = currentReadings[event.sensor_address];
+            if (!sensorReading) {
+                continue; // Skip if no current reading for this sensor
+            }
+
+            // Check if event is in cooldown
+            if (event.last_triggered_at) {
+                const lastTriggered = new Date(event.last_triggered_at);
+                const cooldownMs = (event.cooldown_minutes || 5) * 60 * 1000;
+                const timeSinceLastTrigger = now.getTime() - lastTriggered.getTime();
+                
+                if (timeSinceLastTrigger < cooldownMs) {
+                    continue; // Still in cooldown, skip this event
+                }
+            }
+
+            // Get the current sensor value based on event type
+            const currentValue = event.sensor_type === 'temperature' ? 
+                sensorReading.temperature : sensorReading.humidity;
+            
+            if (currentValue === undefined || currentValue === null) {
+                continue;
+            }
+
+            // Check if threshold condition is met
+            let conditionMet = false;
+            switch (event.threshold_condition) {
+                case 'greater_than':
+                case 'above':
+                    conditionMet = currentValue > event.threshold_value;
+                    break;
+                case 'less_than':
+                case 'below':
+                    conditionMet = currentValue < event.threshold_value;
+                    break;
+                case 'equals':
+                    conditionMet = Math.abs(currentValue - event.threshold_value) < 0.1;
+                    break;
+            }
+
+            if (conditionMet) {
+                console.log(`Threshold event triggered: GPIO${event.gpio} -> ${event.pwm_value} (${event.sensor_address} ${event.sensor_type} ${event.threshold_condition} ${event.threshold_value}, current: ${currentValue})`);
+                
+                // Update last triggered time
+                await new Promise((resolve, reject) => {
+                    configDb.run('UPDATE events SET last_triggered_at = ? WHERE id = ?', 
+                        [now.toISOString(), event.id], (err) => {
+                        if (err) reject(err); else resolve();
+                    });
+                });
+
+                // Log the trigger event
+                await new Promise((resolve, reject) => {
+                    configDb.run(`INSERT INTO event_triggers 
+                        (event_id, triggered_at, gpio, pwm_value, trigger_type, sensor_address, sensor_value, threshold_value) 
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, 
+                        [event.id, now.toISOString(), event.gpio, event.pwm_value, event.sensor_type, 
+                         event.sensor_address, currentValue, event.threshold_value], (err) => {
+                        if (err) reject(err); else resolve();
+                    });
+                });
+
+                // Apply PWM change if in automatic mode and system is safe
+                const safetyStates = await new Promise((resolve, reject) => {
+                    configDb.all('SELECT key, value FROM safety_state', [], (err, rows) => {
+                        if (err) reject(err);
+                        else resolve(rows.reduce((acc, row) => { acc[row.key] = row.value; return acc; }, {}));
+                    });
+                });
+                
+                const mode = await new Promise((resolve, reject) => {
+                    configDb.get('SELECT value FROM system_state WHERE key = ?', ['mode'], (err, row) => {
+                        if (err) reject(err);
+                        else resolve(row ? row.value : 1);
+                    });
+                });
+
+                if (mode === 0 && safetyStates.emergency_stop !== 1 && safetyStates.normal_enable === 1) {
+                    // Update auto PWM state
+                    await new Promise((resolve, reject) => {
+                        configDb.run('UPDATE auto_pwm_states SET value = ?, enabled = 1 WHERE pin = ?',
+                            [event.pwm_value, event.gpio], (err) => {
+                                if (err) reject(err); else resolve();
+                            });
+                    });
+
+                    // Apply to hardware if GPIO controller is available
+                    if (gpioController && gpioController.pwmEnabled && gpioController.pwmPins[event.gpio]) {
+                        try {
+                            const hardwareValue = Math.floor((event.pwm_value / 1023) * 255);
+                            gpioController.pwmPins[event.gpio].pwmWrite(hardwareValue);
+                            console.log(`Applied threshold event PWM: GPIO${event.gpio} = ${event.pwm_value} (hardware: ${hardwareValue})`);
+                        } catch (error) {
+                            console.error(`Error applying threshold event PWM to GPIO${event.gpio}:`, error);
+                        }
+                    }
+
+                    // Broadcast PWM state update
+                    broadcastPWMState();
+                }
+            }
+        }
+    } catch (error) {
+        console.error('Error checking threshold events:', error);
+    }
+}
+
 async function controlLoop() {
     try {
         const safetyStates = await new Promise((resolve, reject) => {
@@ -475,11 +684,16 @@ async function controlLoop() {
 
         let events = [];
         if (mode === 0 && safetyStates.emergency_stop !== 1 && safetyStates.normal_enable === 1) {
+            // Get time-based events for GPIO controller
             events = await new Promise((resolve, reject) => {
-                configDb.all('SELECT * FROM events WHERE enabled = 1 ORDER BY time', [], (err, rows) => {
+                configDb.all('SELECT * FROM events WHERE enabled = 1 AND (trigger_type = ? OR trigger_type IS NULL) ORDER BY time', 
+                    ['time'], (err, rows) => {
                     if (err) reject(err); else resolve(rows);
                 });
             });
+            
+            // Check threshold events separately
+            await checkThresholdEvents();
         }
 
         if (gpioController && gpioController.pwmEnabled) {
@@ -1014,7 +1228,7 @@ io.on('connection', (socket) => {
                 mode,
                 pwmStates: { mode, current: mode === 0 ? autoPwmStates : manualPwmStates, manual: manualPwmStates, auto: autoPwmStates }
             });
-            configDb.all('SELECT id, gpio, time, pwm_value, enabled FROM events ORDER BY time', [], (err, rows) => {
+            configDb.all('SELECT * FROM events ORDER BY time, threshold_value', [], (err, rows) => {
                 if (err) { console.error('Error getting events for initial state:', err); return; }
                 if (rows && rows.length > 0) socket.emit('eventsUpdated', rows);
             });
@@ -1027,30 +1241,97 @@ io.on('connection', (socket) => {
     });
 
     socket.on('getEvents', () => {
-        configDb.all('SELECT id, gpio, time, pwm_value, enabled FROM events ORDER BY time', [], (err, rows) => {
+        configDb.all('SELECT * FROM events ORDER BY time, threshold_value', [], (err, rows) => {
             if (err) { console.error('Error getting events:', err); socket.emit('error', { message: 'Failed to retrieve events' }); return; }
             socket.emit('eventsUpdated', rows);
         });
     });
 
     socket.on('addEvent', (data) => {
-        const { gpio, time, pwm_value, enabled } = data;
-        if (!gpio || !time || pwm_value === undefined) { socket.emit('error', { message: 'Invalid event data' }); return; }
-        configDb.run('INSERT INTO events (gpio, time, pwm_value, enabled) VALUES (?, ?, ?, ?)',
-            [gpio, time, pwm_value, enabled === undefined ? 1 : (enabled ? 1: 0)], function (err) {
-            if (err) { console.error('Error adding event:', err); socket.emit('error', { message: 'Failed to add event' }); return; }
-            console.log(`Event added: GPIO${gpio} at ${time} with PWM ${pwm_value}`);
-            configDb.all('SELECT id, gpio, time, pwm_value, enabled FROM events ORDER BY time', [], (e, r) => { if (e) console.error('Error getting events after add:', e); else io.emit('eventsUpdated', r); });
+        const { gpio, time, pwm_value, enabled, trigger_type, sensor_address, sensor_type, threshold_condition, threshold_value, cooldown_minutes, priority } = data;
+        
+        // Validate required fields
+        if (!gpio || pwm_value === undefined) { 
+            socket.emit('error', { message: 'Invalid event data: gpio and pwm_value are required' }); 
+            return; 
+        }
+        
+        // For time events, time is required
+        if ((!trigger_type || trigger_type === 'time') && !time) {
+            socket.emit('error', { message: 'Invalid event data: time is required for time-based events' }); 
+            return;
+        }
+        
+        // For threshold events, validate threshold fields
+        if (trigger_type && trigger_type !== 'time') {
+            if (!sensor_address || !sensor_type || !threshold_condition || threshold_value === undefined) {
+                socket.emit('error', { message: 'Invalid event data: threshold events require sensor_address, sensor_type, threshold_condition, and threshold_value' }); 
+                return;
+            }
+        }
+        
+        // Insert event with all fields including priority
+        const sql = `INSERT INTO events 
+            (gpio, time, pwm_value, enabled, trigger_type, sensor_address, sensor_type, threshold_condition, threshold_value, cooldown_minutes, priority) 
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+        
+        const params = [
+            gpio, 
+            time || '', 
+            pwm_value, 
+            enabled === undefined ? 1 : (enabled ? 1 : 0),
+            trigger_type || 'time',
+            sensor_address || null,
+            sensor_type || null,
+            threshold_condition || null,
+            threshold_value || null,
+            cooldown_minutes || null,
+            priority || 1
+        ];
+        
+        configDb.run(sql, params, function (err) {
+            if (err) { 
+                console.error('Error adding event:', err); 
+                socket.emit('error', { message: 'Failed to add event: ' + err.message }); 
+                return; 
+            }
+            
+            if (trigger_type && trigger_type !== 'time') {
+                console.log(`Threshold event added: GPIO${gpio} -> ${pwm_value} when ${sensor_address} ${sensor_type} ${threshold_condition} ${threshold_value} (priority: ${priority || 1}, cooldown: ${cooldown_minutes || 5}min)`);
+            } else {
+                console.log(`Time event added: GPIO${gpio} at ${time} with PWM ${pwm_value} (priority: ${priority || 1})`);
+            }
+            
+            // Return updated events list with all columns for threshold events
+            configDb.all('SELECT * FROM events ORDER BY time, threshold_value', [], (e, r) => { 
+                if (e) console.error('Error getting events after add:', e); 
+                else io.emit('eventsUpdated', r); 
+            });
         });
     });
 
     socket.on('deleteEvent', (data) => {
+        console.log('Server received deleteEvent request:', data); // Debug log
         const { id } = data;
-        if (!id) { socket.emit('error', { message: 'Invalid event ID' }); return; }
+        if (!id) { 
+            console.log('Error: Invalid event ID'); // Debug log
+            socket.emit('error', { message: 'Invalid event ID' }); 
+            return; 
+        }
         configDb.run('DELETE FROM events WHERE id = ?', [id], function (err) {
-            if (err) { console.error('Error deleting event:', err); socket.emit('error', { message: 'Failed to delete event' }); return; }
-            console.log(`Event ${id} deleted`);
-            configDb.all('SELECT id, gpio, time, pwm_value, enabled FROM events ORDER BY time', [], (e, r) => { if (e) console.error('Error getting events after delete:', e); else io.emit('eventsUpdated', r); });
+            if (err) { 
+                console.error('Error deleting event:', err); 
+                socket.emit('error', { message: 'Failed to delete event' }); 
+                return; 
+            }
+            console.log(`Event ${id} deleted successfully`); // Enhanced debug log
+            configDb.all('SELECT * FROM events ORDER BY time, threshold_value', [], (e, r) => { 
+                if (e) console.error('Error getting events after delete:', e); 
+                else {
+                    console.log('Broadcasting updated events list'); // Debug log
+                    io.emit('eventsUpdated', r); 
+                }
+            });
         });
     });
 
@@ -1060,7 +1341,7 @@ io.on('connection', (socket) => {
         configDb.run('UPDATE events SET enabled = ? WHERE id = ?', [enabled ? 1 : 0, id], function (err) {
             if (err) { console.error('Error toggling event:', err); socket.emit('error', { message: 'Failed to toggle event' }); return; }
             console.log(`Event ${id} toggled to ${enabled ? 'enabled' : 'disabled'}`);
-            configDb.all('SELECT id, gpio, time, pwm_value, enabled FROM events ORDER BY time', [], (e, r) => { if (e) console.error('Error getting events after toggle:', e); else io.emit('eventsUpdated', r); });
+            configDb.all('SELECT * FROM events ORDER BY time, threshold_value', [], (e, r) => { if (e) console.error('Error getting events after toggle:', e); else io.emit('eventsUpdated', r); });
         });
     });
 
@@ -1094,6 +1375,129 @@ io.on('connection', (socket) => {
                 gpioController.emergencyStopOutputs();
             }
         }
+    });
+
+    socket.on('triggerEvent', async (data) => {
+        console.log('Manual trigger event request:', data);
+        const { id } = data;
+        
+        if (!id) {
+            socket.emit('error', { message: 'Invalid event ID' });
+            return;
+        }
+        
+        // Get the event details
+        configDb.get('SELECT * FROM events WHERE id = ?', [id], async (err, event) => {
+            if (err) {
+                console.error('Error getting event for manual trigger:', err);
+                socket.emit('error', { message: 'Failed to get event details' });
+                return;
+            }
+            
+            if (!event) {
+                socket.emit('error', { message: 'Event not found' });
+                return;
+            }
+            
+            // Only allow manual triggering of threshold events
+            if (event.trigger_type === 'time' || !event.trigger_type) {
+                socket.emit('error', { message: 'Cannot manually trigger time-based events' });
+                return;
+            }
+            
+            console.log(`Manually triggering threshold event ${id}: GPIO${event.gpio} -> ${event.pwm_value}`);
+            
+            // Check if event is in cooldown
+            if (event.last_triggered_at) {
+                const lastTriggered = new Date(event.last_triggered_at);
+                const cooldownMs = (event.cooldown_minutes || 5) * 60 * 1000;
+                const timeLeft = cooldownMs - (Date.now() - lastTriggered.getTime());
+                
+                if (timeLeft > 0) {
+                    const minutesLeft = Math.ceil(timeLeft / 60000);
+                    socket.emit('error', { message: `Event is in cooldown for ${minutesLeft} more minutes` });
+                    return;
+                }
+            }
+            
+            // Trigger the event (same logic as threshold checking)
+            try {
+                // Update auto PWM state in database first
+                await new Promise((resolve, reject) => {
+                    configDb.run('UPDATE auto_pwm_states SET value = ?, enabled = 1 WHERE pin = ?',
+                        [event.pwm_value, event.gpio], (err) => {
+                            if (err) reject(err); else resolve();
+                        });
+                });
+
+                // Apply to hardware directly (bypass setPWM which blocks in automatic mode)
+                if (gpioController && gpioController.pwmEnabled && gpioController.pwmPins[event.gpio]) {
+                    const hardwareValue = Math.floor((event.pwm_value / 1023) * 255);
+                    try {
+                        gpioController.pwmPins[event.gpio].pwmWrite(hardwareValue);
+                        console.log(`Manual trigger successful: GPIO${event.gpio} set to ${event.pwm_value} (hardware: ${hardwareValue})`);
+                    } catch (e) {
+                        console.error(`Error setting PWM hardware for GPIO${event.gpio}:`, e.message);
+                    }
+                }
+                
+                // Update last triggered time
+                const now = new Date().toISOString();
+                configDb.run('UPDATE events SET last_triggered_at = ? WHERE id = ?', [now, id], (updateErr) => {
+                    if (updateErr) {
+                        console.error('Error updating last_triggered_at:', updateErr);
+                    } else {
+                        console.log(`Updated last_triggered_at for event ${id}`);
+                        
+                        // Broadcast PWM state update
+                        broadcastPWMState();
+                        
+                        // Broadcast updated events list
+                        configDb.all('SELECT * FROM events ORDER BY time, threshold_value', [], (e, r) => {
+                            if (!e && r) {
+                                io.emit('eventsUpdated', r);
+                            }
+                        });
+                    }
+                });
+                
+                socket.emit('success', { message: `Event triggered successfully: GPIO${event.gpio} -> ${event.pwm_value}` });
+                
+            } catch (error) {
+                console.error('Error during manual trigger:', error);
+                socket.emit('error', { message: 'Failed to trigger event' });
+            }
+        });
+    });
+
+    socket.on('resetCooldown', (data) => {
+        console.log('Reset cooldown request:', data);
+        const { id } = data;
+        
+        if (!id) {
+            socket.emit('error', { message: 'Invalid event ID' });
+            return;
+        }
+        
+        // Clear the last_triggered_at timestamp
+        configDb.run('UPDATE events SET last_triggered_at = NULL WHERE id = ?', [id], function (err) {
+            if (err) {
+                console.error('Error resetting cooldown:', err);
+                socket.emit('error', { message: 'Failed to reset cooldown' });
+                return;
+            }
+            
+            console.log(`Cooldown reset for event ${id}`);
+            
+            // Broadcast updated events list
+            configDb.all('SELECT * FROM events ORDER BY time, threshold_value', [], (e, r) => {
+                if (!e && r) {
+                    io.emit('eventsUpdated', r);
+                }
+            });
+            
+            socket.emit('success', { message: 'Cooldown reset successfully' });
+        });
     });
 });
 

@@ -311,20 +311,57 @@ class GpioController {
             const now = new Date();
             const currentTime = now.getUTCHours() * 3600 + now.getUTCMinutes() * 60 + now.getUTCSeconds();
             
+            // Get all events (time-based and threshold-based) with priority consideration
+            const allEvents = await new Promise((resolve, reject) => {
+                this.configDb.all('SELECT * FROM events WHERE enabled = 1 ORDER BY priority ASC, time', [], (err, rows) => {
+                    if (err) reject(err); else resolve(rows || []);
+                });
+            });
+            
             const activeEvents = {};
-            // events array is passed in directly from controlLoop's DB query
-            events.forEach(event => {
-                const [hours, minutes, seconds] = event.time.split(':').map(Number);
-                const eventTime = hours * 3600 + minutes * 60 + seconds;
+            
+            // Process all events and find the highest priority active event for each GPIO
+            allEvents.forEach(event => {
                 const gpio = event.gpio;
-
-                if (!activeEvents[gpio] || 
-                    (eventTime <= currentTime && eventTime > (activeEvents[gpio].time || -1)) ||
-                    (eventTime > currentTime && eventTime < (activeEvents[gpio].time || Infinity))) { // This logic finds the "closest" event
-                    activeEvents[gpio] = {
-                        time: eventTime,
-                        event: event
-                    };
+                
+                let isEventActive = false;
+                
+                if (event.trigger_type === 'time' || !event.trigger_type) {
+                    // Time-based event logic
+                    const [hours, minutes, seconds] = event.time.split(':').map(Number);
+                    const eventTime = hours * 3600 + minutes * 60 + seconds;
+                    
+                    // Check if this time event should be active
+                    if (!activeEvents[gpio] || 
+                        (eventTime <= currentTime && eventTime > (activeEvents[gpio].time || -1)) ||
+                        (eventTime > currentTime && eventTime < (activeEvents[gpio].time || Infinity))) {
+                        isEventActive = true;
+                    }
+                } else {
+                    // Threshold-based event logic - only active during cooldown period
+                    if (event.last_triggered_at) {
+                        const lastTriggered = new Date(event.last_triggered_at);
+                        const cooldownMs = (event.cooldown_minutes || 5) * 60 * 1000;
+                        const timeSinceTriggered = Date.now() - lastTriggered.getTime();
+                        // Threshold events only stay active during their cooldown period
+                        isEventActive = timeSinceTriggered < cooldownMs;
+                    }
+                }
+                
+                // If this event is active, check if it should override the current active event
+                if (isEventActive) {
+                    const currentPriority = event.priority || 1;
+                    const activePriority = activeEvents[gpio] ? (activeEvents[gpio].event.priority || 1) : 999;
+                    
+                    if (!activeEvents[gpio] || currentPriority < activePriority) {
+                        // This event has higher priority (lower number)
+                        activeEvents[gpio] = {
+                            time: event.trigger_type === 'time' ? 
+                                  (event.time.split(':').map(Number).reduce((acc, val, i) => acc + val * [3600, 60, 1][i], 0)) : 
+                                  Date.now(),
+                            event: event
+                        };
+                    }
                 }
             });
 

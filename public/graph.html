@@ -996,8 +996,30 @@
         // Initialize socket connection
         const socket = io();
         
-        // Register Chart.js annotations plugin
-        Chart.register(ChartAnnotation);
+        // Register Chart.js annotations plugin for Chart.js 3.x
+        // The plugin should be available as window.ChartAnnotation after loading the script
+        if (typeof window.ChartAnnotation !== 'undefined') {
+            Chart.register(window.ChartAnnotation);
+            console.log('Chart.js annotations plugin registered successfully');
+        } else {
+            console.warn('Chart.js annotations plugin not found, checking for alternative names...');
+            // Try other possible names
+            const possibleNames = ['ChartAnnotation', 'chartjsPluginAnnotation', 'annotationPlugin'];
+            let pluginFound = false;
+            
+            for (const name of possibleNames) {
+                if (typeof window[name] !== 'undefined') {
+                    Chart.register(window[name]);
+                    console.log(`Chart.js annotations plugin registered as ${name}`);
+                    pluginFound = true;
+                    break;
+                }
+            }
+            
+            if (!pluginFound) {
+                console.warn('Chart.js annotations plugin not found, charts will work without event markers');
+            }
+        }
 
         // Function to generate time markers (midnight and noon)
         function generateTimeMarkers(startDateMs, endDateMs) {
@@ -1066,10 +1088,88 @@
         }
         
         // Function to generate event markers (green for events, red for errors)
-        function generateEventMarkers(startDateMs, endDateMs) {
-            // TODO: Fetch actual event triggers from API
-            // For now, return empty array - will be implemented when backend is ready
-            return [];
+        async function generateEventMarkers(startDateMs, endDateMs) {
+            const markers = [];
+            const startDate = new Date(startDateMs).toISOString();
+            const endDate = new Date(endDateMs).toISOString();
+            
+            try {
+                // Fetch event triggers (green markers)
+                const eventResponse = await fetch(`/api/event-triggers?startDate=${startDate}&endDate=${endDate}`);
+                const eventTriggers = await eventResponse.json();
+                
+                eventTriggers.forEach(event => {
+                    const eventTime = new Date(event.timestamp).getTime();
+                    if (eventTime >= startDateMs && eventTime <= endDateMs) {
+                        markers.push({
+                            type: 'line',
+                            xMin: eventTime,
+                            xMax: eventTime,
+                            borderColor: '#22c55e', // Green
+                            borderWidth: 2,
+                            label: {
+                                content: `Event: GPIO${event.gpio} → ${event.pwm_value}`,
+                                enabled: true,
+                                position: 'top',
+                                backgroundColor: 'rgba(34, 197, 94, 0.8)',
+                                color: 'white',
+                                font: {
+                                    size: 10
+                                }
+                            }
+                        });
+                    }
+                });
+            } catch (error) {
+                console.log('No event triggers available:', error);
+            }
+            
+            try {
+                // Fetch error logs (red markers)
+                const errorResponse = await fetch(`/api/error-logs?startDate=${startDate}&endDate=${endDate}`);
+                const errorLogs = await errorResponse.json();
+                
+                errorLogs.forEach(error => {
+                    const errorTime = new Date(error.timestamp).getTime();
+                    if (errorTime >= startDateMs && errorTime <= endDateMs) {
+                        markers.push({
+                            type: 'line',
+                            xMin: errorTime,
+                            xMax: errorTime,
+                            borderColor: '#ef4444', // Red
+                            borderWidth: 2,
+                            label: {
+                                content: `Error: ${error.message}`,
+                                enabled: true,
+                                position: 'top',
+                                backgroundColor: 'rgba(239, 68, 68, 0.8)',
+                                color: 'white',
+                                font: {
+                                    size: 10
+                                }
+                            }
+                        });
+                    }
+                });
+            } catch (error) {
+                console.log('No error logs available:', error);
+            }
+            
+            return markers;
+        }
+
+        // Function to update chart annotations asynchronously
+        async function updateChartAnnotations(chart, startDateMs, endDateMs) {
+            const timeMarkers = generateTimeMarkers(startDateMs, endDateMs);
+            const eventMarkers = await generateEventMarkers(startDateMs, endDateMs);
+            
+            if (chart.options.plugins && chart.options.plugins.annotation) {
+                chart.options.plugins.annotation.annotations = [
+                    ...timeMarkers,
+                    ...eventMarkers
+                ];
+                chart.update('none');
+            }
         }
 
         // Handle timezone updates from server
@@ -1104,6 +1204,7 @@
             fetch('/api/sensors')
                 .then(response => {
                     console.log('Sensor API response status:', response.status);
+                    console.log('Sensor API response headers:', response.headers);
                     if (!response.ok) {
                         throw new Error(`Server returned ${response.status}: ${response.statusText}`);
                     }
@@ -1111,6 +1212,7 @@
                 })
                 .then(data => {
                     console.log('Sensors loaded successfully:', data);
+                    console.log('Number of sensors:', data.length);
                     availableSensors = data;
                     
                     // Select all by default - use address as the identifier since sensors don't have id
@@ -1125,6 +1227,7 @@
                 })
                 .catch(error => {
                     console.error('Error fetching sensors:', error);
+                    console.error('Error details:', error.message, error.stack);
                     document.getElementById('sensorSelectionContainer').innerHTML = 
                         `<div class="error-message">Error loading sensors: ${error.message}. Please refresh the page to try again.</div>`;
                     
@@ -1469,16 +1572,27 @@
                             borderWidth: 1
                         },
                         annotation: {
-                            annotations: [
-                                ...generateTimeMarkers(startDateMs, endDateMs),
-                                ...generateEventMarkers(startDateMs, endDateMs)
-                            ]
+                            annotations: []
                         }
                     }
                 }
             };
             
-            return new Chart(ctx, chartConfig);
+            const chart = new Chart(ctx, chartConfig);
+            
+            // Add annotations after chart creation if plugin is available
+            setTimeout(() => {
+                if (chart.options.plugins && chart.options.plugins.annotation) {
+                    try {
+                        chart.options.plugins.annotation.annotations = generateTimeMarkers(startDateMs, endDateMs);
+                        chart.update('none');
+                    } catch (error) {
+                        console.warn('Failed to add annotations:', error);
+                    }
+                }
+            }, 100);
+            
+            return chart;
         }
 
         // Function to fetch and display data for a chart
@@ -1541,6 +1655,9 @@
                         } else {
                             humidityChart = chart;
                         }
+                        
+                        // Update annotations asynchronously after chart creation
+                        updateChartAnnotations(chart, startDateMs, endDateMs);
                     }
                     
                     // Clear existing datasets
@@ -1562,12 +1679,15 @@
                             // Update annotations for new time range
                             if (chart.options.plugins && chart.options.plugins.annotation) {
                                 chart.options.plugins.annotation.annotations = [
-                                    ...generateTimeMarkers(startDateMs, endDateMs),
-                                    ...generateEventMarkers(startDateMs, endDateMs)
+                                    ...generateTimeMarkers(startDateMs, endDateMs)
+                                    // Event markers will be added asynchronously after chart creation
                                 ];
                             }
                             
                             chart.update('none'); // Update without animation for immediate response
+                            
+                            // Update annotations asynchronously after chart update
+                            updateChartAnnotations(chart, startDateMs, endDateMs);
                         }
                         
                         // Display "No data" message
@@ -1725,13 +1845,16 @@
                     // Update annotations for new time range
                     if (chart.options.plugins && chart.options.plugins.annotation) {
                         chart.options.plugins.annotation.annotations = [
-                            ...generateTimeMarkers(startDateMs, endDateMs),
-                            ...generateEventMarkers(startDateMs, endDateMs)
+                            ...generateTimeMarkers(startDateMs, endDateMs)
+                            // Event markers will be added asynchronously after chart creation
                         ];
                     }
                     
                     // Update the chart instantly without animation
                     chart.update('none'); // Use 'none' for instant updates
+                    
+                    // Update annotations asynchronously after chart update
+                    updateChartAnnotations(chart, startDateMs, endDateMs);
                 })
                 .catch(error => {
                     console.error(`Error fetching ${type} data:`, error);
@@ -1781,6 +1904,33 @@
         // Custom initialization for this page
         function customInit() {
             console.log('Initializing graph page...');
+            
+            // Register Chart.js annotations plugin after DOM is loaded
+            setTimeout(() => {
+                if (typeof window.ChartAnnotation !== 'undefined') {
+                    Chart.register(window.ChartAnnotation);
+                    console.log('Chart.js annotations plugin registered successfully');
+                } else {
+                    console.warn('Chart.js annotations plugin not found, checking for alternative names...');
+                    // Try other possible names
+                    const possibleNames = ['ChartAnnotation', 'chartjsPluginAnnotation', 'annotationPlugin'];
+                    let pluginFound = false;
+                    
+                    for (const name of possibleNames) {
+                        if (typeof window[name] !== 'undefined') {
+                            Chart.register(window[name]);
+                            console.log(`Chart.js annotations plugin registered as ${name}`);
+                            pluginFound = true;
+                            break;
+                        }
+                    }
+                    
+                    if (!pluginFound) {
+                        console.warn('Chart.js annotations plugin not found, charts will work without event markers');
+                        console.log('Available window properties:', Object.keys(window).filter(k => k.toLowerCase().includes('chart')));
+                    }
+                }
+            }, 100);
             
             // Set default global options for Chart.js time axis
             Chart.defaults.scales.time.parser = function(value) {

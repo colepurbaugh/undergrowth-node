@@ -570,23 +570,23 @@ input:checked + .slider:before {
 
 /* Specific box types */
 .trigger-box {
-    background-color: #2196f3;
+    background-color: #21374a;
     color: white;
     font-weight: bold;
 }
 
 .sensor-box {
-    background-color: #bd4a25;
+    background-color: #4d332a;
     color: white;
 }
 
 .when-box {
-    background-color: #4B0082;
+    background-color: #352441;
     color: white;
 }
 
 .value-box {
-    background-color: #45a049;
+    background-color: #273827;
     color: white;
 }
 
@@ -605,7 +605,7 @@ input:checked + .slider:before {
 }
 
 .cooldown-box {
-    background-color: #c0110b;
+    background-color: #402c2b;
     color: white;
 }
 
@@ -630,6 +630,7 @@ input:checked + .slider:before {
     color: white;
     justify-content: center;
     text-align: center;
+    min-width: 200px;
 }
 
 .pwm-box input {
@@ -637,7 +638,7 @@ input:checked + .slider:before {
     border: 2px solid rgba(255, 255, 255, 0.5);
     border-radius: 0.25rem;
     color: white;
-    width: 60px;
+    width: 80px;
     font-weight: bold;
     text-align: center;
     padding: 0.2rem 0.4rem;
@@ -777,6 +778,11 @@ input:checked + .slider:before {
     color: white;
 }
 
+.event-type.pwm {
+    background-color: #604331;
+    color: white;
+}
+
 .event-gpio {
     font-size: 1.2rem;
     color: var(--text-primary);
@@ -901,6 +907,9 @@ button.delete {
     cursor: pointer;
     font-size: 14px;
     width: 80px;
+    flex-shrink: 0;
+    z-index: 10;
+    position: relative;
 }
 
 button.delete:hover {
@@ -909,6 +918,7 @@ button.delete:hover {
 
 .event-enabled {
     margin-left: auto;
+    flex-shrink: 0;
 }
 
 .event-enabled + button.delete {
@@ -991,12 +1001,12 @@ input.pwm-input {
 
 /* Right-justify set buttons and enable sliders in pwm.html */
 .pwm-control .pwm-set {
-    margin-left: 0;
+    margin-left: 0.5rem;
 }
 
 .pwm-control .switch {
     margin-left: auto;
-    margin-right: 0.5rem;
+    margin-right: 0;
 }
 
 /* Style for Set buttons to match Delete buttons */
@@ -1566,6 +1576,9 @@ body {
     display: inline-flex;
     align-items: center;
     justify-content: center;
+    flex-shrink: 0;
+    z-index: 10;
+    position: relative;
 }
 
 .pwm-page .pwm-set {
@@ -1577,5 +1590,98 @@ body {
     display: inline-flex;
     align-items: center;
     justify-content: center;
+}
+
+/* PWM page specific - ensure toggle switches work properly */
+.pwm-page .switch {
+    width: 60px;
+    height: 24px;
+}
+
+.pwm-page .switch.pwm-toggle input:checked + .slider {
+    background-color: var(--success-color); /* Green for enabled */
+}
+
+.pwm-page .switch.pwm-toggle input:not(:checked) + .slider {
+    background-color: var(--error-color); /* Red for disabled */
+}
+
+/* PWM page specific - ensure priority box has consistent height */
+.pwm-page .event-priority {
+    font-size: 1.2rem;
+    height: 32px;
+    padding: 0;
+    box-sizing: border-box;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* NEW: Priority display */
+.event-priority {
+    padding: 0.1rem 0.3rem;
+    background-color: #4B0082;
+    border-radius: 0.25rem;
+    font-weight: bold;
+    font-size: 1rem;
+    white-space: nowrap;
+    color: white;
+    min-width: 20px;
+    text-align: center;
+}
+
+/* NEW: PWM percentage display */
+.pwm-percentage {
+    font-weight: normal;
+    color: white;
+    margin-left: 0.5rem;
+    font-size: 1rem;
+}
+
+/* PWM page specific - ensure PWM percentage matches page font */
+.pwm-page .pwm-percentage {
+    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+    font-size: 1.2rem;
+}
+
+/* NEW: Trigger button for threshold events */
+.trigger-button {
+    padding: 0.3rem 0.6rem;
+    background-color: #ff8c00; /* Orange background */
+    color: #000000; /* Black text - only element with black text */
+    border: none;
+    border-radius: 0.25rem;
+    cursor: pointer;
+    font-size: 0.9rem;
+    font-weight: bold;
+    white-space: nowrap;
+    min-width: 70px;
+    text-align: center;
+}
+
+.trigger-button:hover {
+    background-color: #ff7700; /* Slightly darker orange on hover */
+}
+
+.trigger-button.cooldown {
+    font-size: 0.8rem;
+    min-width: 80px;
+}
+
+/* PWM page specific - ensure trigger button matches other elements */
+.pwm-page .trigger-button {
+    font-size: 1.2rem;
+    height: 32px;
+    padding: 0;
+    min-width: 90px;
+    box-sizing: border-box;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.pwm-page .trigger-button.cooldown {
+    font-size: 1.0rem;
+    min-width: 100px;
 }
 
