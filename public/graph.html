@@ -1036,20 +1036,20 @@
                 const noonTime = new Date(currentDate);
                 noonTime.setHours(12, 0, 0, 0);
                 
-                // Add midnight marker (dark blue)
+                // Add midnight marker (light blue)
                 if (midnightTime >= startDate && midnightTime <= endDate) {
                     markers.push({
                         type: 'line',
                         xMin: midnightTime.getTime(),
                         xMax: midnightTime.getTime(),
-                        borderColor: '#1e3a8a', // Dark blue
+                        borderColor: '#60a5fa', // Light blue
                         borderWidth: 2,
                         borderDash: [5, 5],
                         label: {
                             content: '12:00 AM',
                             enabled: true,
                             position: 'top',
-                            backgroundColor: 'rgba(30, 58, 138, 0.8)',
+                            backgroundColor: 'rgba(96, 165, 250, 0.8)',
                             color: 'white',
                             font: {
                                 size: 10

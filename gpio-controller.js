@@ -318,49 +318,131 @@ class GpioController {
                 });
             });
             
-            const activeEvents = {};
+            // Separate time-based and threshold-based events
+            const timeEvents = allEvents.filter(e => e.trigger_type === 'time' || !e.trigger_type);
+            const thresholdEvents = allEvents.filter(e => e.trigger_type !== 'time' && e.trigger_type);
             
-            // Process all events and find the highest priority active event for each GPIO
-            allEvents.forEach(event => {
-                const gpio = event.gpio;
+            // Find active time-based events (the most recent past event or next future event for each GPIO)
+            const activeTimeEvents = {};
+            const eventsByGpio = {};
+            
+            // Group time events by GPIO
+            timeEvents.forEach(event => {
+                if (!eventsByGpio[event.gpio]) {
+                    eventsByGpio[event.gpio] = [];
+                }
+                eventsByGpio[event.gpio].push(event);
+            });
+            
+            // For each GPIO, find the controlling time event
+            Object.keys(eventsByGpio).forEach(gpio => {
+                const gpioEvents = eventsByGpio[gpio];
+                let activeEvent = null;
                 
-                let isEventActive = false;
-                
-                if (event.trigger_type === 'time' || !event.trigger_type) {
-                    // Time-based event logic
+                // Convert events to include time in seconds for easier comparison
+                const eventsWithTime = gpioEvents.map(event => {
                     const [hours, minutes, seconds] = event.time.split(':').map(Number);
-                    const eventTime = hours * 3600 + minutes * 60 + seconds;
+                    let eventTime = hours * 3600 + minutes * 60 + seconds;
                     
-                    // Check if this time event should be active
-                    if (!activeEvents[gpio] || 
-                        (eventTime <= currentTime && eventTime > (activeEvents[gpio].time || -1)) ||
-                        (eventTime > currentTime && eventTime < (activeEvents[gpio].time || Infinity))) {
-                        isEventActive = true;
+                    // Handle day boundary: if event time is significantly less than current time,
+                    // it's likely tomorrow's event (e.g., 00:00:00 when current time is 21:00:00)
+                    if (eventTime < currentTime && (currentTime - eventTime) > 12 * 3600) {
+                        eventTime += 24 * 3600; // Add 24 hours to represent next day
                     }
-                } else {
-                    // Threshold-based event logic - only active during cooldown period
-                    if (event.last_triggered_at) {
-                        const lastTriggered = new Date(event.last_triggered_at);
-                        const cooldownMs = (event.cooldown_minutes || 5) * 60 * 1000;
-                        const timeSinceTriggered = Date.now() - lastTriggered.getTime();
-                        // Threshold events only stay active during their cooldown period
-                        isEventActive = timeSinceTriggered < cooldownMs;
+                    
+                    return { ...event, timeSeconds: eventTime };
+                });
+                
+                console.log(`GPIO${gpio} time analysis:`, {
+                    currentTime: currentTime,
+                    currentTimeFormatted: `${Math.floor(currentTime/3600)}:${Math.floor((currentTime%3600)/60)}:${currentTime%60}`,
+                    events: eventsWithTime.map(e => ({
+                        time: e.time,
+                        timeSeconds: e.timeSeconds,
+                        pwm: e.pwm_value,
+                        isFuture: e.timeSeconds > currentTime
+                    }))
+                });
+                
+                // Find the most recent past event or the next upcoming event
+                let mostRecentPast = null;
+                let nextUpcoming = null;
+                
+                eventsWithTime.forEach(event => {
+                    if (event.timeSeconds <= currentTime) {
+                        // This is a past event
+                        if (!mostRecentPast || event.timeSeconds > mostRecentPast.timeSeconds) {
+                            mostRecentPast = event;
+                        }
+                    } else {
+                        // This is a future event
+                        if (!nextUpcoming || event.timeSeconds < nextUpcoming.timeSeconds) {
+                            nextUpcoming = event;
+                        }
                     }
+                });
+                
+                // Choose the controlling event: prefer most recent past, fallback to next upcoming
+                if (mostRecentPast) {
+                    activeEvent = { time: mostRecentPast.timeSeconds, event: mostRecentPast };
+                    console.log(`GPIO${gpio} using most recent past event:`, mostRecentPast.time, mostRecentPast.pwm_value);
+                } else if (nextUpcoming) {
+                    activeEvent = { time: nextUpcoming.timeSeconds, event: nextUpcoming };
+                    console.log(`GPIO${gpio} using next upcoming event:`, nextUpcoming.time, nextUpcoming.pwm_value);
                 }
                 
-                // If this event is active, check if it should override the current active event
-                if (isEventActive) {
-                    const currentPriority = event.priority || 1;
-                    const activePriority = activeEvents[gpio] ? (activeEvents[gpio].event.priority || 1) : 999;
+                if (activeEvent) {
+                    activeTimeEvents[gpio] = activeEvent;
+                }
+            });
+            
+            // Process threshold events for active detection
+            const activeThresholdEvents = {};
+            thresholdEvents.forEach(event => {
+                if (event.last_triggered_at) {
+                    const lastTriggered = new Date(event.last_triggered_at);
+                    const cooldownMs = (event.cooldown_minutes || 5) * 60 * 1000;
+                    const timeSinceTriggered = Date.now() - lastTriggered.getTime();
+                    // Threshold events only stay active during their cooldown period
+                    if (timeSinceTriggered < cooldownMs) {
+                        const gpio = event.gpio;
+                        const currentPriority = event.priority || 1;
+                        const activePriority = activeThresholdEvents[gpio] ? (activeThresholdEvents[gpio].event.priority || 1) : 999;
+                        
+                        if (!activeThresholdEvents[gpio] || currentPriority < activePriority) {
+                            activeThresholdEvents[gpio] = { event: event };
+                        }
+                    }
+                }
+            });
+            
+            // Determine final active events by combining time and threshold events with priority
+            const finalActiveEvents = {};
+            
+            // First, add all active time events
+            Object.keys(activeTimeEvents).forEach(gpio => {
+                finalActiveEvents[gpio] = activeTimeEvents[gpio];
+            });
+            
+            // Then, override with threshold events if they have higher priority
+            Object.keys(activeThresholdEvents).forEach(gpio => {
+                const thresholdEvent = activeThresholdEvents[gpio];
+                const timeEvent = finalActiveEvents[gpio];
+                
+                if (!timeEvent) {
+                    // No time event, use threshold event
+                    finalActiveEvents[gpio] = thresholdEvent;
+                } else {
+                    // Compare priorities (lower number = higher priority)
+                    const thresholdPriority = thresholdEvent.event.priority || 1;
+                    const timePriority = timeEvent.event.priority || 1;
                     
-                    if (!activeEvents[gpio] || currentPriority < activePriority) {
-                        // This event has higher priority (lower number)
-                        activeEvents[gpio] = {
-                            time: event.trigger_type === 'time' ? 
-                                  (event.time.split(':').map(Number).reduce((acc, val, i) => acc + val * [3600, 60, 1][i], 0)) : 
-                                  Date.now(),
-                            event: event
-                        };
+                    if (thresholdPriority < timePriority) {
+                        finalActiveEvents[gpio] = thresholdEvent;
+                    }
+                    // If same priority, threshold events take precedence during their cooldown
+                    else if (thresholdPriority === timePriority) {
+                        finalActiveEvents[gpio] = thresholdEvent;
                     }
                 }
             });
@@ -368,8 +450,8 @@ class GpioController {
             for (const pinStr of Object.keys(this.pwmPins)) {
                 const pin = parseInt(pinStr);
                 if (this.pwmPins[pin]) {
-                    if (activeEvents[pin]) {
-                        const pwmValueDb = activeEvents[pin].event.pwm_value;
+                    if (finalActiveEvents[pin]) {
+                        const pwmValueDb = finalActiveEvents[pin].event.pwm_value;
                         const hardwareValue = Math.floor((pwmValueDb / 1023) * 255);
                         try {
                             this.pwmPins[pin].pwmWrite(hardwareValue);

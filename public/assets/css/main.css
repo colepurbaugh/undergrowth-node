@@ -1668,6 +1668,43 @@ body {
     min-width: 80px;
 }
 
+/* NEW: Trigger button states - ready (green) and cooldown (orange) */
+.trigger-button-ready {
+    padding: 0.3rem 0.6rem;
+    background-color: #45a049; /* Green background when ready */
+    color: white;
+    border: none;
+    border-radius: 0.25rem;
+    cursor: pointer;
+    font-size: 0.9rem;
+    font-weight: bold;
+    white-space: nowrap;
+    min-width: 70px;
+    text-align: center;
+}
+
+.trigger-button-ready:hover {
+    background-color: #3d8b40; /* Slightly darker green on hover */
+}
+
+.trigger-button-cooldown {
+    padding: 0.3rem 0.6rem;
+    background-color: #ff8c00; /* Orange background when in cooldown */
+    color: white;
+    border: none;
+    border-radius: 0.25rem;
+    cursor: pointer;
+    font-size: 0.9rem;
+    font-weight: bold;
+    white-space: nowrap;
+    min-width: 70px;
+    text-align: center;
+}
+
+.trigger-button-cooldown:hover {
+    background-color: #ff7700; /* Slightly darker orange on hover */
+}
+
 /* PWM page specific - ensure trigger button matches other elements */
 .pwm-page .trigger-button {
     font-size: 1.2rem;
@@ -1683,5 +1720,28 @@ body {
 .pwm-page .trigger-button.cooldown {
     font-size: 1.0rem;
     min-width: 100px;
+}
+
+/* PWM page specific - ensure new trigger button states match other elements */
+.pwm-page .trigger-button-ready {
+    font-size: 1.2rem;
+    height: 32px;
+    padding: 0;
+    min-width: 90px;
+    box-sizing: border-box;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.pwm-page .trigger-button-cooldown {
+    font-size: 1.2rem;
+    height: 32px;
+    padding: 0;
+    min-width: 90px;
+    box-sizing: border-box;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
 }
 
