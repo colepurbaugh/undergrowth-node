@@ -246,6 +246,11 @@ dataDb = new sqlite3.Database(getDataDbPath(), (err) => {
         )`);
         dataDb.run(`CREATE INDEX IF NOT EXISTS idx_sequence_id ON sensor_readings(sequence_id)`);
         dataDb.run(`CREATE INDEX IF NOT EXISTS idx_address ON sensor_readings(address)`);
+        // Add timestamp index for graph performance
+        dataDb.run(`CREATE INDEX IF NOT EXISTS idx_timestamp ON sensor_readings(timestamp)`);
+        // Add composite index for common graph queries
+        dataDb.run(`CREATE INDEX IF NOT EXISTS idx_type_timestamp ON sensor_readings(type, timestamp)`);
+        dataDb.run(`CREATE INDEX IF NOT EXISTS idx_address_type_timestamp ON sensor_readings(address, type, timestamp)`);
     });
     // Initialize SystemInfo with the database connection
     SystemInfo.setDataDb(dataDb);

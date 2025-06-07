@@ -487,6 +487,42 @@ module.exports = function (app, configDb, dataDb) {
         );
     });
     
+    // API Endpoint to get configured events for graph markers
+    app.get('/api/configured-events', (req, res) => {
+        // Get all configured events from the database
+        configDb.all(
+            'SELECT * FROM events ORDER BY created_at ASC',
+            [],
+            (err, rows) => {
+                if (err) {
+                    console.error('API: Error fetching configured events:', err);
+                    return res.status(500).json({ error: 'Failed to fetch configured events' });
+                }
+                
+                // Transform the data for the frontend
+                const events = rows.map(row => ({
+                    id: row.id,
+                    gpio: row.gpio,
+                    pwm_value: row.pwm_value,
+                    enabled: row.enabled === 1,
+                    trigger_type: row.trigger_type,
+                    time: row.time,
+                    sensor_address: row.sensor_address,
+                    sensor_type: row.sensor_type,
+                    threshold_condition: row.threshold_condition,
+                    threshold_value: row.threshold_value,
+                    cooldown_minutes: row.cooldown_minutes,
+                    priority: row.priority,
+                    created_at: row.created_at,
+                    last_triggered_at: row.last_triggered_at
+                }));
+                
+                console.log(`API: Returning ${events.length} configured events`);
+                res.json(events);
+            }
+        );
+    });
+    
     // API Endpoint to get error logs for graph markers  
     app.get('/api/error-logs', (req, res) => {
         const startDate = req.query.startDate;

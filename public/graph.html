@@ -610,6 +610,36 @@
                     </div>
                 </div>
             </div>
+            
+            <!-- Column 4: Chart Markers -->
+            <div class="sensor-column">
+                <h4 class="column-title">Chart Markers</h4>
+                <div class="sensor-selection-container">
+                    <div class="sensor-checkbox-wrapper">
+                        <input type="checkbox" id="showTimeMarkers" class="sensor-checkbox" checked>
+                        <label for="showTimeMarkers" class="sensor-label">Time Markers</label>
+                    </div>
+                    <div class="sensor-checkbox-wrapper">
+                        <input type="checkbox" id="showEventTriggers" class="sensor-checkbox" checked>
+                        <label for="showEventTriggers" class="sensor-label">Event Triggers</label>
+                    </div>
+                    <div class="sensor-checkbox-wrapper">
+                        <input type="checkbox" id="showConfiguredEvents" class="sensor-checkbox" checked>
+                        <label for="showConfiguredEvents" class="sensor-label">Configured Events</label>
+                    </div>
+                    <div class="sensor-checkbox-wrapper">
+                        <input type="checkbox" id="showThresholdLines" class="sensor-checkbox" checked>
+                        <label for="showThresholdLines" class="sensor-label">Threshold Lines</label>
+                    </div>
+                    <div class="sensor-checkbox-wrapper">
+                        <input type="checkbox" id="showErrorLogs" class="sensor-checkbox" checked>
+                        <label for="showErrorLogs" class="sensor-label">Error Logs</label>
+                    </div>
+                </div>
+                <div class="sensor-column-actions">
+                    <button id="refreshMarkersButton" class="sensor-button">Refresh Markers</button>
+                </div>
+            </div>
         </div>
 
         <!-- Temperature Chart -->
@@ -689,6 +719,11 @@
         let selectedSensors = []; // To store selected sensors
         let showAverage = false; // Whether to show average of selected sensors
         
+        // Performance optimization: debounce chart updates
+        let updateChartsTimeout = null;
+        let lastUpdateTime = 0;
+        const UPDATE_DEBOUNCE_MS = 500; // Minimum time between updates
+
         // Time navigation state
         let isLiveMode = true;
         let currentStartTime = null; // Will be set to previous whole hour
@@ -715,6 +750,15 @@
                 highColor: '#1e40af', // Dark blue
                 useMid: false
             }
+        };
+
+        // Marker visibility settings
+        let markerSettings = {
+            showTimeMarkers: true,
+            showEventTriggers: true,
+            showConfiguredEvents: true,
+            showThresholdLines: true,
+            showErrorLogs: true
         };
 
         // Initialize time navigation
@@ -1087,72 +1131,164 @@
             return markers;
         }
         
-        // Function to generate event markers (green for events, red for errors)
+        // Function to generate all event markers based on visibility settings
         async function generateEventMarkers(startDateMs, endDateMs) {
             const markers = [];
             const startDate = new Date(startDateMs).toISOString();
             const endDate = new Date(endDateMs).toISOString();
             
-            try {
-                // Fetch event triggers (green markers)
-                const eventResponse = await fetch(`/api/event-triggers?startDate=${startDate}&endDate=${endDate}`);
-                const eventTriggers = await eventResponse.json();
-                
-                eventTriggers.forEach(event => {
-                    const eventTime = new Date(event.timestamp).getTime();
-                    if (eventTime >= startDateMs && eventTime <= endDateMs) {
-                        markers.push({
-                            type: 'line',
-                            xMin: eventTime,
-                            xMax: eventTime,
-                            borderColor: '#22c55e', // Green
-                            borderWidth: 2,
-                            label: {
-                                content: `Event: GPIO${event.gpio} → ${event.pwm_value}`,
-                                enabled: true,
-                                position: 'top',
-                                backgroundColor: 'rgba(34, 197, 94, 0.8)',
-                                color: 'white',
-                                font: {
-                                    size: 10
+            // 1. Event Triggers (actual executions) - Green
+            if (markerSettings.showEventTriggers) {
+                try {
+                    const eventResponse = await fetch(`/api/event-triggers?startDate=${startDate}&endDate=${endDate}`);
+                    const eventTriggers = await eventResponse.json();
+                    
+                    eventTriggers.forEach(event => {
+                        const eventTime = new Date(event.timestamp).getTime();
+                        if (eventTime >= startDateMs && eventTime <= endDateMs) {
+                            markers.push({
+                                type: 'line',
+                                xMin: eventTime,
+                                xMax: eventTime,
+                                borderColor: '#22c55e', // Green
+                                borderWidth: 3,
+                                borderDash: [0], // Solid line
+                                label: {
+                                    content: `Triggered: GPIO${event.gpio} → ${event.pwm_value}`,
+                                    enabled: true,
+                                    position: 'top',
+                                    backgroundColor: 'rgba(34, 197, 94, 0.9)',
+                                    color: 'white',
+                                    font: {
+                                        size: 10
+                                    }
                                 }
-                            }
-                        });
-                    }
-                });
-            } catch (error) {
-                console.log('No event triggers available:', error);
+                            });
+                        }
+                    });
+                } catch (error) {
+                    console.log('No event triggers available:', error);
+                }
             }
             
-            try {
-                // Fetch error logs (red markers)
-                const errorResponse = await fetch(`/api/error-logs?startDate=${startDate}&endDate=${endDate}`);
-                const errorLogs = await errorResponse.json();
-                
-                errorLogs.forEach(error => {
-                    const errorTime = new Date(error.timestamp).getTime();
-                    if (errorTime >= startDateMs && errorTime <= endDateMs) {
-                        markers.push({
-                            type: 'line',
-                            xMin: errorTime,
-                            xMax: errorTime,
-                            borderColor: '#ef4444', // Red
-                            borderWidth: 2,
-                            label: {
-                                content: `Error: ${error.message}`,
-                                enabled: true,
-                                position: 'top',
-                                backgroundColor: 'rgba(239, 68, 68, 0.8)',
-                                color: 'white',
-                                font: {
-                                    size: 10
+            // 2. Configured Events (scheduled times) - Blue dashed
+            if (markerSettings.showConfiguredEvents) {
+                try {
+                    // Fetch configured events via socket (we'll need to add this API endpoint)
+                    const configResponse = await fetch('/api/configured-events');
+                    const configuredEvents = await configResponse.json();
+                    
+                    configuredEvents.forEach(event => {
+                        if (event.trigger_type === 'time' || !event.trigger_type) {
+                            // For time-based events, show vertical lines at scheduled times
+                            const timeStr = event.time; // UTC time string like "14:30:00"
+                            const [hours, minutes, seconds] = timeStr.split(':').map(Number);
+                            
+                            // Generate markers for each day in the range
+                            const startDay = new Date(startDateMs);
+                            const endDay = new Date(endDateMs);
+                            
+                            for (let day = new Date(startDay); day <= endDay; day.setDate(day.getDate() + 1)) {
+                                const eventDateTime = new Date(day);
+                                eventDateTime.setUTCHours(hours, minutes, seconds, 0);
+                                const eventTime = eventDateTime.getTime();
+                                
+                                if (eventTime >= startDateMs && eventTime <= endDateMs) {
+                                    markers.push({
+                                        type: 'line',
+                                        xMin: eventTime,
+                                        xMax: eventTime,
+                                        borderColor: '#3b82f6', // Blue
+                                        borderWidth: 2,
+                                        borderDash: [5, 5], // Dashed line
+                                        label: {
+                                            content: `Scheduled: GPIO${event.gpio} → ${event.pwm_value} (${event.enabled ? 'ON' : 'OFF'})`,
+                                            enabled: true,
+                                            position: 'top',
+                                            backgroundColor: 'rgba(59, 130, 246, 0.9)',
+                                            color: 'white',
+                                            font: {
+                                                size: 10
+                                            }
+                                        }
+                                    });
                                 }
                             }
-                        });
-                    }
-                });
-            } catch (error) {
-                console.log('No error logs available:', error);
+                        }
+                    });
+                } catch (error) {
+                    console.log('No configured events available:', error);
+                }
+            }
+            
+            // 3. Threshold Lines (for threshold events) - Orange dashed
+            if (markerSettings.showThresholdLines) {
+                try {
+                    const configResponse = await fetch('/api/configured-events');
+                    const configuredEvents = await configResponse.json();
+                    
+                    configuredEvents.forEach(event => {
+                        if (event.trigger_type && event.trigger_type !== 'time' && event.threshold_value !== undefined) {
+                            // Show threshold as a vertical line at a representative time (middle of range)
+                            const midTime = startDateMs + (endDateMs - startDateMs) / 2;
+                            
+                            markers.push({
+                                type: 'line',
+                                xMin: midTime,
+                                xMax: midTime,
+                                borderColor: '#f97316', // Orange
+                                borderWidth: 2,
+                                borderDash: [3, 3], // Dashed line
+                                label: {
+                                    content: `Threshold: ${event.sensor_type} ${event.threshold_condition === 'greater_than' ? '>' : '<'} ${event.threshold_value} → GPIO${event.gpio} (${event.enabled ? 'ON' : 'OFF'})`,
+                                    enabled: true,
+                                    position: 'top',
+                                    backgroundColor: 'rgba(249, 115, 22, 0.9)',
+                                    color: 'white',
+                                    font: {
+                                        size: 10
+                                    }
+                                }
+                            });
+                        }
+                    });
+                } catch (error) {
+                    console.log('No threshold events available:', error);
+                }
+            }
+            
+            // 4. Error Logs - Red
+            if (markerSettings.showErrorLogs) {
+                try {
+                    const errorResponse = await fetch(`/api/error-logs?startDate=${startDate}&endDate=${endDate}`);
+                    const errorLogs = await errorResponse.json();
+                    
+                    errorLogs.forEach(error => {
+                        const errorTime = new Date(error.timestamp).getTime();
+                        if (errorTime >= startDateMs && errorTime <= endDateMs) {
+                            markers.push({
+                                type: 'line',
+                                xMin: errorTime,
+                                xMax: errorTime,
+                                borderColor: '#ef4444', // Red
+                                borderWidth: 3,
+                                borderDash: [0], // Solid line
+                                label: {
+                                    content: `Error: ${error.message}`,
+                                    enabled: true,
+                                    position: 'top',
+                                    backgroundColor: 'rgba(239, 68, 68, 0.9)',
+                                    color: 'white',
+                                    font: {
+                                        size: 10
+                                    }
+                                }
+                            });
+                        }
+                    });
+                } catch (error) {
+                    console.log('No error logs available:', error);
+                }
             }
             
             return markers;
@@ -1160,14 +1296,20 @@
 
         // Function to update chart annotations asynchronously
         async function updateChartAnnotations(chart, startDateMs, endDateMs) {
-            const timeMarkers = generateTimeMarkers(startDateMs, endDateMs);
+            const allMarkers = [];
+            
+            // Add time markers if enabled
+            if (markerSettings.showTimeMarkers) {
+                const timeMarkers = generateTimeMarkers(startDateMs, endDateMs);
+                allMarkers.push(...timeMarkers);
+            }
+            
+            // Add event markers (includes all types based on settings)
             const eventMarkers = await generateEventMarkers(startDateMs, endDateMs);
+            allMarkers.push(...eventMarkers);
             
             if (chart.options.plugins && chart.options.plugins.annotation) {
-                chart.options.plugins.annotation.annotations = [
-                    ...timeMarkers,
-                    ...eventMarkers
-                ];
+                chart.options.plugins.annotation.annotations = allMarkers;
                 chart.update('none');
             }
         }
@@ -1223,7 +1365,7 @@
                     renderSensorSelection();
                     
                     // Update charts with the newly selected sensors
-                    updateCharts();
+                    debouncedUpdateCharts();
                 })
                 .catch(error => {
                     console.error('Error fetching sensors:', error);
@@ -1239,7 +1381,7 @@
                     ];
                     selectedSensors = availableSensors.map(s => s.address);
                     renderSensorSelection();
-                    updateCharts();
+                    debouncedUpdateCharts();
                 });
         }
 
@@ -1277,7 +1419,7 @@
                     } else {
                         selectedSensors = selectedSensors.filter(id => id !== sensor.address);
                     }
-                    updateCharts();
+                    debouncedUpdateCharts();
                 });
                 
                 container.appendChild(wrapper);
@@ -1290,7 +1432,7 @@
             document.querySelectorAll('.sensor-checkbox').forEach(checkbox => {
                 checkbox.checked = true;
             });
-            updateCharts();
+            debouncedUpdateCharts();
         }
 
         // Function to handle "Deselect All" button
@@ -1299,7 +1441,7 @@
             document.querySelectorAll('.sensor-checkbox').forEach(checkbox => {
                 checkbox.checked = false;
             });
-            updateCharts();
+            debouncedUpdateCharts();
         }
 
         // Function to toggle average mode
@@ -1309,7 +1451,7 @@
             document.getElementById('averageSensors').textContent = showAverage ? 'Show Individual' : 'Show Average';
             
             // Clear and regenerate charts with new mode
-            updateCharts();
+            debouncedUpdateCharts();
         }
 
         // Function to sync color picker with hex input
@@ -1358,7 +1500,7 @@
             console.log('Color settings updated:', colorSettings);
             
             // Regenerate charts with new colors
-            updateCharts();
+            debouncedUpdateCharts();
         }
         
         // Helper function to create chart
@@ -1901,6 +2043,28 @@
             fetchAndUpdateChart(humidityUrl, 'humidity', timeRangeHours, currentStartTime.getTime(), currentEndTime.getTime());
         }
 
+        // Debounced version of updateCharts for performance
+        function debouncedUpdateCharts() {
+            const now = Date.now();
+            
+            // Clear existing timeout
+            if (updateChartsTimeout) {
+                clearTimeout(updateChartsTimeout);
+            }
+            
+            // If enough time has passed since last update, update immediately
+            if (now - lastUpdateTime > UPDATE_DEBOUNCE_MS) {
+                lastUpdateTime = now;
+                updateCharts();
+            } else {
+                // Otherwise, schedule an update
+                updateChartsTimeout = setTimeout(() => {
+                    lastUpdateTime = Date.now();
+                    updateCharts();
+                }, UPDATE_DEBOUNCE_MS);
+            }
+        }
+
         // Custom initialization for this page
         function customInit() {
             console.log('Initializing graph page...');
@@ -2002,7 +2166,7 @@
             // Add event listener for points dropdown to auto-update charts
             document.getElementById('points').addEventListener('change', () => {
                 console.log('Points value changed, updating charts');
-                updateCharts();
+                debouncedUpdateCharts();
             });
             
             // Add event listener for Go Live button
@@ -2034,7 +2198,7 @@
                     updateTimeDisplay();
                     updateNavigationButtons();
                     updateGoLiveButton();
-                    updateCharts();
+                    debouncedUpdateCharts();
                 }
             }, 10000);
             
@@ -2045,6 +2209,43 @@
             syncColorInputs('humidLowColor', 'humidLowColorHex');
             syncColorInputs('humidMidColor', 'humidMidColorHex');
             syncColorInputs('humidHighColor', 'humidHighColorHex');
+            
+            // Set up marker visibility controls
+            document.getElementById('showTimeMarkers').addEventListener('change', function() {
+                markerSettings.showTimeMarkers = this.checked;
+                console.log('Time markers visibility changed:', this.checked);
+                debouncedUpdateCharts();
+            });
+            
+            document.getElementById('showEventTriggers').addEventListener('change', function() {
+                markerSettings.showEventTriggers = this.checked;
+                console.log('Event triggers visibility changed:', this.checked);
+                debouncedUpdateCharts();
+            });
+            
+            document.getElementById('showConfiguredEvents').addEventListener('change', function() {
+                markerSettings.showConfiguredEvents = this.checked;
+                console.log('Configured events visibility changed:', this.checked);
+                debouncedUpdateCharts();
+            });
+            
+            document.getElementById('showThresholdLines').addEventListener('change', function() {
+                markerSettings.showThresholdLines = this.checked;
+                console.log('Threshold lines visibility changed:', this.checked);
+                updateCharts();
+            });
+            
+            document.getElementById('showErrorLogs').addEventListener('change', function() {
+                markerSettings.showErrorLogs = this.checked;
+                console.log('Error logs visibility changed:', this.checked);
+                updateCharts();
+            });
+            
+            // Add refresh markers button
+            document.getElementById('refreshMarkersButton').addEventListener('click', () => {
+                console.log('Refresh markers button clicked');
+                updateCharts();
+            });
             
             // Request timezone
             socket.emit('getTimezone');
