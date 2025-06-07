@@ -401,10 +401,10 @@ class GpioController {
             thresholdEvents.forEach(event => {
                 if (event.last_triggered_at) {
                     const lastTriggered = new Date(event.last_triggered_at);
-                    const cooldownMs = (event.cooldown_minutes || 5) * 60 * 1000;
                     const timeSinceTriggered = Date.now() - lastTriggered.getTime();
-                    // Threshold events only stay active during their cooldown period
-                    if (timeSinceTriggered < cooldownMs) {
+                    // Threshold events only stay active for 0.5 seconds for immediate safety response
+                    // Cooldown prevents re-triggering but doesn't keep PWM active
+                    if (timeSinceTriggered < 500) { // 0.5 seconds instead of 2 seconds
                         const gpio = event.gpio;
                         const currentPriority = event.priority || 1;
                         const activePriority = activeThresholdEvents[gpio] ? (activeThresholdEvents[gpio].event.priority || 1) : 999;

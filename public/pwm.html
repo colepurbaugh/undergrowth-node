@@ -125,7 +125,7 @@
     <script>
         const socket = io();
         let currentTimezone = 'America/Los_Angeles';
-        let currentEvents = []; // Store current events for real-time updates
+        let currentEvents = [];
         
         // ==== SHARED FUNCTIONALITY ====
         
@@ -340,6 +340,8 @@
         
         // Handle events update
         socket.on('eventsUpdated', (events) => {
+            console.log('Events updated, refreshing display');
+            
             updateEventDisplay(events);
         });
 
@@ -638,13 +640,14 @@
                         isEventActive = activeTimeEvents[event.gpio] && 
                                        activeTimeEvents[event.gpio].event.id === event.id;
                     } else {
-                        // Threshold-based event logic - only show Live during active cooldown
+                        // Threshold-based event logic - show Live for very brief period (0.5 seconds)
+                        // This matches the backend active window for immediate safety response
                         if (event.last_triggered_at) {
                             const lastTriggered = new Date(event.last_triggered_at);
-                            const cooldownMs = (event.cooldown_minutes || 5) * 60 * 1000;
                             const timeSinceTriggered = Date.now() - lastTriggered.getTime();
-                            // Show Live only if still in cooldown period
-                            isEventActive = timeSinceTriggered < cooldownMs;
+                            isEventActive = timeSinceTriggered < 500; // 0.5 seconds
+                        } else {
+                            isEventActive = false;
                         }
                     }
                     
@@ -690,34 +693,41 @@
                     `;
                     
                     // Show trigger button with cooldown timer
-                    const cooldownMs = (event.cooldown_minutes || 5) * 60 * 1000;
-                    let timeLeft = 0;
-                    let isInCooldown = false;
-                    
-                    if (event.last_triggered_at) {
-                        const lastTriggered = new Date(event.last_triggered_at);
-                        timeLeft = cooldownMs - (Date.now() - lastTriggered.getTime());
-                        isInCooldown = timeLeft > 0;
-                    }
-                    
-                    // Always show the full cooldown time or remaining time
                     let timeDisplay;
                     let buttonClass;
                     let buttonAction;
                     
-                    if (isInCooldown) {
-                        // Show remaining time and make orange
-                        const minutesLeft = Math.floor(timeLeft / 60000);
-                        const secondsLeft = Math.ceil((timeLeft % 60000) / 1000);
-                        if (minutesLeft > 0) {
-                            timeDisplay = `${minutesLeft}m ${secondsLeft}s`;
+                    if (event.cooldown_active === 1 && event.cooldown_started_at) {
+                        // Event is in cooldown - show remaining time and make orange
+                        const cooldownStarted = new Date(event.cooldown_started_at);
+                        const cooldownMs = (event.cooldown_minutes || 5) * 60 * 1000;
+                        const timeLeft = cooldownMs - (Date.now() - cooldownStarted.getTime());
+                        
+                        if (timeLeft > 0) {
+                            const minutesLeft = Math.floor(timeLeft / 60000);
+                            const secondsLeft = Math.ceil((timeLeft % 60000) / 1000);
+                            if (minutesLeft > 0) {
+                                timeDisplay = `${minutesLeft}m ${secondsLeft}s`;
+                            } else {
+                                timeDisplay = `${secondsLeft}s`;
+                            }
+                            buttonClass = 'trigger-button-cooldown';
+                            buttonAction = `resetCooldown(${event.id})`;
                         } else {
-                            timeDisplay = `${secondsLeft}s`;
+                            // Cooldown should have expired - show as ready
+                            const totalMinutes = event.cooldown_minutes || 5;
+                            if (totalMinutes >= 60) {
+                                const hours = Math.floor(totalMinutes / 60);
+                                const minutes = totalMinutes % 60;
+                                timeDisplay = minutes > 0 ? `${hours}h ${minutes}m` : `${hours}h`;
+                            } else {
+                                timeDisplay = `${totalMinutes}m`;
+                            }
+                            buttonClass = 'trigger-button-ready';
+                            buttonAction = `triggerEvent(${event.id})`;
                         }
-                        buttonClass = 'trigger-button-cooldown';
-                        buttonAction = `resetCooldown(${event.id})`;
                     } else {
-                        // Show full cooldown time and make green
+                        // Event is ready - show full cooldown time and make green
                         const totalMinutes = event.cooldown_minutes || 5;
                         if (totalMinutes >= 60) {
                             const hours = Math.floor(totalMinutes / 60);
@@ -742,21 +752,42 @@
                 const isActive = activeEventsByGpio[event.gpio] === event.id;
                 const liveIndicator = isActive ? '<span class="live-indicator">Live <span class="live-dot"></span></span>' : '';
                 
-                eventDiv.innerHTML = `
-                    <span class="event-gpio gpio-${event.gpio}">GPIO${event.gpio}</span>
-                    <span class="event-priority">${event.priority || 1}</span>
-                    <span class="event-type ${triggerTypeDisplay}">${triggerTypeDisplay}</span>
-                    ${triggerInfo}
-                    <span class="event-pwm">${event.pwm_value}/1023 ${percentage}%</span>
-                    ${statusInfo}
-                    ${liveIndicator}
-                    <label class="toggle event-enabled">
-                        <input type="checkbox" ${event.enabled ? 'checked' : ''} 
-                               onchange="toggleEvent(${event.id}, this.checked)">
-                        <span class="slider"></span>
-                    </label>
-                    <button class="delete" onclick="deleteEvent(${event.id})">Delete</button>
-                `;
+                // Different layouts for time-based vs threshold-based events
+                if (event.trigger_type === 'time' || !event.trigger_type) {
+                    // Time-based events: swap PWM and countdown positions
+                    eventDiv.innerHTML = `
+                        <span class="event-gpio gpio-${event.gpio}">GPIO${event.gpio}</span>
+                        <span class="event-priority">${event.priority || 1}</span>
+                        <span class="event-type ${triggerTypeDisplay}">${triggerTypeDisplay}</span>
+                        ${triggerInfo}
+                        ${statusInfo}
+                        <span class="event-pwm">${event.pwm_value}/1023 ${percentage}%</span>
+                        ${liveIndicator}
+                        <label class="toggle event-enabled">
+                            <input type="checkbox" ${event.enabled ? 'checked' : ''} 
+                                   onchange="toggleEvent(${event.id}, this.checked)">
+                            <span class="slider"></span>
+                        </label>
+                        <button class="delete" onclick="deleteEvent(${event.id})">Delete</button>
+                    `;
+                } else {
+                    // Threshold-based events: keep original order
+                    eventDiv.innerHTML = `
+                        <span class="event-gpio gpio-${event.gpio}">GPIO${event.gpio}</span>
+                        <span class="event-priority">${event.priority || 1}</span>
+                        <span class="event-type ${triggerTypeDisplay}">${triggerTypeDisplay}</span>
+                        ${triggerInfo}
+                        <span class="event-pwm">${event.pwm_value}/1023 ${percentage}%</span>
+                        ${statusInfo}
+                        ${liveIndicator}
+                        <label class="toggle event-enabled">
+                            <input type="checkbox" ${event.enabled ? 'checked' : ''} 
+                                   onchange="toggleEvent(${event.id}, this.checked)">
+                            <span class="slider"></span>
+                        </label>
+                        <button class="delete" onclick="deleteEvent(${event.id})">Delete</button>
+                    `;
+                }
                 
                 eventList.appendChild(eventDiv);
                 
@@ -864,12 +895,6 @@
         function toggleEvent(id, enabled) {
             socket.emit('toggleEvent', { id, enabled });
         }
-
-        // Listen for toggle event responses to update display
-        socket.on('eventsUpdated', (events) => {
-            console.log('Events updated, refreshing display');
-            updateEventDisplay(events);
-        });
 
         function updateUI(data) {
             if (data.events) {
@@ -1071,11 +1096,15 @@
 
         function triggerEvent(id) {
             console.log('Manual trigger requested for event:', id);
-            socket.emit('triggerEvent', { id });
+            
+            // Send trigger request - database will handle cooldown state
+            socket.emit('triggerEvent', { id, triggerTime: new Date().toISOString() });
         }
 
         function resetCooldown(id) {
             console.log('Reset cooldown requested for event:', id);
+            
+            // Send reset request - database will handle cooldown state
             socket.emit('resetCooldown', { id });
         }
 
@@ -1091,7 +1120,7 @@
                 }
             });
             
-            // Update cooldown buttons for threshold events (new button classes)
+            // Update cooldown buttons for threshold events using database state
             document.querySelectorAll('.trigger-button-cooldown, .trigger-button-ready').forEach(button => {
                 const eventId = button.getAttribute('data-event-id');
                 if (!eventId) return;
@@ -1099,38 +1128,42 @@
                 const event = currentEvents.find(e => e.id == eventId);
                 if (!event) return;
                 
-                const cooldownMs = (event.cooldown_minutes || 5) * 60 * 1000;
-                let timeLeft = 0;
-                let isInCooldown = false;
+                let timeDisplay;
+                let buttonClass;
+                let buttonAction;
                 
-                if (event.last_triggered_at) {
-                    const lastTriggered = new Date(event.last_triggered_at);
-                    timeLeft = cooldownMs - (Date.now() - lastTriggered.getTime());
-                    isInCooldown = timeLeft > 0;
-                }
-                
-                // Update button based on current state
-                if (isInCooldown) {
-                    // Show remaining time and make orange
-                    const minutesLeft = Math.floor(timeLeft / 60000);
-                    const secondsLeft = Math.ceil((timeLeft % 60000) / 1000);
-                    let timeDisplay;
-                    if (minutesLeft > 0) {
-                        timeDisplay = `${minutesLeft}m ${secondsLeft}s`;
-                    } else {
-                        timeDisplay = `${secondsLeft}s`;
-                    }
+                if (event.cooldown_active === 1 && event.cooldown_started_at) {
+                    // Event is in cooldown - show remaining time
+                    const cooldownStarted = new Date(event.cooldown_started_at);
+                    const cooldownMs = (event.cooldown_minutes || 5) * 60 * 1000;
+                    const timeLeft = cooldownMs - (Date.now() - cooldownStarted.getTime());
                     
-                    // Only update if state has changed
-                    if (button.className !== 'trigger-button-cooldown' || button.textContent !== timeDisplay) {
-                        button.textContent = timeDisplay;
-                        button.className = 'trigger-button-cooldown';
-                        button.onclick = () => resetCooldown(eventId);
+                    if (timeLeft > 0) {
+                        const minutesLeft = Math.floor(timeLeft / 60000);
+                        const secondsLeft = Math.ceil((timeLeft % 60000) / 1000);
+                        if (minutesLeft > 0) {
+                            timeDisplay = `${minutesLeft}m ${secondsLeft}s`;
+                        } else {
+                            timeDisplay = `${secondsLeft}s`;
+                        }
+                        buttonClass = 'trigger-button-cooldown';
+                        buttonAction = () => resetCooldown(eventId);
+                    } else {
+                        // Cooldown should have expired - show as ready
+                        const totalMinutes = event.cooldown_minutes || 5;
+                        if (totalMinutes >= 60) {
+                            const hours = Math.floor(totalMinutes / 60);
+                            const minutes = totalMinutes % 60;
+                            timeDisplay = minutes > 0 ? `${hours}h ${minutes}m` : `${hours}h`;
+                        } else {
+                            timeDisplay = `${totalMinutes}m`;
+                        }
+                        buttonClass = 'trigger-button-ready';
+                        buttonAction = () => triggerEvent(eventId);
                     }
                 } else {
-                    // Show full cooldown time and make green
+                    // Event is ready - show full cooldown time
                     const totalMinutes = event.cooldown_minutes || 5;
-                    let timeDisplay;
                     if (totalMinutes >= 60) {
                         const hours = Math.floor(totalMinutes / 60);
                         const minutes = totalMinutes % 60;
@@ -1138,13 +1171,15 @@
                     } else {
                         timeDisplay = `${totalMinutes}m`;
                     }
-                    
-                    // Only update if state has changed
-                    if (button.className !== 'trigger-button-ready' || button.textContent !== timeDisplay) {
-                        button.textContent = timeDisplay;
-                        button.className = 'trigger-button-ready';
-                        button.onclick = () => triggerEvent(eventId);
-                    }
+                    buttonClass = 'trigger-button-ready';
+                    buttonAction = () => triggerEvent(eventId);
+                }
+                
+                // Only update if state has changed
+                if (button.className !== buttonClass || button.textContent !== timeDisplay) {
+                    button.textContent = timeDisplay;
+                    button.className = buttonClass;
+                    button.onclick = buttonAction;
                 }
             });
         }, 1000); // Update every second
