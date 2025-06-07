@@ -30,78 +30,7 @@
 
         <!-- ============= SCHEDULE SECTION ============= -->
         
-        <!-- Add New Event Form -->
-        <div class="event-control">
-            <!-- Trigger Section -->
-            <div class="trigger-section">
-                <h3 class="section-title">Action</h3>
-                
-                <select id="triggerType" class="form-box trigger-box" onchange="updateEventForm()">
-                    <option value="time">Trigger: Time</option>
-                    <option value="temperature">Trigger: Temperature</option>
-                    <option value="humidity">Trigger: Humidity</option>
-                </select>
-                
-                <!-- Time field (shown conditionally) -->
-                <input type="text" id="triggerTime" class="form-box time-box" pattern="[0-9]{2}:[0-9]{2}:[0-9]{2}" placeholder="Time: HH:MM:SS">
-                
-                <!-- Threshold fields (shown conditionally) -->
-                <select id="sensorAddress" class="form-box sensor-box" style="display: none;">
-                    <option value="0x38">Sensor: 0x38</option>
-                    <option value="0x39">Sensor: 0x39</option>
-                </select>
-                
-                <select id="thresholdOperator" class="form-box when-box" style="display: none;">
-                    <option value="above">When: Above</option>
-                    <option value="below">When: Below</option>
-                    <option value="equals">When: Equals</option>
-                </select>
-                
-                <div class="form-box value-box" style="display: none;">
-                    <input type="number" id="thresholdValue" step="0.1" placeholder="75.0">
-                    <span id="thresholdUnit">°F</span>
-                </div>
-                
-                <div class="form-box cooldown-box" style="display: none;">
-                    <span class="box-label">Cooldown:</span>
-                    <input type="number" id="cooldownMinutes" min="1" max="1440" value="5">
-                    <span>min</span>
-                </div>
-            </div>
-            
-            <!-- Arrow Separator -->
-            <div class="arrow-separator"></div>
-            
-            <!-- Action Section -->
-            <div class="action-section">
-                <h3 class="section-title">Reaction</h3>
-                
-                <div class="gpio-buttons">
-                    <button type="button" class="gpio-btn gpio-btn-12 selected" data-gpio="12">GPIO 12</button>
-                    <button type="button" class="gpio-btn gpio-btn-13" data-gpio="13">GPIO 13</button>
-                    <button type="button" class="gpio-btn gpio-btn-18" data-gpio="18">GPIO 18</button>
-                    <button type="button" class="gpio-btn gpio-btn-19" data-gpio="19">GPIO 19</button>
-                </div>
-                
-                <div class="form-box pwm-box">
-                    <span class="box-label">PWM:</span>
-                    <input type="number" id="pwmValue" min="0" max="1023" value="0" oninput="updatePWMPercentage()">
-                    <span class="pwm-max">/1023</span>
-                    <span id="pwmPercentage" class="pwm-percentage">0%</span>
-                </div>
-                
-                <div class="form-box priority-box">
-                    <span class="box-label">Priority:</span>
-                    <select id="priority">
-                        <option value="1">1 (Highest)</option>
-                        <option value="2">2</option>
-                        <option value="3" selected>3 (Lowest)</option>
-                    </select>
-                </div>
-                
-                <button class="add-event-box" onclick="addEvent()">Add Event</button>
-            </div>
-        </div>
+
         
         <!-- Active Events List -->
         <div class="header-row">
@@ -178,48 +107,7 @@
         
         // ==== SCHEDULE FUNCTIONALITY ====
         
-        // NEW: Handle trigger type form switching
-        function updateEventForm() {
-            const triggerType = document.getElementById('triggerType').value;
-            
-            // Form elements
-            const timeBox = document.getElementById('triggerTime');
-            const sensorBox = document.getElementById('sensorAddress');
-            const whenBox = document.getElementById('thresholdOperator');
-            const valueBox = document.querySelector('.value-box');
-            const cooldownBox = document.querySelector('.cooldown-box');
-            const valueInput = document.getElementById('thresholdValue');
-            const unitSpan = document.getElementById('thresholdUnit');
-            
-            if (triggerType === 'time') {
-                // Show time field
-                timeBox.style.display = 'inline-flex';
-                
-                // Hide threshold fields
-                sensorBox.style.display = 'none';
-                whenBox.style.display = 'none';
-                valueBox.style.display = 'none';
-                cooldownBox.style.display = 'none';
-            } else {
-                // Hide time field
-                timeBox.style.display = 'none';
-                
-                // Show threshold fields
-                sensorBox.style.display = 'inline-flex';
-                whenBox.style.display = 'inline-flex';
-                valueBox.style.display = 'inline-flex';
-                cooldownBox.style.display = 'inline-flex';
-                
-                // Update unit and placeholder based on trigger type
-                if (triggerType === 'temperature') {
-                    unitSpan.textContent = '°F';
-                    valueInput.placeholder = '75.0';
-                } else if (triggerType === 'humidity') {
-                    unitSpan.textContent = '%';
-                    valueInput.placeholder = '60.0';
-                }
-            }
-        }
+
         
         // Clock and timezone handling
         function updateClock() {
@@ -434,101 +322,80 @@
             return formatter.format(utcDate);
         }
 
-        function addEvent() {
-            console.log('addEvent function called'); // Debug log
-            
-            const triggerType = document.getElementById('triggerType').value;
-            const gpio = document.querySelector('.gpio-btn.selected').getAttribute('data-gpio');
-            const pwm = document.getElementById('pwmValue').value;
-            const priority = document.getElementById('priority').value;
-            
-            console.log('Form values:', { triggerType, gpio, pwm, priority }); // Debug log
-            
-            if (!validatePwm(pwm)) {
-                console.log('PWM validation failed'); // Debug log
-                return;
-            }
-            
-            let eventData = {
-                gpio: parseInt(gpio),
-                pwm_value: parseInt(pwm),
-                enabled: 1,
-                trigger_type: triggerType,
-                priority: parseInt(priority)
-            };
-            
-            console.log('Event data prepared:', eventData); // Debug log
-            
-            if (triggerType === 'time') {
-                // Time-based logic
-                const localTime = document.getElementById('triggerTime').value;
-                
-                if (!localTime) {
-                    alert('Please enter a time');
-                    return;
-                }
-                
-                if (!validateTime(localTime)) {
-                    return;
-                }
-                
-                // Convert the local time to UTC for storage
-                const utcTime = convertLocalToUTC(localTime);
-                eventData.time = utcTime;
-                
-                // Send to server
-                socket.emit('addEvent', eventData);
-            } else {
-                // NEW: Threshold-based logic
-                const sensorAddress = document.getElementById('sensorAddress').value;
-                const thresholdOperator = document.getElementById('thresholdOperator').value;
-                const thresholdValue = document.getElementById('thresholdValue').value;
-                const cooldownMinutes = document.getElementById('cooldownMinutes').value;
-                
-                if (!thresholdValue) {
-                    alert('Please enter a threshold value');
-                    return;
-                }
-                
-                if (isNaN(parseFloat(thresholdValue))) {
-                    alert('Threshold value must be a number');
-                    return;
-                }
-                
-                // Map frontend operator names to backend names
-                const operatorMap = {
-                    'above': 'greater_than',
-                    'below': 'less_than',
-                    'equals': 'equals'
-                };
-                
-                eventData.trigger_type = triggerType;
-                eventData.sensor_address = sensorAddress;
-                eventData.sensor_type = triggerType; // 'temperature' or 'humidity'
-                eventData.threshold_condition = operatorMap[thresholdOperator] || thresholdOperator;
-                eventData.threshold_value = parseFloat(thresholdValue);
-                eventData.cooldown_minutes = parseInt(cooldownMinutes) || 5;
-                eventData.duration_seconds = (parseInt(cooldownMinutes) || 5) * 60; // Convert minutes to seconds
-                eventData.time = ''; // Empty time for threshold events
-                
-                console.log('Sending threshold event to server:', eventData);
-                
-                // Send to server
-                socket.emit('addEvent', eventData);
-                
-                // Clear form
-                document.getElementById('thresholdValue').value = '';
-                document.getElementById('cooldownMinutes').value = '5';
-            }
-        }
+
         
         function updateEventDisplay(events) {
             currentEvents = events || []; // Store for real-time updates
             const eventList = document.getElementById('eventList');
             eventList.innerHTML = '';
             
+            // Add empty reference div at the top
+            const referenceDiv = document.createElement('div');
+            referenceDiv.className = 'event-item';
+            referenceDiv.innerHTML = `
+                <select id="newEventGpio" class="event-gpio" style="background: #604331; color: white; border: none; border-radius: 0.25rem; padding: 0.1rem 0.3rem; width: auto;">
+                    <option value="" style="color: white;">GPIO</option>
+                    <option value="12" style="color: #ffeb3b;">GPIO12</option>
+                    <option value="13" style="color: #2196f3;">GPIO13</option>
+                    <option value="18" style="color: #c0110b;">GPIO18</option>
+                    <option value="19" style="color: #45a049;">GPIO19</option>
+                </select>
+                
+                <select id="newEventPriority" class="event-priority" style="background: #4B0082; color: white; border: none; border-radius: 0.25rem; padding: 0.1rem 0.3rem; width: auto; text-align: center;">
+                    <option value="1">1</option>
+                    <option value="2">2</option>
+                    <option value="3">3</option>
+                    <option value="4">4</option>
+                    <option value="5">5</option>
+                </select>
+                
+                <select id="newEventType" class="event-type" style="background: #21374a; color: white; border: none; border-radius: 0.25rem; padding: 0.1rem 0.3rem; width: auto;">
+                    <option value="">Trigger</option>
+                    <option value="time" style="color: #2196f3;">Time</option>
+                    <option value="temperature" style="color: #c0110b;">Temperature</option>
+                    <option value="humidity" style="color: #2196f3;">Humidity</option>
+                </select>
+                
+                <select id="newEventSensor" class="event-sensor" style="background: #4d332a; color: white; border: none; border-radius: 0.25rem; padding: 0.1rem 0.3rem; width: auto; display: none;">
+                    <option value="">Sensor</option>
+                    <option value="0x38">0x38</option>
+                    <option value="0x39">0x39</option>
+                </select>
+                
+                <select id="newEventCondition" class="event-threshold" style="background: #352441; color: white; border: none; border-radius: 0.25rem; padding: 0.1rem 0.3rem; width: auto; display: none;">
+                    <option value="">Cond</option>
+                    <option value="greater_than">></option>
+                    <option value="less_than"><</option>
+                </select>
+                
+                <input type="text" id="newEventValue" placeholder="Value" class="event-threshold" style="background: #273827; color: white; border: none; border-radius: 0.25rem; padding: 0.1rem 0.3rem; width: 80px; text-align: center; display: none;">
+                
+                <input type="number" id="newEventCooldown" placeholder="5" min="1" max="60" class="cooldown" style="background: #402c2b; color: white; border: none; border-radius: 0.25rem; padding: 0.1rem 0.3rem; width: 50px; text-align: center; display: none;">
+                
+                <span class="event-pwm" style="background: #604331; color: white; border-radius: 0.25rem; padding: 0.1rem 0.3rem; min-width: 120px; display: flex; align-items: center; gap: 0.3rem;">
+                    <input type="number" id="newEventPwm" placeholder="0-1023" min="0" max="1023" style="width: 100px; background: transparent; border: 1px solid rgba(255,255,255,0.3); color: white; border-radius: 0.25rem; padding: 0.1rem; text-align: center;">
+                    <span id="newEventPercent" style="font-size: 1.2rem;">0%</span>
+                </span>
+                
+                <label class="toggle event-enabled" style="min-width: 60px; display: flex; justify-content: center;">
+                    <input type="checkbox" id="newEventEnabled" checked>
+                    <span class="slider"></span>
+                </label>
+                
+                <button id="addEventBtn" class="delete" style="background: var(--success-color); min-width: 90px;">
+                    Add
+                </button>
+            `;
+            eventList.appendChild(referenceDiv);
+            
+            // Add event handlers for the new event form
+            setupNewEventForm();
+            
             if (!events || events.length === 0) {
-                eventList.innerHTML = '<div class="no-events">No events configured</div>';
+                const noEventsDiv = document.createElement('div');
+                noEventsDiv.className = 'no-events';
+                noEventsDiv.textContent = 'No events configured';
+                eventList.appendChild(noEventsDiv);
                 return;
             }
             
@@ -979,48 +846,10 @@
                 });
             }
             
-            // Set up GPIO button selection
-            setupGpioButtons();
-            
-            // Initialize form to default state (Time trigger)
-            initializeEventForm();
+
         }
         
-        // NEW: Initialize event form to default state
-        function initializeEventForm() {
-            // Set trigger type to "time" (first option)
-            const triggerType = document.getElementById('triggerType');
-            if (triggerType) {
-                triggerType.value = 'time';
-                // Call updateEventForm to show/hide appropriate fields
-                updateEventForm();
-            }
-            
-            // Initialize PWM percentage display
-            updatePWMPercentage();
-        }
-        
-        // NEW: GPIO button selection functionality
-        function setupGpioButtons() {
-            const gpioButtons = document.querySelectorAll('.gpio-btn');
-            
-            gpioButtons.forEach(button => {
-                button.addEventListener('click', function() {
-                    // Remove selected class from all buttons
-                    gpioButtons.forEach(btn => btn.classList.remove('selected'));
-                    
-                    // Add selected class to clicked button
-                    this.classList.add('selected');
-                });
-            });
-            
-            // Ensure GPIO 12 is selected by default (it should already have the 'selected' class in HTML)
-            const gpio12Button = document.querySelector('.gpio-btn-12');
-            if (gpio12Button && !gpio12Button.classList.contains('selected')) {
-                gpioButtons.forEach(btn => btn.classList.remove('selected'));
-                gpio12Button.classList.add('selected');
-            }
-        }
+
         
         // Initialize the application
         initializeApp(socket, customInit);
@@ -1090,17 +919,7 @@
             });
         }
 
-        function updatePWMPercentage() {
-            const pwmValue = document.getElementById('pwmValue').value;
-            const pwmPercentage = document.getElementById('pwmPercentage');
-            
-            if (pwmValue) {
-                const percentage = Math.round((Number(pwmValue) / 1023) * 100);
-                pwmPercentage.textContent = `${percentage}%`;
-            } else {
-                pwmPercentage.textContent = '0%';
-            }
-        }
+
 
         function triggerEvent(id) {
             console.log('Manual trigger requested for event:', id);
@@ -1161,66 +980,237 @@
             }
         }
 
-        // Real-time updates for countdowns and cooldowns
+        // Real-time updates for trigger buttons
         setInterval(() => {
-            // Update countdowns for time-based events
-            document.querySelectorAll('.countdown').forEach(element => {
-                const eventId = element.id.replace('countdown-', '');
-                const event = currentEvents.find(e => e.id == eventId);
-                if (event && (event.trigger_type === 'time' || !event.trigger_type)) {
-                    const localTimeStr = convertUTCToLocal(event.time);
-                    updateCountdown(eventId, localTimeStr);
-                }
-            });
-            
-            // Update cooldown buttons for threshold events using timestamp-based approach
-            document.querySelectorAll('.trigger-button-cooldown, .trigger-button-ready').forEach(button => {
-                const eventId = button.getAttribute('data-event-id');
-                if (!eventId) return;
-                
-                const event = currentEvents.find(e => e.id == eventId);
-                if (!event) return;
-                
-                let timeDisplay;
-                let buttonClass;
-                let buttonAction;
-                
-                const cooldownStatus = getCooldownStatus(event);
-                
-                if (cooldownStatus === 'cooldown') {
-                    // Event is in cooldown - show remaining time
-                    const timeLeft = getTimeLeft(event);
-                    timeDisplay = formatTimeLeft(timeLeft);
-                    buttonClass = 'trigger-button-cooldown';
-                    buttonAction = `resetCooldown(${event.id})`;
-                } else {
-                    // Event is ready - show full cooldown time
-                    const totalMinutes = event.cooldown_minutes || 5;
-                    if (totalMinutes >= 60) {
-                        const hours = Math.floor(totalMinutes / 60);
-                        const minutes = totalMinutes % 60;
-                        timeDisplay = minutes > 0 ? `${hours}h ${minutes}m` : `${hours}h`;
-                    } else {
-                        timeDisplay = `${totalMinutes}m`;
-                    }
-                    buttonClass = 'trigger-button-ready';
-                    buttonAction = `triggerEvent(${event.id})`;
-                }
-                
-                // Only update if state has changed
-                if (button.className !== buttonClass || button.textContent !== timeDisplay) {
-                    button.textContent = timeDisplay;
-                    button.className = buttonClass;
+            currentEvents.forEach(event => {
+                if (event.trigger_type !== 'time' && event.trigger_type) {
+                    const button = document.querySelector(`button[data-event-id="${event.id}"]`);
+                    if (!button) return;
                     
-                    // Set onclick properly based on button state
+                    const cooldownStatus = getCooldownStatus(event);
+                    let timeDisplay;
+                    let buttonClass;
+                    
                     if (cooldownStatus === 'cooldown') {
-                        button.onclick = () => resetCooldown(event.id);
+                        // Event is in cooldown - show remaining time
+                        const timeLeft = getTimeLeft(event);
+                        timeDisplay = formatTimeLeft(timeLeft);
+                        buttonClass = 'trigger-button-cooldown';
                     } else {
-                        button.onclick = () => triggerEvent(event.id);
+                        // Event is ready - show full cooldown time
+                        const totalMinutes = event.cooldown_minutes || 5;
+                        if (totalMinutes >= 60) {
+                            const hours = Math.floor(totalMinutes / 60);
+                            const minutes = totalMinutes % 60;
+                            timeDisplay = minutes > 0 ? `${hours}h ${minutes}m` : `${hours}h`;
+                        } else {
+                            timeDisplay = `${totalMinutes}m`;
+                        }
+                        buttonClass = 'trigger-button-ready';
+                    }
+                    
+                    // Only update if state has changed
+                    if (button.className !== buttonClass || button.textContent !== timeDisplay) {
+                        button.textContent = timeDisplay;
+                        button.className = buttonClass;
+                        
+                        // Set onclick properly based on button state
+                        if (cooldownStatus === 'cooldown') {
+                            button.onclick = () => resetCooldown(event.id);
+                        } else {
+                            button.onclick = () => triggerEvent(event.id);
+                        }
                     }
                 }
             });
         }, 1000); // Update every second
+
+        // Setup new event form handlers
+        function setupNewEventForm() {
+            const typeSelect = document.getElementById('newEventType');
+            const sensorSelect = document.getElementById('newEventSensor');
+            const conditionSelect = document.getElementById('newEventCondition');
+            const valueInput = document.getElementById('newEventValue');
+            const cooldownInput = document.getElementById('newEventCooldown');
+            const pwmInput = document.getElementById('newEventPwm');
+            const percentSpan = document.getElementById('newEventPercent');
+            const addBtn = document.getElementById('addEventBtn');
+            
+            // Update PWM percentage when PWM value changes
+            pwmInput.addEventListener('input', function() {
+                const value = parseInt(this.value) || 0;
+                const percent = Math.round((value / 1023) * 100);
+                percentSpan.textContent = `${percent}%`;
+            });
+            
+            // Update fields visibility based on trigger type selection
+            typeSelect.addEventListener('change', function() {
+                const type = this.value;
+                if (type === 'time') {
+                    // Time events: show only value input (as time picker)
+                    valueInput.type = 'time';
+                    valueInput.placeholder = 'HH:MM';
+                    valueInput.style.display = 'inline-block';
+                    sensorSelect.style.display = 'none';
+                    conditionSelect.style.display = 'none';
+                    cooldownInput.style.display = 'none';
+                } else if (type === 'temperature' || type === 'humidity') {
+                    // Threshold events: show sensor, condition, value, and cooldown
+                    valueInput.type = 'number';
+                    valueInput.placeholder = type === 'temperature' ? '°F' : '%';
+                    if (type === 'humidity') {
+                        valueInput.min = '0';
+                        valueInput.max = '100';
+                    } else {
+                        valueInput.removeAttribute('min');
+                        valueInput.removeAttribute('max');
+                    }
+                    valueInput.style.display = 'inline-block';
+                    sensorSelect.style.display = 'inline-block';
+                    conditionSelect.style.display = 'inline-block';
+                    cooldownInput.style.display = 'inline-block';
+                } else {
+                    // No trigger type selected: hide all additional fields
+                    valueInput.style.display = 'none';
+                    sensorSelect.style.display = 'none';
+                    conditionSelect.style.display = 'none';
+                    cooldownInput.style.display = 'none';
+                }
+            });
+            
+            // Add event button handler
+            addBtn.addEventListener('click', function() {
+                createNewEvent();
+            });
+        }
+        
+        // Create new event from form
+        function createNewEvent() {
+            console.log('createNewEvent function called'); // Debug log
+            
+            const gpio = document.getElementById('newEventGpio').value;
+            const priority = document.getElementById('newEventPriority').value;
+            const triggerType = document.getElementById('newEventType').value;
+            const pwm = document.getElementById('newEventPwm').value;
+            const enabled = document.getElementById('newEventEnabled').checked;
+            
+            console.log('New event form values:', { gpio, priority, triggerType, pwm, enabled }); // Debug log
+            
+            // Validation
+            if (!gpio) {
+                alert('Please select a GPIO');
+                return;
+            }
+            
+            if (!triggerType) {
+                alert('Please select a trigger type');
+                return;
+            }
+            
+            if (!pwm) {
+                alert('Please enter a PWM value');
+                return;
+            }
+            
+            if (!validatePwm(pwm)) {
+                console.log('PWM validation failed'); // Debug log
+                return;
+            }
+            
+            let eventData = {
+                gpio: parseInt(gpio),
+                pwm_value: parseInt(pwm),
+                enabled: enabled ? 1 : 0,
+                trigger_type: triggerType,
+                priority: parseInt(priority)
+            };
+            
+            console.log('New event data prepared:', eventData); // Debug log
+            
+            if (triggerType === 'time') {
+                // Time-based logic
+                const localTime = document.getElementById('newEventValue').value;
+                
+                if (!localTime) {
+                    alert('Please enter a time');
+                    return;
+                }
+                
+                if (!validateTime(localTime)) {
+                    return;
+                }
+                
+                // Convert the local time to UTC for storage
+                const utcTime = convertLocalToUTC(localTime);
+                eventData.time = utcTime;
+                
+                // Send to server
+                socket.emit('addEvent', eventData);
+            } else {
+                // Threshold-based logic
+                const sensorAddress = document.getElementById('newEventSensor').value;
+                const thresholdOperator = document.getElementById('newEventCondition').value;
+                const thresholdValue = document.getElementById('newEventValue').value;
+                const cooldownMinutes = document.getElementById('newEventCooldown').value || '5';
+                
+                if (!sensorAddress) {
+                    alert('Please select a sensor');
+                    return;
+                }
+                
+                if (!thresholdOperator) {
+                    alert('Please select a condition');
+                    return;
+                }
+                
+                if (!thresholdValue) {
+                    alert('Please enter a threshold value');
+                    return;
+                }
+                
+                if (isNaN(parseFloat(thresholdValue))) {
+                    alert('Threshold value must be a number');
+                    return;
+                }
+                
+                eventData.trigger_type = triggerType;
+                eventData.sensor_address = sensorAddress;
+                eventData.sensor_type = triggerType; // 'temperature' or 'humidity'
+                eventData.threshold_condition = thresholdOperator;
+                eventData.threshold_value = parseFloat(thresholdValue);
+                eventData.cooldown_minutes = parseInt(cooldownMinutes) || 5;
+                eventData.duration_seconds = (parseInt(cooldownMinutes) || 5) * 60; // Convert minutes to seconds
+                eventData.time = ''; // Empty time for threshold events
+                
+                console.log('Sending new threshold event to server:', eventData);
+                
+                // Send to server
+                socket.emit('addEvent', eventData);
+            }
+            
+            // Clear form after submission
+            clearNewEventForm();
+        }
+        
+        // Clear the new event form
+        function clearNewEventForm() {
+            document.getElementById('newEventGpio').value = '';
+            document.getElementById('newEventPriority').value = '1';
+            document.getElementById('newEventType').value = '';
+            document.getElementById('newEventSensor').value = '';
+            document.getElementById('newEventCondition').value = '';
+            document.getElementById('newEventValue').value = '';
+            document.getElementById('newEventCooldown').value = '';
+            document.getElementById('newEventPwm').value = '';
+            document.getElementById('newEventPercent').textContent = '0%';
+            document.getElementById('newEventEnabled').checked = true;
+            
+            // Hide all additional fields initially
+            document.getElementById('newEventSensor').style.display = 'none';
+            document.getElementById('newEventCondition').style.display = 'none';
+            document.getElementById('newEventValue').style.display = 'none';
+            document.getElementById('newEventCooldown').style.display = 'none';
+        }
     </script>
 </body>
-</html> 
+</html>
