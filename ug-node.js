@@ -183,14 +183,6 @@ configDb = new sqlite3.Database('./database/ug-config.db', (err) => {
             if (err) console.error('Error creating settings table:', err);
         });
         
-        // Add new cooldown state columns for database-driven approach
-        configDb.run(`ALTER TABLE events ADD COLUMN cooldown_active INTEGER DEFAULT 0`, (err) => {
-            if (err && !err.message.includes('duplicate column')) console.error('Error adding cooldown_active column:', err);
-        });
-        configDb.run(`ALTER TABLE events ADD COLUMN cooldown_started_at DATETIME`, (err) => {
-            if (err && !err.message.includes('duplicate column')) console.error('Error adding cooldown_started_at column:', err);
-        });
-        
         configDb.run(`CREATE TABLE IF NOT EXISTS manual_pwm_states (pin INTEGER PRIMARY KEY, value INTEGER DEFAULT 0, enabled INTEGER DEFAULT 0, last_modified DATETIME DEFAULT CURRENT_TIMESTAMP)`);
         configDb.run(`CREATE TABLE IF NOT EXISTS auto_pwm_states (pin INTEGER PRIMARY KEY, value INTEGER DEFAULT 0, enabled INTEGER DEFAULT 0, last_modified DATETIME DEFAULT CURRENT_TIMESTAMP)`);
         configDb.run(`CREATE TABLE IF NOT EXISTS sensor_config (
@@ -570,12 +562,9 @@ async function clearEmergencyStop() {
 
 async function checkThresholdEvents() {
     try {
-        // First, update cooldown states for all events based on time elapsed
-        await updateCooldownStates();
-        
-        // Get all enabled threshold events that are not in cooldown
+        // Get all enabled threshold events (no cooldown checking here - logs handle that)
         const thresholdEvents = await new Promise((resolve, reject) => {
-            configDb.all('SELECT * FROM events WHERE enabled = 1 AND trigger_type IN (?, ?) AND cooldown_active = 0', 
+            configDb.all('SELECT * FROM events WHERE enabled = 1 AND trigger_type IN (?, ?)', 
                 ['temperature', 'humidity'], (err, rows) => {
                 if (err) reject(err); 
                 else resolve(rows || []);
@@ -587,162 +576,110 @@ async function checkThresholdEvents() {
         // Get current sensor readings
         const currentReadings = {};
         
-        for (const [address, sensor] of Object.entries(sensors)) {
-            if (sensor.lastReading && sensor.lastReading.temperature !== undefined && sensor.lastReading.humidity !== undefined) {
-                // Apply calibration if configured
-                const tempValue = (sensor.lastReading.temperature * (sensor.config.calibration_scale || 1)) + (sensor.config.calibration_offset || 0);
-                currentReadings[address] = {
-                    temperature: tempValue,
-                    humidity: sensor.lastReading.humidity
-                };
+        for (const [address, sensorData] of Object.entries(sensorDataCache)) {
+            if (address !== 'system' && address !== 'databaseTimezone') {
+                currentReadings[address] = sensorData;
             }
         }
 
-        const now = new Date();
-        
+        // Check each threshold event
         for (const event of thresholdEvents) {
-            const sensorReading = currentReadings[event.sensor_address];
-            if (!sensorReading) {
-                continue; // Skip if no current reading for this sensor
-            }
+            const sensorData = currentReadings[event.sensor_address];
+            if (!sensorData) continue;
 
-            // Get the current sensor value based on event type
             const currentValue = event.sensor_type === 'temperature' ? 
-                sensorReading.temperature : sensorReading.humidity;
+                (sensorData.raw_temperature || sensorData.temperature) : sensorData.humidity;
             
-            if (currentValue === undefined || currentValue === null) {
-                continue;
-            }
+            if (currentValue === null || currentValue === undefined) continue;
+            
+            console.log(`Checking event ${event.id}: ${event.sensor_type} ${currentValue} ${event.threshold_condition} ${event.threshold_value}`);
 
             // Check if threshold condition is met
             let conditionMet = false;
             switch (event.threshold_condition) {
                 case 'greater_than':
-                case 'above':
                     conditionMet = currentValue > event.threshold_value;
                     break;
                 case 'less_than':
-                case 'below':
                     conditionMet = currentValue < event.threshold_value;
                     break;
                 case 'equals':
                     conditionMet = Math.abs(currentValue - event.threshold_value) < 0.1;
                     break;
             }
+            
+            console.log(`Event ${event.id} condition met: ${conditionMet}`);
 
-            if (conditionMet) {
-                console.log(`Threshold event triggered: GPIO${event.gpio} -> ${event.pwm_value} (${event.sensor_address} ${event.sensor_type} ${event.threshold_condition} ${event.threshold_value}, current: ${currentValue})`);
-                
-                // Start cooldown and update last triggered time
-                await new Promise((resolve, reject) => {
-                    configDb.run('UPDATE events SET last_triggered_at = ?, cooldown_active = 1, cooldown_started_at = ? WHERE id = ?', 
-                        [now.toISOString(), now.toISOString(), event.id], (err) => {
-                        if (err) reject(err); else resolve();
-                    });
+            if (!conditionMet) continue;
+
+            // Check if event is in cooldown by looking at recent logs
+            const cooldownMs = (event.cooldown_minutes || 5) * 60 * 1000;
+            const cooldownStart = new Date(Date.now() - cooldownMs).toISOString();
+            
+            const recentTrigger = await new Promise((resolve, reject) => {
+                configDb.get(`
+                    SELECT timestamp FROM event_log 
+                    WHERE event_id = ? AND action = 'triggered' AND timestamp > ?
+                    ORDER BY timestamp DESC LIMIT 1
+                `, [event.id, cooldownStart], (err, row) => {
+                    if (err) reject(err);
+                    else resolve(row);
                 });
+            });
 
-                // Log the trigger event
-                await new Promise((resolve, reject) => {
-                    configDb.run(`INSERT INTO event_triggers 
-                        (event_id, triggered_at, gpio, pwm_value, trigger_type, sensor_address, sensor_value, threshold_value) 
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, 
-                        [event.id, now.toISOString(), event.gpio, event.pwm_value, event.sensor_type, 
-                         event.sensor_address, currentValue, event.threshold_value], (err) => {
-                        if (err) reject(err); else resolve();
-                    });
-                });
-
-                // Apply PWM change if in automatic mode and system is safe
-                const safetyStates = await new Promise((resolve, reject) => {
-                    configDb.all('SELECT key, value FROM safety_state', [], (err, rows) => {
-                        if (err) reject(err);
-                        else resolve(rows.reduce((acc, row) => { acc[row.key] = row.value; return acc; }, {}));
-                    });
-                });
-                
-                const mode = await new Promise((resolve, reject) => {
-                    configDb.get('SELECT value FROM system_state WHERE key = ?', ['mode'], (err, row) => {
-                        if (err) reject(err);
-                        else resolve(row ? row.value : 1);
-                    });
-                });
-
-                if (mode === 0 && safetyStates.emergency_stop !== 1 && safetyStates.normal_enable === 1) {
-                    // Update auto PWM state
-                    await new Promise((resolve, reject) => {
-                        configDb.run('UPDATE auto_pwm_states SET value = ?, enabled = 1 WHERE pin = ?',
-                            [event.pwm_value, event.gpio], (err) => {
-                                if (err) reject(err); else resolve();
-                            });
-                    });
-
-                    // Apply to hardware if GPIO controller is available
-                    if (gpioController && gpioController.pwmEnabled && gpioController.pwmPins[event.gpio]) {
-                        try {
-                            const hardwareValue = Math.floor((event.pwm_value / 1023) * 255);
-                            gpioController.pwmPins[event.gpio].pwmWrite(hardwareValue);
-                            console.log(`Applied threshold event PWM: GPIO${event.gpio} = ${event.pwm_value} (hardware: ${hardwareValue})`);
-                        } catch (error) {
-                            console.error(`Error applying threshold event PWM to GPIO${event.gpio}:`, error);
-                        }
-                    }
-
-                    // Broadcast PWM state update
-                    broadcastPWMState();
-                }
+            // Skip if still in cooldown
+            if (recentTrigger) {
+                console.log(`Event ${event.id} still in cooldown, skipping`);
+                continue;
             }
-        }
-    } catch (error) {
-        console.error('Error checking threshold events:', error);
-    }
-}
 
-// New function to update cooldown states based on elapsed time
-async function updateCooldownStates() {
-    try {
-        const now = new Date();
-        let cooldownsCleared = false;
+            // Trigger the event by creating a log entry
+            const now = new Date();
+            const expiresAt = new Date(now.getTime() + (event.duration_seconds || 30) * 1000);
+            
+            console.log(`Threshold triggered: Event ${event.id}, GPIO${event.gpio}, ${currentValue} ${event.threshold_condition} ${event.threshold_value}`);
+            
+            // Insert log entry
+            await new Promise((resolve, reject) => {
+                configDb.run(`
+                    INSERT INTO event_log (gpio, action, pwm_value, trigger_source, event_id, priority, expires_at, notes)
+                    VALUES (?, 'triggered', ?, ?, ?, ?, ?, ?)
+                `, [
+                    event.gpio,
+                    event.pwm_value,
+                    event.sensor_type,
+                    event.id,
+                    event.priority || 1,
+                    expiresAt.toISOString(),
+                    `${event.sensor_type} ${currentValue} ${event.threshold_condition} ${event.threshold_value}`
+                ], (err) => {
+                    if (err) reject(err);
+                    else resolve();
+                });
+            });
+
+            // Update last_triggered_at for cooldown calculations
+            await new Promise((resolve, reject) => {
+                configDb.run('UPDATE events SET last_triggered_at = ? WHERE id = ?', 
+                    [now.toISOString(), event.id], (err) => {
+                    if (err) reject(err);
+                    else resolve();
+                });
+            });
+        }
         
-        // Get all events that are currently in cooldown
-        const eventsInCooldown = await new Promise((resolve, reject) => {
-            configDb.all('SELECT id, cooldown_minutes, cooldown_started_at FROM events WHERE cooldown_active = 1', 
-                [], (err, rows) => {
-                if (err) reject(err); 
+        // Broadcast updated events after any triggers
+        const events = await new Promise((resolve, reject) => {
+            configDb.all('SELECT * FROM events ORDER BY id', [], (err, rows) => {
+                if (err) reject(err);
                 else resolve(rows || []);
             });
         });
-
-        for (const event of eventsInCooldown) {
-            if (event.cooldown_started_at) {
-                const cooldownStarted = new Date(event.cooldown_started_at);
-                const cooldownMs = (event.cooldown_minutes || 5) * 60 * 1000;
-                const timeSinceCooldownStarted = now.getTime() - cooldownStarted.getTime();
-                
-                if (timeSinceCooldownStarted >= cooldownMs) {
-                    // Cooldown period has elapsed, clear the cooldown
-                    await new Promise((resolve, reject) => {
-                        configDb.run('UPDATE events SET cooldown_active = 0, cooldown_started_at = NULL WHERE id = ?', 
-                            [event.id], (err) => {
-                            if (err) reject(err); else resolve();
-                        });
-                    });
-                    console.log(`Cooldown cleared for event ${event.id}`);
-                    cooldownsCleared = true;
-                }
-            }
-        }
         
-        // If any cooldowns were cleared, broadcast updated events to frontend
-        if (cooldownsCleared) {
-            configDb.all('SELECT * FROM events ORDER BY time, threshold_value', [], (err, events) => {
-                if (!err && events) {
-                    io.emit('eventsUpdated', events);
-                    console.log('Broadcasted updated events after cooldown expiration');
-                }
-            });
-        }
+        io.emit('eventsUpdated', events);
+        
     } catch (error) {
-        console.error('Error updating cooldown states:', error);
+        console.error('Error in checkThresholdEvents:', error);
     }
 }
 
@@ -1327,7 +1264,7 @@ io.on('connection', (socket) => {
     });
 
     socket.on('addEvent', (data) => {
-        const { gpio, time, pwm_value, enabled, trigger_type, sensor_address, sensor_type, threshold_condition, threshold_value, cooldown_minutes, priority } = data;
+        const { gpio, time, pwm_value, enabled, trigger_type, sensor_address, sensor_type, threshold_condition, threshold_value, cooldown_minutes, priority, duration_seconds } = data;
         
         // Validate required fields
         if (!gpio || pwm_value === undefined) { 
@@ -1349,10 +1286,10 @@ io.on('connection', (socket) => {
             }
         }
         
-        // Insert event with all fields including priority
+        // Insert event with all fields including priority and duration_seconds
         const sql = `INSERT INTO events 
-            (gpio, time, pwm_value, enabled, trigger_type, sensor_address, sensor_type, threshold_condition, threshold_value, cooldown_minutes, priority) 
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+            (gpio, time, pwm_value, enabled, trigger_type, sensor_address, sensor_type, threshold_condition, threshold_value, cooldown_minutes, priority, duration_seconds) 
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
         
         const params = [
             gpio, 
@@ -1365,7 +1302,8 @@ io.on('connection', (socket) => {
             threshold_condition || null,
             threshold_value || null,
             cooldown_minutes || null,
-            priority || 1
+            priority || 1,
+            duration_seconds || 30
         ];
         
         configDb.run(sql, params, function (err) {
@@ -1376,7 +1314,7 @@ io.on('connection', (socket) => {
             }
             
             if (trigger_type && trigger_type !== 'time') {
-                console.log(`Threshold event added: GPIO${gpio} -> ${pwm_value} when ${sensor_address} ${sensor_type} ${threshold_condition} ${threshold_value} (priority: ${priority || 1}, cooldown: ${cooldown_minutes || 5}min)`);
+                console.log(`Threshold event added: GPIO${gpio} -> ${pwm_value} when ${sensor_address} ${sensor_type} ${threshold_condition} ${threshold_value} (priority: ${priority || 1}, cooldown: ${cooldown_minutes || 5}min, duration: ${duration_seconds || 30}s)`);
             } else {
                 console.log(`Time event added: GPIO${gpio} at ${time} with PWM ${pwm_value} (priority: ${priority || 1})`);
             }
@@ -1489,60 +1427,68 @@ io.on('connection', (socket) => {
             
             console.log(`Manually triggering threshold event ${id}: GPIO${event.gpio} -> ${event.pwm_value} at ${timestampToUse}`);
             
-            // Check if event is in cooldown using database state
-            if (event.cooldown_active === 1) {
-                // Calculate remaining cooldown time
-                if (event.cooldown_started_at) {
-                    const cooldownStarted = new Date(event.cooldown_started_at);
-                    const cooldownMs = (event.cooldown_minutes || 5) * 60 * 1000;
-                    const timeLeft = cooldownMs - (Date.now() - cooldownStarted.getTime());
-                    
-                    if (timeLeft > 0) {
-                        const minutesLeft = Math.ceil(timeLeft / 60000);
-                        socket.emit('error', { message: `Event is in cooldown for ${minutesLeft} more minutes` });
-                        return;
-                    }
-                }
+            // Check if event is in cooldown using log-based approach
+            const cooldownMs = (event.cooldown_minutes || 5) * 60 * 1000;
+            const cooldownStart = new Date(Date.now() - cooldownMs).toISOString();
+            
+            const recentTrigger = await new Promise((resolve, reject) => {
+                configDb.get(`
+                    SELECT timestamp FROM event_log 
+                    WHERE event_id = ? AND action = 'triggered' AND timestamp > ?
+                    ORDER BY timestamp DESC LIMIT 1
+                `, [event.id, cooldownStart], (err, row) => {
+                    if (err) reject(err);
+                    else resolve(row);
+                });
+            });
+
+            // Check if still in cooldown
+            if (recentTrigger) {
+                const lastTrigger = new Date(recentTrigger.timestamp);
+                const timeLeft = cooldownMs - (Date.now() - lastTrigger.getTime());
+                const minutesLeft = Math.ceil(timeLeft / 60000);
+                socket.emit('error', { message: `Event is in cooldown for ${minutesLeft} more minutes` });
+                return;
             }
             
-            // Trigger the event (same logic as threshold checking)
+            // Trigger the event using log-based approach
             try {
-                // Update auto PWM state in database first
+                const now = new Date(timestampToUse);
+                const expiresAt = new Date(now.getTime() + (event.duration_seconds || 30) * 1000);
+                
+                // Insert log entry
                 await new Promise((resolve, reject) => {
-                    configDb.run('UPDATE auto_pwm_states SET value = ?, enabled = 1 WHERE pin = ?',
-                        [event.pwm_value, event.gpio], (err) => {
-                            if (err) reject(err); else resolve();
-                        });
+                    configDb.run(`
+                        INSERT INTO event_log (gpio, action, pwm_value, trigger_source, event_id, priority, expires_at, notes)
+                        VALUES (?, 'triggered', ?, 'manual', ?, ?, ?, ?)
+                    `, [
+                        event.gpio,
+                        event.pwm_value,
+                        event.id,
+                        event.priority || 1,
+                        expiresAt.toISOString(),
+                        `Manual trigger via web interface`
+                    ], (err) => {
+                        if (err) reject(err);
+                        else resolve();
+                    });
                 });
 
-                // Apply to hardware directly (bypass setPWM which blocks in automatic mode)
-                if (gpioController && gpioController.pwmEnabled && gpioController.pwmPins[event.gpio]) {
-                    const hardwareValue = Math.floor((event.pwm_value / 1023) * 255);
-                    try {
-                        gpioController.pwmPins[event.gpio].pwmWrite(hardwareValue);
-                        console.log(`Manual trigger successful: GPIO${event.gpio} set to ${event.pwm_value} (hardware: ${hardwareValue})`);
-                    } catch (e) {
-                        console.error(`Error setting PWM hardware for GPIO${event.gpio}:`, e.message);
-                    }
-                }
-                
-                // Start cooldown and update last triggered time with client timestamp
-                configDb.run('UPDATE events SET last_triggered_at = ?, cooldown_active = 1, cooldown_started_at = ? WHERE id = ?', 
-                    [timestampToUse, timestampToUse, id], (updateErr) => {
-                    if (updateErr) {
-                        console.error('Error updating event cooldown state:', updateErr);
-                    } else {
-                        console.log(`Started cooldown for event ${id} at ${timestampToUse}`);
-                        
-                        // Broadcast PWM state update
-                        broadcastPWMState();
-                        
-                        // Broadcast updated events list
-                        configDb.all('SELECT * FROM events ORDER BY time, threshold_value', [], (e, r) => {
-                            if (!e && r) {
-                                io.emit('eventsUpdated', r);
-                            }
+                // Update last_triggered_at for cooldown calculations
+                await new Promise((resolve, reject) => {
+                    configDb.run('UPDATE events SET last_triggered_at = ? WHERE id = ?', 
+                        [timestampToUse, event.id], (err) => {
+                            if (err) reject(err);
+                            else resolve();
                         });
+                });
+                
+                console.log(`Manual trigger successful: Event ${event.id} logged, expires at ${expiresAt.toISOString()}`);
+                
+                // Broadcast updated events list
+                configDb.all('SELECT * FROM events ORDER BY time, threshold_value', [], (e, r) => {
+                    if (!e && r) {
+                        io.emit('eventsUpdated', r);
                     }
                 });
                 
@@ -1555,7 +1501,7 @@ io.on('connection', (socket) => {
         });
     });
 
-    socket.on('resetCooldown', (data) => {
+    socket.on('resetCooldown', async (data) => {
         console.log('Reset cooldown request:', data);
         const { id } = data;
         
@@ -1564,15 +1510,45 @@ io.on('connection', (socket) => {
             return;
         }
         
-        // Clear the cooldown state
-        configDb.run('UPDATE events SET cooldown_active = 0, cooldown_started_at = NULL WHERE id = ?', [id], function (err) {
-            if (err) {
-                console.error('Error resetting cooldown:', err);
-                socket.emit('error', { message: 'Failed to reset cooldown' });
+        try {
+            // Get the event details
+            const event = await new Promise((resolve, reject) => {
+                configDb.get('SELECT * FROM events WHERE id = ?', [id], (err, row) => {
+                    if (err) reject(err);
+                    else resolve(row);
+                });
+            });
+            
+            if (!event) {
+                socket.emit('error', { message: 'Event not found' });
                 return;
             }
             
-            console.log(`Cooldown reset for event ${id}`);
+            // Create a 'cleared' log entry to override any active triggers
+            await new Promise((resolve, reject) => {
+                configDb.run(`
+                    INSERT INTO event_log (gpio, action, trigger_source, event_id, priority, notes)
+                    VALUES (?, 'cleared', 'manual', ?, ?, ?)
+                `, [
+                    event.gpio,
+                    event.id,
+                    event.priority || 1,
+                    'Manual cooldown reset via web interface'
+                ], (err) => {
+                    if (err) reject(err);
+                    else resolve();
+                });
+            });
+            
+            // Clear the last_triggered_at field to reset cooldown state
+            await new Promise((resolve, reject) => {
+                configDb.run('UPDATE events SET last_triggered_at = NULL WHERE id = ?', [id], (err) => {
+                    if (err) reject(err);
+                    else resolve();
+                });
+            });
+            
+            console.log(`Cooldown cleared for event ${id} via log entry`);
             
             // Broadcast updated events list
             configDb.all('SELECT * FROM events ORDER BY time, threshold_value', [], (e, r) => {
@@ -1582,7 +1558,11 @@ io.on('connection', (socket) => {
             });
             
             socket.emit('success', { message: 'Cooldown reset successfully' });
-        });
+            
+        } catch (error) {
+            console.error('Error resetting cooldown:', error);
+            socket.emit('error', { message: 'Failed to reset cooldown' });
+        }
     });
 });
 

@@ -396,23 +396,48 @@ class GpioController {
                 }
             });
             
-            // Process threshold events for active detection
+            // Process threshold events using log-based approach
             const activeThresholdEvents = {};
-            thresholdEvents.forEach(event => {
-                if (event.last_triggered_at) {
-                    const lastTriggered = new Date(event.last_triggered_at);
-                    const timeSinceTriggered = Date.now() - lastTriggered.getTime();
-                    // Threshold events only stay active for 0.5 seconds for immediate safety response
-                    // Cooldown prevents re-triggering but doesn't keep PWM active
-                    if (timeSinceTriggered < 500) { // 0.5 seconds instead of 2 seconds
-                        const gpio = event.gpio;
-                        const currentPriority = event.priority || 1;
-                        const activePriority = activeThresholdEvents[gpio] ? (activeThresholdEvents[gpio].event.priority || 1) : 999;
-                        
-                        if (!activeThresholdEvents[gpio] || currentPriority < activePriority) {
-                            activeThresholdEvents[gpio] = { event: event };
-                        }
-                    }
+            
+            // Get active log entries that haven't expired yet
+            const activeLogEntries = await new Promise((resolve, reject) => {
+                this.configDb.all(`
+                    SELECT el.*, e.priority 
+                    FROM event_log el
+                    JOIN events e ON el.event_id = e.id
+                    WHERE el.action = 'triggered' 
+                    AND datetime(el.expires_at) > datetime('now')
+                    AND e.enabled = 1
+                    AND NOT EXISTS (
+                        SELECT 1 FROM event_log el2 
+                        WHERE el2.event_id = el.event_id 
+                        AND el2.action = 'cleared' 
+                        AND el2.timestamp > el.timestamp
+                    )
+                    ORDER BY el.timestamp DESC, e.priority ASC
+                `, [], (err, rows) => {
+                    if (err) reject(err);
+                    else resolve(rows || []);
+                });
+            });
+            
+            // Group by GPIO and select highest priority (lowest number) active event
+            activeLogEntries.forEach(logEntry => {
+                const gpio = logEntry.gpio;
+                const priority = logEntry.priority || 1;
+                
+                if (!activeThresholdEvents[gpio] || priority < (activeThresholdEvents[gpio].priority || 1)) {
+                    activeThresholdEvents[gpio] = {
+                        event: {
+                            id: logEntry.event_id,
+                            gpio: logEntry.gpio,
+                            pwm_value: logEntry.pwm_value,
+                            priority: priority,
+                            trigger_source: logEntry.trigger_source
+                        },
+                        priority: priority,
+                        logEntry: logEntry
+                    };
                 }
             });
             

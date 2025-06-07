@@ -508,6 +508,7 @@
                 eventData.threshold_condition = operatorMap[thresholdOperator] || thresholdOperator;
                 eventData.threshold_value = parseFloat(thresholdValue);
                 eventData.cooldown_minutes = parseInt(cooldownMinutes) || 5;
+                eventData.duration_seconds = (parseInt(cooldownMinutes) || 5) * 60; // Convert minutes to seconds
                 eventData.time = ''; // Empty time for threshold events
                 
                 console.log('Sending threshold event to server:', eventData);
@@ -631,36 +632,64 @@
                 const gpioEvents = eventsByGpio[gpio].filter(e => e.enabled); // Only consider enabled events
                 let activeEvent = null;
                 
+                // First, find active time-based events
+                let activeTimeEvent = null;
                 gpioEvents.forEach(event => {
-                    let isEventActive = false;
-                    
                     if (event.trigger_type === 'time' || !event.trigger_type) {
                         // Time-based event logic - show Live on the controlling event
-                        // This is either the most recent past event OR the next upcoming event if no past events
-                        isEventActive = activeTimeEvents[event.gpio] && 
-                                       activeTimeEvents[event.gpio].event.id === event.id;
-                    } else {
-                        // Threshold-based event logic - show Live for very brief period (0.5 seconds)
-                        // This matches the backend active window for immediate safety response
-                        if (event.last_triggered_at) {
-                            const lastTriggered = new Date(event.last_triggered_at);
-                            const timeSinceTriggered = Date.now() - lastTriggered.getTime();
-                            isEventActive = timeSinceTriggered < 500; // 0.5 seconds
-                        } else {
-                            isEventActive = false;
-                        }
-                    }
-                    
-                    // If this event is active, check if it has higher priority than current active
-                    if (isEventActive) {
-                        const currentPriority = event.priority || 1;
-                        const activePriority = activeEvent ? (activeEvent.priority || 1) : 999;
-                        
-                        if (!activeEvent || currentPriority < activePriority) {
-                            activeEvent = event;
+                        const isEventActive = activeTimeEvents[event.gpio] && 
+                                             activeTimeEvents[event.gpio].event.id === event.id;
+                        if (isEventActive) {
+                            activeTimeEvent = event;
                         }
                     }
                 });
+                
+                // Then, find active threshold-based events
+                let activeThresholdEvent = null;
+                gpioEvents.forEach(event => {
+                    if (event.trigger_type !== 'time' && event.trigger_type) {
+                        // Threshold-based event logic - check if event is currently triggered and active
+                        if (event.last_triggered_at && event.duration_seconds) {
+                            const lastTriggered = new Date(event.last_triggered_at);
+                            const durationMs = (event.duration_seconds || 30) * 1000;
+                            const expiresAt = lastTriggered.getTime() + durationMs;
+                            const isEventActive = Date.now() < expiresAt;
+                            
+                            if (isEventActive) {
+                                const currentPriority = event.priority || 1;
+                                const activePriority = activeThresholdEvent ? (activeThresholdEvent.priority || 1) : 999;
+                                
+                                if (!activeThresholdEvent || currentPriority < activePriority) {
+                                    activeThresholdEvent = event;
+                                }
+                            }
+                        }
+                    }
+                });
+                
+                // Apply backend priority resolution logic:
+                // 1. If no time event, use threshold event
+                // 2. If no threshold event, use time event  
+                // 3. If both exist, compare priorities (lower number = higher priority)
+                // 4. If same priority, threshold events take precedence
+                if (!activeTimeEvent && activeThresholdEvent) {
+                    activeEvent = activeThresholdEvent;
+                } else if (activeTimeEvent && !activeThresholdEvent) {
+                    activeEvent = activeTimeEvent;
+                } else if (activeTimeEvent && activeThresholdEvent) {
+                    const thresholdPriority = activeThresholdEvent.priority || 1;
+                    const timePriority = activeTimeEvent.priority || 1;
+                    
+                    if (thresholdPriority < timePriority) {
+                        activeEvent = activeThresholdEvent;
+                    } else if (thresholdPriority === timePriority) {
+                        // Same priority: threshold events take precedence during their cooldown
+                        activeEvent = activeThresholdEvent;
+                    } else {
+                        activeEvent = activeTimeEvent;
+                    }
+                }
                 
                 if (activeEvent) {
                     activeEventsByGpio[gpio] = activeEvent.id;
@@ -692,42 +721,21 @@
                         <span class="event-threshold">${condition} ${event.threshold_value}${unit}</span>
                     `;
                     
-                    // Show trigger button with cooldown timer
+                    // Show trigger button with cooldown timer using timestamp-based approach
                     let timeDisplay;
                     let buttonClass;
                     let buttonAction;
                     
-                    if (event.cooldown_active === 1 && event.cooldown_started_at) {
-                        // Event is in cooldown - show remaining time and make orange
-                        const cooldownStarted = new Date(event.cooldown_started_at);
-                        const cooldownMs = (event.cooldown_minutes || 5) * 60 * 1000;
-                        const timeLeft = cooldownMs - (Date.now() - cooldownStarted.getTime());
-                        
-                        if (timeLeft > 0) {
-                            const minutesLeft = Math.floor(timeLeft / 60000);
-                            const secondsLeft = Math.ceil((timeLeft % 60000) / 1000);
-                            if (minutesLeft > 0) {
-                                timeDisplay = `${minutesLeft}m ${secondsLeft}s`;
-                            } else {
-                                timeDisplay = `${secondsLeft}s`;
-                            }
-                            buttonClass = 'trigger-button-cooldown';
-                            buttonAction = `resetCooldown(${event.id})`;
-                        } else {
-                            // Cooldown should have expired - show as ready
-                            const totalMinutes = event.cooldown_minutes || 5;
-                            if (totalMinutes >= 60) {
-                                const hours = Math.floor(totalMinutes / 60);
-                                const minutes = totalMinutes % 60;
-                                timeDisplay = minutes > 0 ? `${hours}h ${minutes}m` : `${hours}h`;
-                            } else {
-                                timeDisplay = `${totalMinutes}m`;
-                            }
-                            buttonClass = 'trigger-button-ready';
-                            buttonAction = `triggerEvent(${event.id})`;
-                        }
+                    const cooldownStatus = getCooldownStatus(event);
+                    
+                    if (cooldownStatus === 'cooldown') {
+                        // Event is in cooldown - show remaining time
+                        const timeLeft = getTimeLeft(event);
+                        timeDisplay = formatTimeLeft(timeLeft);
+                        buttonClass = 'trigger-button-cooldown';
+                        buttonAction = `resetCooldown(${event.id})`;
                     } else {
-                        // Event is ready - show full cooldown time and make green
+                        // Event is ready - show full cooldown time
                         const totalMinutes = event.cooldown_minutes || 5;
                         if (totalMinutes >= 60) {
                             const hours = Math.floor(totalMinutes / 60);
@@ -1108,6 +1116,51 @@
             socket.emit('resetCooldown', { id });
         }
 
+        // Log-based approach - no complex local state tracking needed
+        
+        // ==== SHARED FUNCTIONALITY ====
+        
+        // Simple timestamp-based cooldown calculation
+        function getCooldownStatus(event) {
+            if (!event.last_triggered_at) return 'ready';
+            
+            const triggered = new Date(event.last_triggered_at);
+            const cooldownMs = (event.cooldown_minutes || 5) * 60 * 1000;
+            const expiresAt = triggered.getTime() + cooldownMs;
+            
+            // Check if cooldown has naturally expired
+            if (Date.now() >= expiresAt) return 'ready';
+            
+            // Check if there's a more recent 'cleared' entry that would reset the cooldown
+            // Note: This is a simplified check - in a full implementation we'd query the log
+            // For now, we rely on the server to update last_triggered_at or provide cleared status
+            
+            return 'cooldown';
+        }
+        
+        function getTimeLeft(event) {
+            if (!event.last_triggered_at) return 0;
+            
+            const triggered = new Date(event.last_triggered_at);
+            const cooldownMs = (event.cooldown_minutes || 5) * 60 * 1000;
+            const expiresAt = triggered.getTime() + cooldownMs;
+            const timeLeft = expiresAt - Date.now();
+            
+            return Math.max(0, timeLeft);
+        }
+        
+        function formatTimeLeft(timeLeft) {
+            const totalSeconds = Math.ceil(timeLeft / 1000);
+            const minutes = Math.floor(totalSeconds / 60);
+            const seconds = totalSeconds % 60;
+            
+            if (minutes > 0) {
+                return `${minutes}m ${seconds}s`;
+            } else {
+                return `${seconds}s`;
+            }
+        }
+
         // Real-time updates for countdowns and cooldowns
         setInterval(() => {
             // Update countdowns for time-based events
@@ -1120,7 +1173,7 @@
                 }
             });
             
-            // Update cooldown buttons for threshold events using database state
+            // Update cooldown buttons for threshold events using timestamp-based approach
             document.querySelectorAll('.trigger-button-cooldown, .trigger-button-ready').forEach(button => {
                 const eventId = button.getAttribute('data-event-id');
                 if (!eventId) return;
@@ -1132,35 +1185,14 @@
                 let buttonClass;
                 let buttonAction;
                 
-                if (event.cooldown_active === 1 && event.cooldown_started_at) {
+                const cooldownStatus = getCooldownStatus(event);
+                
+                if (cooldownStatus === 'cooldown') {
                     // Event is in cooldown - show remaining time
-                    const cooldownStarted = new Date(event.cooldown_started_at);
-                    const cooldownMs = (event.cooldown_minutes || 5) * 60 * 1000;
-                    const timeLeft = cooldownMs - (Date.now() - cooldownStarted.getTime());
-                    
-                    if (timeLeft > 0) {
-                        const minutesLeft = Math.floor(timeLeft / 60000);
-                        const secondsLeft = Math.ceil((timeLeft % 60000) / 1000);
-                        if (minutesLeft > 0) {
-                            timeDisplay = `${minutesLeft}m ${secondsLeft}s`;
-                        } else {
-                            timeDisplay = `${secondsLeft}s`;
-                        }
-                        buttonClass = 'trigger-button-cooldown';
-                        buttonAction = () => resetCooldown(eventId);
-                    } else {
-                        // Cooldown should have expired - show as ready
-                        const totalMinutes = event.cooldown_minutes || 5;
-                        if (totalMinutes >= 60) {
-                            const hours = Math.floor(totalMinutes / 60);
-                            const minutes = totalMinutes % 60;
-                            timeDisplay = minutes > 0 ? `${hours}h ${minutes}m` : `${hours}h`;
-                        } else {
-                            timeDisplay = `${totalMinutes}m`;
-                        }
-                        buttonClass = 'trigger-button-ready';
-                        buttonAction = () => triggerEvent(eventId);
-                    }
+                    const timeLeft = getTimeLeft(event);
+                    timeDisplay = formatTimeLeft(timeLeft);
+                    buttonClass = 'trigger-button-cooldown';
+                    buttonAction = `resetCooldown(${event.id})`;
                 } else {
                     // Event is ready - show full cooldown time
                     const totalMinutes = event.cooldown_minutes || 5;
@@ -1172,14 +1204,20 @@
                         timeDisplay = `${totalMinutes}m`;
                     }
                     buttonClass = 'trigger-button-ready';
-                    buttonAction = () => triggerEvent(eventId);
+                    buttonAction = `triggerEvent(${event.id})`;
                 }
                 
                 // Only update if state has changed
                 if (button.className !== buttonClass || button.textContent !== timeDisplay) {
                     button.textContent = timeDisplay;
                     button.className = buttonClass;
-                    button.onclick = buttonAction;
+                    
+                    // Set onclick properly based on button state
+                    if (cooldownStatus === 'cooldown') {
+                        button.onclick = () => resetCooldown(event.id);
+                    } else {
+                        button.onclick = () => triggerEvent(event.id);
+                    }
                 }
             });
         }, 1000); // Update every second
