@@ -35,6 +35,12 @@ const mqttController = new MQTTController(nodeId);
 const i2c = new I2C();
 const sensors = {};
 
+// Global sensor data cache for threshold checking
+let sensorDataCache = {};
+
+// Global cooldown tracking for threshold events
+let thresholdCooldowns = {};
+
 let configDb;
 let dataDb;
 let gpioController;
@@ -489,8 +495,8 @@ async function initAndRead() {
                     configDb.get('SELECT value FROM timezone WHERE key = ?', ['timezone'], (err, row) => {
                         const databaseTimezone = err || !row ? 'America/Los_Angeles' : row.value;
                         const sensorDataForClients = {};
-                        if (data1) sensorDataForClients['0x38'] = { ...data1, address: '0x38', temperature: `${data1.temperature.toFixed(1)}°F (${((data1.temperature - 32) * 5/9).toFixed(1)}°C)` };
-                        if (data2) sensorDataForClients['0x39'] = { ...data2, address: '0x39', temperature: `${data2.temperature.toFixed(1)}°F (${((data2.temperature - 32) * 5/9).toFixed(1)}°C)` };
+                        if (data1) sensorDataForClients['0x38'] = { ...data1, address: '0x38', temperature: `${data1.temperature.toFixed(1)}°F (${((data1.temperature - 32) * 5/9).toFixed(1)}°C)`, raw_temperature: data1.temperature };
+                        if (data2) sensorDataForClients['0x39'] = { ...data2, address: '0x39', temperature: `${data2.temperature.toFixed(1)}°F (${((data2.temperature - 32) * 5/9).toFixed(1)}°C)`, raw_temperature: data2.temperature };
                         for (const [address, sensorObj] of Object.entries(sensors)) {
                             const reading = sensorObj.lastReading;
                             if (reading) {
@@ -504,7 +510,11 @@ async function initAndRead() {
                                 };
                             }
                         }
-                        if (io) io.emit('sensorData', { system: systemInfoData.system, databaseTimezone, ...sensorDataForClients });
+                        
+                        // Update global sensor data cache for threshold checking
+                        sensorDataCache = { system: systemInfoData.system, databaseTimezone, ...sensorDataForClients };
+                        
+                        if (io) io.emit('sensorData', sensorDataCache);
                     });
                 }
             } catch (error) {
@@ -617,30 +627,24 @@ async function checkThresholdEvents() {
 
             if (!conditionMet) continue;
 
-            // Check if event is in cooldown by looking at recent logs
+            // Check if event is in cooldown using in-memory tracking
             const cooldownMs = (event.cooldown_minutes || 5) * 60 * 1000;
-            const cooldownStart = new Date(Date.now() - cooldownMs).toISOString();
+            const now = Date.now();
+            const lastTriggerTime = thresholdCooldowns[event.id];
             
-            const recentTrigger = await new Promise((resolve, reject) => {
-                configDb.get(`
-                    SELECT timestamp FROM event_log 
-                    WHERE event_id = ? AND action = 'triggered' AND timestamp > ?
-                    ORDER BY timestamp DESC LIMIT 1
-                `, [event.id, cooldownStart], (err, row) => {
-                    if (err) reject(err);
-                    else resolve(row);
-                });
-            });
-
-            // Skip if still in cooldown
-            if (recentTrigger) {
-                console.log(`Event ${event.id} still in cooldown, skipping`);
+            if (lastTriggerTime && (now - lastTriggerTime) < cooldownMs) {
+                const remainingMs = cooldownMs - (now - lastTriggerTime);
+                const remainingSeconds = Math.ceil(remainingMs / 1000);
+                console.log(`Event ${event.id} still in cooldown, ${remainingSeconds}s remaining`);
                 continue;
             }
 
             // Trigger the event by creating a log entry
-            const now = new Date();
-            const expiresAt = new Date(now.getTime() + (event.duration_seconds || 30) * 1000);
+            const triggerTime = new Date();
+            const expiresAt = new Date(triggerTime.getTime() + (event.duration_seconds || 30) * 1000);
+            
+            // Record cooldown time in memory
+            thresholdCooldowns[event.id] = now;
             
             console.log(`Threshold triggered: Event ${event.id}, GPIO${event.gpio}, ${currentValue} ${event.threshold_condition} ${event.threshold_value}`);
             
@@ -666,7 +670,7 @@ async function checkThresholdEvents() {
             // Update last_triggered_at for cooldown calculations
             await new Promise((resolve, reject) => {
                 configDb.run('UPDATE events SET last_triggered_at = ? WHERE id = ?', 
-                    [now.toISOString(), event.id], (err) => {
+                    [triggerTime.toISOString(), event.id], (err) => {
                     if (err) reject(err);
                     else resolve();
                 });

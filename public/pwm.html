@@ -175,7 +175,7 @@
             const currentTime = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds();
 
             // Find active events for each GPIO, only considering enabled time-based events
-            const activeEvents = {};
+            const activeTimeEvents = {};
             events.forEach(event => {
                 // Only process time-based events for countdown logic
                 const eventTimeElement = event.querySelector('.event-time');
@@ -190,24 +190,60 @@
                 
                 if (!isEnabled) return; // Skip disabled events
                 
-                if (!activeEvents[gpio] || 
-                    (eventTime <= currentTime && eventTime > (activeEvents[gpio].time || -1)) ||
-                    (eventTime > currentTime && eventTime < (activeEvents[gpio].time || Infinity))) {
-                    activeEvents[gpio] = {
+                if (!activeTimeEvents[gpio] || 
+                    (eventTime <= currentTime && eventTime > (activeTimeEvents[gpio].time || -1)) ||
+                    (eventTime > currentTime && eventTime < (activeTimeEvents[gpio].time || Infinity))) {
+                    activeTimeEvents[gpio] = {
                         time: eventTime,
                         event: event
                     };
                 }
             });
 
-            // Update active states for time-based events only
+            // Check if any threshold events are currently active (have live indicators from updateEventDisplay)
+            const activeThresholdEvents = {};
+            events.forEach(event => {
+                const eventTimeElement = event.querySelector('.event-time');
+                if (eventTimeElement) return; // Skip time events
+                
+                const existingLiveIndicator = event.querySelector('.live-indicator');
+                if (existingLiveIndicator) {
+                    const gpio = event.querySelector('.event-gpio').textContent.replace('GPIO', '');
+                    activeThresholdEvents[gpio] = true;
+                }
+            });
+
+            // Update active states and live indicators for time-based events
+            // BUT only if no threshold event is active for that GPIO
             events.forEach(event => {
                 const eventTimeElement = event.querySelector('.event-time');
                 if (!eventTimeElement) return; // Skip non-time events
                 
                 const gpio = event.querySelector('.event-gpio').textContent.replace('GPIO', '');
-                const isActive = activeEvents[gpio] && activeEvents[gpio].event === event;
-                event.classList.toggle('active', isActive);
+                const isTimeEventActive = activeTimeEvents[gpio] && activeTimeEvents[gpio].event === event;
+                const hasActiveThresholdEvent = activeThresholdEvents[gpio];
+                
+                // Only show as active if this time event is active AND no threshold event is overriding it
+                const shouldBeActive = isTimeEventActive && !hasActiveThresholdEvent;
+                event.classList.toggle('active', shouldBeActive);
+                
+                // Update live indicator - only add if no threshold event is active for this GPIO
+                const existingLiveIndicator = event.querySelector('.live-indicator');
+                if (shouldBeActive && !existingLiveIndicator) {
+                    // Add live indicator if this event is now active and no threshold override
+                    const liveIndicator = document.createElement('span');
+                    liveIndicator.className = 'live-indicator';
+                    liveIndicator.innerHTML = 'Live <span class="live-dot"></span>';
+                    
+                    // Insert before the toggle switch
+                    const toggleElement = event.querySelector('.event-enabled');
+                    if (toggleElement) {
+                        event.insertBefore(liveIndicator, toggleElement);
+                    }
+                } else if (!shouldBeActive && existingLiveIndicator) {
+                    // Remove live indicator if this event is no longer active or threshold override
+                    existingLiveIndicator.remove();
+                }
             });
 
             // Update countdowns for time-based events only
@@ -230,7 +266,12 @@
         socket.on('eventsUpdated', (events) => {
             console.log('Events updated, refreshing display');
             
-            updateEventDisplay(events);
+            // Only update if the events have actually changed
+            if (JSON.stringify(events) !== JSON.stringify(currentEvents)) {
+                updateEventDisplay(events);
+            } else {
+                console.log('Events unchanged, skipping display update');
+            }
         });
 
         // Event handling functions
@@ -368,7 +409,7 @@
                     <option value="less_than"><</option>
                 </select>
                 
-                <input type="text" id="newEventValue" placeholder="Value" class="event-threshold" style="background: #273827; color: white; border: none; border-radius: 0.25rem; padding: 0.1rem 0.3rem; width: 80px; text-align: center; display: none;">
+                <input type="text" id="newEventValue" placeholder="HH:MM:SS" class="event-threshold" style="background: #273827; color: white; border: none; border-radius: 0.25rem; padding: 0.1rem 0.2rem; width: 100px; text-align: center; display: none;">
                 
                 <input type="number" id="newEventCooldown" placeholder="5" min="1" max="60" class="cooldown" style="background: #402c2b; color: white; border: none; border-radius: 0.25rem; padding: 0.1rem 0.3rem; width: 50px; text-align: center; display: none;">
                 
@@ -1043,13 +1084,43 @@
                 percentSpan.textContent = `${percent}%`;
             });
             
+            // Add time input formatting helper
+            valueInput.addEventListener('input', function() {
+                if (typeSelect.value === 'time') {
+                    let value = this.value.replace(/[^\d:]/g, ''); // Remove non-digits and non-colons
+                    
+                    // Auto-format as user types
+                    if (value.length === 2 && !value.includes(':')) {
+                        value += ':';
+                    } else if (value.length === 5 && value.split(':').length === 2) {
+                        value += ':';
+                    }
+                    
+                    // Limit to HH:MM:SS format
+                    const parts = value.split(':');
+                    if (parts.length > 3) {
+                        value = parts.slice(0, 3).join(':');
+                    }
+                    
+                    // Limit each part to 2 digits
+                    const formattedParts = parts.map((part, index) => {
+                        if (part.length > 2) {
+                            return part.substring(0, 2);
+                        }
+                        return part;
+                    });
+                    
+                    this.value = formattedParts.join(':');
+                }
+            });
+            
             // Update fields visibility based on trigger type selection
             typeSelect.addEventListener('change', function() {
                 const type = this.value;
                 if (type === 'time') {
-                    // Time events: show only value input (as time picker)
-                    valueInput.type = 'time';
-                    valueInput.placeholder = 'HH:MM';
+                    // Time events: show only value input (as text input for military time)
+                    valueInput.type = 'text';
+                    valueInput.placeholder = 'HH:MM:SS (24-hour)';
                     valueInput.style.display = 'inline-block';
                     sensorSelect.style.display = 'none';
                     conditionSelect.style.display = 'none';

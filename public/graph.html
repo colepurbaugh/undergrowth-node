@@ -1237,41 +1237,44 @@
                     }
                 }
                 
-                // 3. Threshold Events - Orange diamonds
+                // 3. Threshold Events - Orange diamonds (only show events that have been triggered)
                 if (eventSettings.showThresholdEvents) {
                     const configResponse = await fetch('/api/configured-events');
                     if (configResponse.ok) {
                         const configuredEvents = await configResponse.json();
                         configuredEvents.forEach(event => {
-                            if (event.trigger_type && event.trigger_type !== 'time' && event.threshold_value !== undefined) {
-                                // For threshold events, we'll place them at a representative time
-                                const midTime = startDateMs + (endDateMs - startDateMs) / 2;
-                                const percentage = Math.round((event.pwm_value / 1023) * 100);
-                                const unit = event.sensor_type === 'temperature' ? '°F' : '%';
-                                const condition = event.threshold_condition === 'greater_than' ? 'above' : 'below';
-                                const lastTriggered = event.last_triggered_at ? 
-                                    new Date(event.last_triggered_at).toLocaleString() : 'Never';
+                            if (event.trigger_type && event.trigger_type !== 'time' && event.threshold_value !== undefined && event.last_triggered_at) {
+                                // Only show threshold events that have actually been triggered
+                                const triggerTime = new Date(event.last_triggered_at).getTime();
                                 
-                                // Only add if it matches the chart type
-                                if ((type === 'temperature' && event.sensor_type === 'temperature') ||
-                                    (type === 'humidity' && event.sensor_type === 'humidity')) {
-                                    events.push({
-                                        x: midTime,
-                                        y: event.threshold_value, // Use threshold value as Y position
-                                        eventType: 'threshold',
-                                        eventData: {
-                                            type: 'Threshold Event',
-                                            sensor: event.sensor_address,
-                                            condition: `${condition} ${event.threshold_value}${unit}`,
-                                            gpio: event.gpio,
-                                            pwm: event.pwm_value,
-                                            percentage: percentage,
-                                            priority: event.priority || 1,
-                                            cooldown: `${event.cooldown_minutes || 5} min`,
-                                            status: event.enabled ? 'ENABLED' : 'DISABLED',
-                                            lastTriggered: lastTriggered
-                                        }
-                                    });
+                                // Only show if the trigger time is within our time range
+                                if (triggerTime >= startDateMs && triggerTime <= endDateMs) {
+                                    const percentage = Math.round((event.pwm_value / 1023) * 100);
+                                    const unit = event.sensor_type === 'temperature' ? '°F' : '%';
+                                    const condition = event.threshold_condition === 'greater_than' ? 'above' : 'below';
+                                    const lastTriggered = new Date(event.last_triggered_at).toLocaleString();
+                                    
+                                    // Only add if it matches the chart type
+                                    if ((type === 'temperature' && event.sensor_type === 'temperature') ||
+                                        (type === 'humidity' && event.sensor_type === 'humidity')) {
+                                        events.push({
+                                            x: triggerTime, // Use actual trigger time instead of midTime
+                                            y: null, // Will be interpolated like other events
+                                            eventType: 'threshold',
+                                            eventData: {
+                                                type: 'Threshold Event',
+                                                sensor: event.sensor_address,
+                                                condition: `${condition} ${event.threshold_value}${unit}`,
+                                                gpio: event.gpio,
+                                                pwm: event.pwm_value,
+                                                percentage: percentage,
+                                                priority: event.priority || 1,
+                                                cooldown: `${event.cooldown_minutes || 5} min`,
+                                                status: event.enabled ? 'ENABLED' : 'DISABLED',
+                                                lastTriggered: lastTriggered
+                                            }
+                                        });
+                                    }
                                 }
                             }
                         });

@@ -459,10 +459,23 @@ module.exports = function (app, configDb, dataDb) {
             return res.status(400).json({ error: 'startDate and endDate are required' });
         }
         
-        // Get event triggers from the database
+        // Convert UTC timestamps to local time format for database query
+        // The database stores timestamps in local time (YYYY-MM-DD HH:MM:SS)
+        // but the frontend sends UTC timestamps (YYYY-MM-DDTHH:MM:SS.sssZ)
+        const startLocal = new Date(startDate).toISOString().slice(0, 19).replace('T', ' ');
+        const endLocal = new Date(endDate).toISOString().slice(0, 19).replace('T', ' ');
+        
+        console.log(`API: Event triggers query - UTC range: ${startDate} to ${endDate}`);
+        console.log(`API: Event triggers query - Local range: ${startLocal} to ${endLocal}`);
+        
+        // Get event triggers from the event_log table (actual triggers)
         configDb.all(
-            'SELECT * FROM event_triggers WHERE triggered_at >= ? AND triggered_at <= ? ORDER BY triggered_at ASC',
-            [startDate, endDate],
+            `SELECT el.*, e.sensor_address, e.sensor_type, e.threshold_value, e.threshold_condition 
+             FROM event_log el 
+             LEFT JOIN events e ON el.event_id = e.id 
+             WHERE el.timestamp >= ? AND el.timestamp <= ? AND el.action = 'triggered' 
+             ORDER BY el.timestamp ASC`,
+            [startLocal, endLocal],
             (err, rows) => {
                 if (err) {
                     console.error('API: Error fetching event triggers:', err);
@@ -472,13 +485,16 @@ module.exports = function (app, configDb, dataDb) {
                 // Transform the data for the frontend
                 const triggers = rows.map(row => ({
                     id: row.id,
-                    timestamp: row.triggered_at,
+                    timestamp: row.timestamp,
                     gpio: row.gpio,
                     pwm_value: row.pwm_value,
-                    trigger_type: row.trigger_type,
+                    trigger_type: row.trigger_source || 'threshold',
+
                     sensor_address: row.sensor_address,
-                    sensor_value: row.sensor_value,
-                    threshold_value: row.threshold_value
+                    sensor_type: row.sensor_type,
+                    threshold_value: row.threshold_value,
+                    threshold_condition: row.threshold_condition,
+                    notes: row.notes
                 }));
                 
                 console.log(`API: Returning ${triggers.length} event triggers for date range ${startDate} to ${endDate}`);
