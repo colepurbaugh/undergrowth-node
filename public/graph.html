@@ -13,7 +13,7 @@
     <!-- Then load Luxon and the adapter separately -->
     <script src="https://cdn.jsdelivr.net/npm/luxon@3.3.0/build/global/luxon.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-luxon@1.3.1/dist/chartjs-adapter-luxon.umd.min.js"></script>
-    <!-- Add annotations plugin for event markers -->
+    <!-- Add annotations plugin for time reference lines only -->
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@2.2.1/dist/chartjs-plugin-annotation.min.js"></script>
     <script src="/socket.io/socket.io.js"></script>
     <link rel="stylesheet" href="/assets/css/main.css">
@@ -34,7 +34,9 @@
             opacity: 0.8; /* Match other divs */
             border: 1px solid var(--border-color);
             border-radius: 0.25rem; /* Match other divs */
-            text-align: center; /* Center all content in all columns */
+            text-align: left; /* Left align content for better horizontal flow */
+            overflow: hidden; /* Prevent content from overflowing */
+            box-sizing: border-box; /* Include padding in width calculations */
         }
         
         .column-title {
@@ -42,73 +44,101 @@
             color: #e8e6e3;
             font-size: 18px;
             font-weight: bold;
-            text-align: center; /* Center all column titles */
+            text-align: left; /* Left align titles to match content */
             border-bottom: 1px solid rgba(255, 255, 255, 0.2);
             padding-bottom: 6px; /* Reduced from 8px to 6px for Sensors column */
         }
         
         .sensor-selection-container {
-            text-align: center; /* Center sensor checkboxes in all columns */
-            margin-bottom: 8px; /* Reduced from 10px to 8px for tighter spacing */
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            justify-content: flex-start;
+            align-items: center;
+            overflow: hidden;
+            margin-bottom: 12px;
+        }
+        
+        .sensor-button-container {
+            display: flex;
+            gap: 8px;
+            justify-content: flex-start;
+            align-items: center;
+            flex-wrap: wrap;
         }
         
         .sensor-checkbox-wrapper {
-            justify-content: center; /* Center checkbox content in all columns */
-            text-align: center !important; /* Force center alignment with !important */
-            margin-bottom: 4px; /* Reduced from 6px to 4px for tighter spacing */
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            width: 100%; /* Ensure full width */
+            display: inline-block;
+            vertical-align: middle;
+            padding: 0;
+            margin: 0;
+            background-color: rgba(255, 255, 255, 0.05);
+            border-radius: 0.25rem;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            white-space: nowrap;
+            height: 32px;
+            box-sizing: border-box;
+            line-height: 32px;
+        }
+        
+        .sensor-checkbox-wrapper:hover {
+            background-color: rgba(255, 255, 255, 0.1);
         }
         
         /* Additional specificity to override any inherited styles */
         .sensor-column .sensor-selection-container .sensor-checkbox-wrapper {
-            justify-content: center !important;
-            text-align: center !important;
+            justify-content: flex-start !important;
+            text-align: left !important;
             display: flex !important;
             align-items: center !important;
         }
         
         .sensor-checkbox {
-            width: 18px;
-            height: 18px;
+            width: 16px;
+            height: 16px;
             cursor: pointer;
             accent-color: var(--success-color);
+            margin: 0 4px 0 4px;
+            vertical-align: middle;
         }
         
         .sensor-label {
             color: #e8e6e3;
-            font-size: 14px;
+            font-size: 1.2rem;
             font-weight: 500;
             cursor: pointer;
             user-select: none;
-            text-align: center !important; /* Force center alignment */
+            text-align: left;
+            margin: 0 4px 0 0;
+            line-height: 1;
+            white-space: nowrap;
+            vertical-align: middle;
         }
         
         .sensor-label:hover {
             color: #fff;
         }
         
-        .sensor-column-actions {
-            margin-top: 8px; /* Reduced from 10px to 8px for tighter spacing */
-            display: flex;
-            flex-direction: column;
-            gap: 4px; /* Reduced from 6px to 4px for tighter spacing */
-            align-items: center; /* Center-align buttons in all columns */
-        }
+
         
         .sensor-button {
-            padding: 8px 8px;
+            padding: 0 12px;
             background-color: var(--inactive-color);
             color: var(--text-primary);
             border: 1px solid var(--border-color);
             border-radius: 0.25rem;
             cursor: pointer;
-            font-size: 14px;
+            font-size: 1.2rem;
             font-weight: 500;
             transition: background-color 0.2s;
-            min-width: 120px;
+            min-width: 100px;
+            height: 32px;
+            box-sizing: border-box;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            white-space: nowrap;
+            flex-shrink: 0;
         }
         
         .sensor-button:hover {
@@ -148,17 +178,24 @@
             gap: 15px;
             flex-wrap: wrap;
             flex-direction: column;
-            align-items: center; /* Center color controls in all columns */
+            align-items: flex-end; /* Right-justify all elements in color-range-group */
+            width: fit-content; /* Auto-shrink to content width */
+            margin: 0 auto; /* Center the group within sensor-column */
         }
         
         .color-input-group {
             display: flex;
             align-items: center;
+            justify-content: center; /* Center the entire row */
+            margin-bottom: 4px; /* Reduced from 6px to 4px */
+            height: 32px;
+        }
+        
+        .color-controls-container {
+            display: flex;
+            align-items: center;
             gap: 8px;
-            flex: 1;
-            min-width: 200px;
-            justify-content: center; /* Center color input groups in all columns */
-            margin-bottom: 6px; /* Reduced from 8px to 6px */
+            justify-content: flex-end; /* Right-justify the form controls */
         }
         
         .color-input-group.mid-row {
@@ -172,23 +209,27 @@
         
         .color-picker {
             width: 32px;
-            height: 28px;
+            height: 32px;
             border: 1px solid #ccc;
             border-radius: 3px;
             cursor: pointer;
             padding: 0;
+            vertical-align: middle;
         }
         
         .color-hex {
-            width: 75px;
-            padding: 4px 6px;
+            width: 100px;
+            padding: 0 6px;
             border: 1px solid #ccc;
             border-radius: 3px;
             background: #fff;
             color: #333;
-            font-size: 14px; /* Increased from 12px to 14px */
+            font-size: 1.2rem;
             font-family: monospace;
             font-weight: 500;
+            height: 32px;
+            box-sizing: border-box;
+            vertical-align: middle;
         }
         
         .mid-checkbox {
@@ -211,35 +252,32 @@
         
         .color-input-group label {
             color: #e8e6e3;
-            font-size: 15px; /* Increased from 13px to 15px */
+            font-size: 1.2rem;
             font-weight: 500;
             min-width: 70px;
             text-align: center; /* Center labels in all columns */
+            height: 32px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
         }
         
         .range-input {
-            width: 55px;
-            padding: 4px 6px;
+            width: 70px;
+            padding: 0 6px;
             border: 1px solid #ccc;
             border-radius: 3px;
             background: #fff;
             color: #333;
-            font-size: 15px; /* Increased from 13px to 15px */
+            font-size: 1.2rem;
             font-weight: 500;
+            height: 32px;
+            box-sizing: border-box;
+            vertical-align: middle;
         }
         
         #updateColorsButton {
-            margin-top: 8px;
-            padding: 8px 16px;
             background-color: var(--success-color);
-            color: var(--text-primary);
-            border: 1px solid var(--border-color);
-            border-radius: 0.25rem;
-            cursor: pointer;
-            font-size: 14px;
-            font-weight: 500;
-            transition: background-color 0.2s;
-            min-width: 120px;
         }
         
         #updateColorsButton:hover {
@@ -473,16 +511,34 @@
             }
             
             .sensor-selection-container {
-                text-align: center !important;
+                justify-content: center !important;
+                gap: 4px !important;
+                flex-wrap: wrap !important;
+                margin-bottom: 8px !important;
+            }
+            
+            .sensor-button-container {
+                justify-content: center !important;
+                gap: 6px !important;
+                flex-wrap: wrap !important;
             }
             
             .sensor-checkbox-wrapper {
-                justify-content: center !important;
-                text-align: center !important;
+                min-width: auto !important;
+                padding: 2px 4px !important;
+                height: 28px !important;
+                gap: 3px !important;
             }
             
-            .sensor-column-actions {
-                align-items: center !important;
+            .sensor-label {
+                font-size: 12px !important;
+            }
+            
+            .sensor-button {
+                min-width: 80px !important;
+                height: 28px !important;
+                font-size: 12px !important;
+                padding: 4px 8px !important;
             }
             
             .color-range-group {
@@ -541,7 +597,7 @@
                     <!-- Sensor checkboxes will be populated here -->
                     <div class="loading-message">Loading sensors...</div>
                 </div>
-                <div class="sensor-column-actions">
+                <div class="sensor-button-container">
                     <button id="averageSensors" class="sensor-button">Show Average</button>
                     <button id="updateColorsButton" class="sensor-button">Update Colors</button>
                 </div>
@@ -553,28 +609,34 @@
                 <div class="color-range-group">
                     <div class="color-input-group">
                         <label for="tempHighValue">High (°F):</label>
-                        <input type="number" id="tempHighValue" value="85" min="0" max="120" class="range-input">
-                        <div class="color-picker-container">
-                            <input type="color" id="tempHighColor" value="#ff0000" class="color-picker">
+                        <div class="color-controls-container">
+                            <input type="number" id="tempHighValue" value="85" min="0" max="120" class="range-input">
+                            <div class="color-picker-container">
+                                <input type="color" id="tempHighColor" value="#ff0000" class="color-picker">
+                            </div>
+                            <input type="text" id="tempHighColorHex" value="#ff0000" class="color-hex" maxlength="7">
                         </div>
-                        <input type="text" id="tempHighColorHex" value="#ff0000" class="color-hex" maxlength="7">
                     </div>
                     <div class="color-input-group mid-row">
                         <label for="tempMidValue">Mid (°F):</label>
-                        <input type="number" id="tempMidValue" value="70" min="0" max="120" class="range-input">
-                        <div class="color-picker-container">
-                            <input type="color" id="tempMidColor" value="#00ff00" class="color-picker">
-                            <input type="checkbox" id="tempUseMid" class="mid-checkbox" title="Enable mid-point color">
+                        <div class="color-controls-container">
+                            <input type="number" id="tempMidValue" value="77" min="0" max="120" class="range-input">
+                            <div class="color-picker-container">
+                                <input type="color" id="tempMidColor" value="#00ff00" class="color-picker">
+                                <input type="checkbox" id="tempUseMid" class="mid-checkbox" title="Enable mid-point color">
+                            </div>
+                            <input type="text" id="tempMidColorHex" value="#00ff00" class="color-hex" maxlength="7">
                         </div>
-                        <input type="text" id="tempMidColorHex" value="#00ff00" class="color-hex" maxlength="7">
                     </div>
                     <div class="color-input-group">
                         <label for="tempLowValue">Low (°F):</label>
-                        <input type="number" id="tempLowValue" value="40" min="0" max="120" class="range-input">
-                        <div class="color-picker-container">
-                            <input type="color" id="tempLowColor" value="#0064ff" class="color-picker">
+                        <div class="color-controls-container">
+                            <input type="number" id="tempLowValue" value="70" min="0" max="120" class="range-input">
+                            <div class="color-picker-container">
+                                <input type="color" id="tempLowColor" value="#0064ff" class="color-picker">
+                            </div>
+                            <input type="text" id="tempLowColorHex" value="#0064ff" class="color-hex" maxlength="7">
                         </div>
-                        <input type="text" id="tempLowColorHex" value="#0064ff" class="color-hex" maxlength="7">
                     </div>
                 </div>
             </div>
@@ -585,59 +647,61 @@
                 <div class="color-range-group">
                     <div class="color-input-group">
                         <label for="humidHighValue">High (%):</label>
-                        <input type="number" id="humidHighValue" value="100" min="0" max="100" class="range-input">
-                        <div class="color-picker-container">
-                            <input type="color" id="humidHighColor" value="#1e40af" class="color-picker">
+                        <div class="color-controls-container">
+                            <input type="number" id="humidHighValue" value="50" min="0" max="100" class="range-input">
+                            <div class="color-picker-container">
+                                <input type="color" id="humidHighColor" value="#1e40af" class="color-picker">
+                            </div>
+                            <input type="text" id="humidHighColorHex" value="#1e40af" class="color-hex" maxlength="7">
                         </div>
-                        <input type="text" id="humidHighColorHex" value="#1e40af" class="color-hex" maxlength="7">
                     </div>
                     <div class="color-input-group mid-row">
                         <label for="humidMidValue">Mid (%):</label>
-                        <input type="number" id="humidMidValue" value="50" min="0" max="100" class="range-input">
-                        <div class="color-picker-container">
-                            <input type="color" id="humidMidColor" value="#87ceeb" class="color-picker">
-                            <input type="checkbox" id="humidUseMid" class="mid-checkbox" title="Enable mid-point color">
+                        <div class="color-controls-container">
+                            <input type="number" id="humidMidValue" value="40" min="0" max="100" class="range-input">
+                            <div class="color-picker-container">
+                                <input type="color" id="humidMidColor" value="#87ceeb" class="color-picker">
+                                <input type="checkbox" id="humidUseMid" class="mid-checkbox" title="Enable mid-point color">
+                            </div>
+                            <input type="text" id="humidMidColorHex" value="#87ceeb" class="color-hex" maxlength="7">
                         </div>
-                        <input type="text" id="humidMidColorHex" value="#87ceeb" class="color-hex" maxlength="7">
                     </div>
                     <div class="color-input-group">
                         <label for="humidLowValue">Low (%):</label>
-                        <input type="number" id="humidLowValue" value="0" min="0" max="100" class="range-input">
-                        <div class="color-picker-container">
-                            <input type="color" id="humidLowColor" value="#ffffff" class="color-picker">
+                        <div class="color-controls-container">
+                            <input type="number" id="humidLowValue" value="30" min="0" max="100" class="range-input">
+                            <div class="color-picker-container">
+                                <input type="color" id="humidLowColor" value="#ffffff" class="color-picker">
+                            </div>
+                            <input type="text" id="humidLowColorHex" value="#ffffff" class="color-hex" maxlength="7">
                         </div>
-                        <input type="text" id="humidLowColorHex" value="#ffffff" class="color-hex" maxlength="7">
                     </div>
                 </div>
             </div>
             
-            <!-- Column 4: Chart Markers -->
+            <!-- Column 4: Event Markers -->
             <div class="sensor-column">
-                <h4 class="column-title">Chart Markers</h4>
+                <h4 class="column-title">Event Markers</h4>
                 <div class="sensor-selection-container">
                     <div class="sensor-checkbox-wrapper">
-                        <input type="checkbox" id="showTimeMarkers" class="sensor-checkbox" checked>
-                        <label for="showTimeMarkers" class="sensor-label">Time Markers</label>
-                    </div>
-                    <div class="sensor-checkbox-wrapper">
-                        <input type="checkbox" id="showEventTriggers" class="sensor-checkbox" checked>
+                        <input type="checkbox" id="showEventTriggers" class="sensor-checkbox" checked style="accent-color: #22c55e;">
                         <label for="showEventTriggers" class="sensor-label">Event Triggers</label>
                     </div>
                     <div class="sensor-checkbox-wrapper">
-                        <input type="checkbox" id="showConfiguredEvents" class="sensor-checkbox" checked>
+                        <input type="checkbox" id="showConfiguredEvents" class="sensor-checkbox" checked style="accent-color: #8b5cf6;">
                         <label for="showConfiguredEvents" class="sensor-label">Configured Events</label>
                     </div>
                     <div class="sensor-checkbox-wrapper">
-                        <input type="checkbox" id="showThresholdLines" class="sensor-checkbox" checked>
-                        <label for="showThresholdLines" class="sensor-label">Threshold Lines</label>
+                        <input type="checkbox" id="showThresholdEvents" class="sensor-checkbox" checked style="accent-color: #f97316;">
+                        <label for="showThresholdEvents" class="sensor-label">Threshold Events</label>
                     </div>
                     <div class="sensor-checkbox-wrapper">
-                        <input type="checkbox" id="showErrorLogs" class="sensor-checkbox" checked>
+                        <input type="checkbox" id="showErrorLogs" class="sensor-checkbox" checked style="accent-color: #ef4444;">
                         <label for="showErrorLogs" class="sensor-label">Error Logs</label>
                     </div>
                 </div>
-                <div class="sensor-column-actions">
-                    <button id="refreshMarkersButton" class="sensor-button">Refresh Markers</button>
+                <div class="sensor-button-container">
+                    <button id="refreshEventsButton" class="sensor-button">Refresh Events</button>
                 </div>
             </div>
         </div>
@@ -733,18 +797,18 @@
         // Customizable color settings
         let colorSettings = {
             temperature: {
-                lowValue: 40,
-                midValue: 70,
+                lowValue: 70,
+                midValue: 77,
                 highValue: 85,
                 lowColor: '#0064ff', // Blue
-                midColor: '#00ff00', // Purple
+                midColor: '#00ff00', // green
                 highColor: '#ff0000', // Red
-                useMid: false
+                useMid: true
             },
             humidity: {
-                lowValue: 0,
-                midValue: 50,
-                highValue: 100,
+                lowValue: 30,
+                midValue: 40,
+                highValue: 50,
                 lowColor: '#ffffff', // White
                 midColor: '#87ceeb', // Sky blue
                 highColor: '#1e40af', // Dark blue
@@ -752,12 +816,11 @@
             }
         };
 
-        // Marker visibility settings
-        let markerSettings = {
-            showTimeMarkers: true,
+        // Event marker visibility settings
+        let eventSettings = {
             showEventTriggers: true,
             showConfiguredEvents: true,
-            showThresholdLines: true,
+            showThresholdEvents: true,
             showErrorLogs: true
         };
 
@@ -1040,34 +1103,11 @@
         // Initialize socket connection
         const socket = io();
         
-        // Register Chart.js annotations plugin for Chart.js 3.x
-        // The plugin should be available as window.ChartAnnotation after loading the script
-        if (typeof window.ChartAnnotation !== 'undefined') {
-            Chart.register(window.ChartAnnotation);
-            console.log('Chart.js annotations plugin registered successfully');
-        } else {
-            console.warn('Chart.js annotations plugin not found, checking for alternative names...');
-            // Try other possible names
-            const possibleNames = ['ChartAnnotation', 'chartjsPluginAnnotation', 'annotationPlugin'];
-            let pluginFound = false;
-            
-            for (const name of possibleNames) {
-                if (typeof window[name] !== 'undefined') {
-                    Chart.register(window[name]);
-                    console.log(`Chart.js annotations plugin registered as ${name}`);
-                    pluginFound = true;
-                    break;
-                }
-            }
-            
-            if (!pluginFound) {
-                console.warn('Chart.js annotations plugin not found, charts will work without event markers');
-            }
-        }
-
-        // Function to generate time markers (midnight and noon)
-        function generateTimeMarkers(startDateMs, endDateMs) {
-            const markers = [];
+        // Event data will be fetched and added as chart data points
+        
+        // Function to generate simple time reference lines (midnight and noon)
+        function generateTimeReferenceLines(startDateMs, endDateMs) {
+            const lines = [];
             const startDate = new Date(startDateMs);
             const endDate = new Date(endDateMs);
             
@@ -1080,46 +1120,32 @@
                 const noonTime = new Date(currentDate);
                 noonTime.setHours(12, 0, 0, 0);
                 
-                // Add midnight marker (light blue)
+                // Add midnight line (light blue)
                 if (midnightTime >= startDate && midnightTime <= endDate) {
-                    markers.push({
+                    lines.push({
                         type: 'line',
                         xMin: midnightTime.getTime(),
                         xMax: midnightTime.getTime(),
                         borderColor: '#60a5fa', // Light blue
-                        borderWidth: 2,
-                        borderDash: [5, 5],
+                        borderWidth: 1,
+                        borderDash: [3, 3],
                         label: {
-                            content: '12:00 AM',
-                            enabled: true,
-                            position: 'top',
-                            backgroundColor: 'rgba(96, 165, 250, 0.8)',
-                            color: 'white',
-                            font: {
-                                size: 10
-                            }
+                            display: false // No labels
                         }
                     });
                 }
                 
-                // Add noon marker (yellow)
+                // Add noon line (yellow)
                 if (noonTime >= startDate && noonTime <= endDate) {
-                    markers.push({
+                    lines.push({
                         type: 'line',
                         xMin: noonTime.getTime(),
                         xMax: noonTime.getTime(),
                         borderColor: '#eab308', // Yellow
-                        borderWidth: 2,
-                        borderDash: [5, 5],
+                        borderWidth: 1,
+                        borderDash: [3, 3],
                         label: {
-                            content: '12:00 PM',
-                            enabled: true,
-                            position: 'top',
-                            backgroundColor: 'rgba(234, 179, 8, 0.8)',
-                            color: 'black',
-                            font: {
-                                size: 10
-                            }
+                            display: false // No labels
                         }
                     });
                 }
@@ -1128,189 +1154,205 @@
                 currentDate.setDate(currentDate.getDate() + 1);
             }
             
-            return markers;
+            return lines;
         }
-        
-        // Function to generate all event markers based on visibility settings
-        async function generateEventMarkers(startDateMs, endDateMs) {
-            const markers = [];
+
+        // Function to fetch event data for the time range
+        async function fetchEventData(startDateMs, endDateMs, type) {
+            const events = [];
             const startDate = new Date(startDateMs).toISOString();
             const endDate = new Date(endDateMs).toISOString();
             
-            // 1. Event Triggers (actual executions) - Green
-            if (markerSettings.showEventTriggers) {
-                try {
+            console.log(`Fetching ${type} event data for time range:`, startDate, 'to', endDate);
+            
+            try {
+                // 1. Event Triggers (actual executions) - Green circles
+                if (eventSettings.showEventTriggers) {
                     const eventResponse = await fetch(`/api/event-triggers?startDate=${startDate}&endDate=${endDate}`);
-                    const eventTriggers = await eventResponse.json();
-                    
-                    eventTriggers.forEach(event => {
-                        const eventTime = new Date(event.timestamp).getTime();
-                        if (eventTime >= startDateMs && eventTime <= endDateMs) {
-                            markers.push({
-                                type: 'line',
-                                xMin: eventTime,
-                                xMax: eventTime,
-                                borderColor: '#22c55e', // Green
-                                borderWidth: 3,
-                                borderDash: [0], // Solid line
-                                label: {
-                                    content: `Triggered: GPIO${event.gpio} → ${event.pwm_value}`,
-                                    enabled: true,
-                                    position: 'top',
-                                    backgroundColor: 'rgba(34, 197, 94, 0.9)',
-                                    color: 'white',
-                                    font: {
-                                        size: 10
+                    if (eventResponse.ok) {
+                        const eventTriggers = await eventResponse.json();
+                        eventTriggers.forEach(event => {
+                            const eventTime = new Date(event.timestamp).getTime();
+                            if (eventTime >= startDateMs && eventTime <= endDateMs) {
+                                const percentage = Math.round((event.pwm_value / 1023) * 100);
+                                events.push({
+                                    x: eventTime,
+                                    y: null, // Will be interpolated
+                                    eventType: 'trigger',
+                                    eventData: {
+                                        type: 'Event Triggered',
+                                        gpio: event.gpio,
+                                        pwm: event.pwm_value,
+                                        percentage: percentage,
+                                        triggerType: event.trigger_type || 'time',
+                                        eventName: event.event_name,
+                                        timestamp: event.timestamp
+                                    }
+                                });
+                            }
+                        });
+                    }
+                }
+                
+                // 2. Configured Events (scheduled times) - Purple squares
+                if (eventSettings.showConfiguredEvents) {
+                    const configResponse = await fetch('/api/configured-events');
+                    if (configResponse.ok) {
+                        const configuredEvents = await configResponse.json();
+                        configuredEvents.forEach(event => {
+                            if (event.trigger_type === 'time' || !event.trigger_type) {
+                                const timeStr = event.time;
+                                const [hours, minutes, seconds] = timeStr.split(':').map(Number);
+                                
+                                // Generate markers for each day in the range
+                                const startDay = new Date(startDateMs);
+                                const endDay = new Date(endDateMs);
+                                
+                                for (let day = new Date(startDay); day <= endDay; day.setDate(day.getDate() + 1)) {
+                                    const eventDateTime = new Date(day);
+                                    eventDateTime.setUTCHours(hours, minutes, seconds, 0);
+                                    const eventTime = eventDateTime.getTime();
+                                    
+                                    if (eventTime >= startDateMs && eventTime <= endDateMs) {
+                                        const percentage = Math.round((event.pwm_value / 1023) * 100);
+                                        events.push({
+                                            x: eventTime,
+                                            y: null, // Will be interpolated
+                                            eventType: 'configured',
+                                            eventData: {
+                                                type: 'Scheduled Event',
+                                                gpio: event.gpio,
+                                                pwm: event.pwm_value,
+                                                percentage: percentage,
+                                                priority: event.priority || 1,
+                                                status: event.enabled ? 'ENABLED' : 'DISABLED',
+                                                eventName: event.event_name,
+                                                timestamp: eventTime
+                                            }
+                                        });
                                     }
                                 }
-                            });
-                        }
-                    });
-                } catch (error) {
-                    console.log('No event triggers available:', error);
+                            }
+                        });
+                    }
                 }
-            }
-            
-            // 2. Configured Events (scheduled times) - Blue dashed
-            if (markerSettings.showConfiguredEvents) {
-                try {
-                    // Fetch configured events via socket (we'll need to add this API endpoint)
+                
+                // 3. Threshold Events - Orange diamonds
+                if (eventSettings.showThresholdEvents) {
                     const configResponse = await fetch('/api/configured-events');
-                    const configuredEvents = await configResponse.json();
-                    
-                    configuredEvents.forEach(event => {
-                        if (event.trigger_type === 'time' || !event.trigger_type) {
-                            // For time-based events, show vertical lines at scheduled times
-                            const timeStr = event.time; // UTC time string like "14:30:00"
-                            const [hours, minutes, seconds] = timeStr.split(':').map(Number);
-                            
-                            // Generate markers for each day in the range
-                            const startDay = new Date(startDateMs);
-                            const endDay = new Date(endDateMs);
-                            
-                            for (let day = new Date(startDay); day <= endDay; day.setDate(day.getDate() + 1)) {
-                                const eventDateTime = new Date(day);
-                                eventDateTime.setUTCHours(hours, minutes, seconds, 0);
-                                const eventTime = eventDateTime.getTime();
+                    if (configResponse.ok) {
+                        const configuredEvents = await configResponse.json();
+                        configuredEvents.forEach(event => {
+                            if (event.trigger_type && event.trigger_type !== 'time' && event.threshold_value !== undefined) {
+                                // For threshold events, we'll place them at a representative time
+                                const midTime = startDateMs + (endDateMs - startDateMs) / 2;
+                                const percentage = Math.round((event.pwm_value / 1023) * 100);
+                                const unit = event.sensor_type === 'temperature' ? '°F' : '%';
+                                const condition = event.threshold_condition === 'greater_than' ? 'above' : 'below';
+                                const lastTriggered = event.last_triggered_at ? 
+                                    new Date(event.last_triggered_at).toLocaleString() : 'Never';
                                 
-                                if (eventTime >= startDateMs && eventTime <= endDateMs) {
-                                    markers.push({
-                                        type: 'line',
-                                        xMin: eventTime,
-                                        xMax: eventTime,
-                                        borderColor: '#3b82f6', // Blue
-                                        borderWidth: 2,
-                                        borderDash: [5, 5], // Dashed line
-                                        label: {
-                                            content: `Scheduled: GPIO${event.gpio} → ${event.pwm_value} (${event.enabled ? 'ON' : 'OFF'})`,
-                                            enabled: true,
-                                            position: 'top',
-                                            backgroundColor: 'rgba(59, 130, 246, 0.9)',
-                                            color: 'white',
-                                            font: {
-                                                size: 10
-                                            }
+                                // Only add if it matches the chart type
+                                if ((type === 'temperature' && event.sensor_type === 'temperature') ||
+                                    (type === 'humidity' && event.sensor_type === 'humidity')) {
+                                    events.push({
+                                        x: midTime,
+                                        y: event.threshold_value, // Use threshold value as Y position
+                                        eventType: 'threshold',
+                                        eventData: {
+                                            type: 'Threshold Event',
+                                            sensor: event.sensor_address,
+                                            condition: `${condition} ${event.threshold_value}${unit}`,
+                                            gpio: event.gpio,
+                                            pwm: event.pwm_value,
+                                            percentage: percentage,
+                                            priority: event.priority || 1,
+                                            cooldown: `${event.cooldown_minutes || 5} min`,
+                                            status: event.enabled ? 'ENABLED' : 'DISABLED',
+                                            lastTriggered: lastTriggered
                                         }
                                     });
                                 }
                             }
-                        }
-                    });
-                } catch (error) {
-                    console.log('No configured events available:', error);
+                        });
+                    }
                 }
-            }
-            
-            // 3. Threshold Lines (for threshold events) - Orange dashed
-            if (markerSettings.showThresholdLines) {
-                try {
-                    const configResponse = await fetch('/api/configured-events');
-                    const configuredEvents = await configResponse.json();
-                    
-                    configuredEvents.forEach(event => {
-                        if (event.trigger_type && event.trigger_type !== 'time' && event.threshold_value !== undefined) {
-                            // Show threshold as a vertical line at a representative time (middle of range)
-                            const midTime = startDateMs + (endDateMs - startDateMs) / 2;
-                            
-                            markers.push({
-                                type: 'line',
-                                xMin: midTime,
-                                xMax: midTime,
-                                borderColor: '#f97316', // Orange
-                                borderWidth: 2,
-                                borderDash: [3, 3], // Dashed line
-                                label: {
-                                    content: `Threshold: ${event.sensor_type} ${event.threshold_condition === 'greater_than' ? '>' : '<'} ${event.threshold_value} → GPIO${event.gpio} (${event.enabled ? 'ON' : 'OFF'})`,
-                                    enabled: true,
-                                    position: 'top',
-                                    backgroundColor: 'rgba(249, 115, 22, 0.9)',
-                                    color: 'white',
-                                    font: {
-                                        size: 10
-                                    }
-                                }
-                            });
-                        }
-                    });
-                } catch (error) {
-                    console.log('No threshold events available:', error);
-                }
-            }
-            
-            // 4. Error Logs - Red
-            if (markerSettings.showErrorLogs) {
-                try {
+                
+                // 4. Error Logs - Red triangles
+                if (eventSettings.showErrorLogs) {
                     const errorResponse = await fetch(`/api/error-logs?startDate=${startDate}&endDate=${endDate}`);
-                    const errorLogs = await errorResponse.json();
-                    
-                    errorLogs.forEach(error => {
-                        const errorTime = new Date(error.timestamp).getTime();
-                        if (errorTime >= startDateMs && errorTime <= endDateMs) {
-                            markers.push({
-                                type: 'line',
-                                xMin: errorTime,
-                                xMax: errorTime,
-                                borderColor: '#ef4444', // Red
-                                borderWidth: 3,
-                                borderDash: [0], // Solid line
-                                label: {
-                                    content: `Error: ${error.message}`,
-                                    enabled: true,
-                                    position: 'top',
-                                    backgroundColor: 'rgba(239, 68, 68, 0.9)',
-                                    color: 'white',
-                                    font: {
-                                        size: 10
+                    if (errorResponse.ok) {
+                        const errorLogs = await errorResponse.json();
+                        errorLogs.forEach(error => {
+                            const errorTime = new Date(error.timestamp).getTime();
+                            if (errorTime >= startDateMs && errorTime <= endDateMs) {
+                                events.push({
+                                    x: errorTime,
+                                    y: null, // Will be interpolated
+                                    eventType: 'error',
+                                    eventData: {
+                                        type: `${(error.severity || 'ERROR').toUpperCase()}`,
+                                        message: error.message,
+                                        component: error.component || 'System',
+                                        details: error.details,
+                                        timestamp: error.timestamp
                                     }
-                                }
-                            });
-                        }
-                    });
-                } catch (error) {
-                    console.log('No error logs available:', error);
+                                });
+                            }
+                        });
+                    }
+                }
+                
+            } catch (error) {
+                console.log('Error fetching event data:', error);
+            }
+            
+            console.log(`Found ${events.length} events for ${type} chart`);
+            return events;
+        }
+        
+        // Function to interpolate Y value for events based on existing sensor data
+        function interpolateEventValue(eventX, sensorData, type) {
+            if (!sensorData || sensorData.length === 0) {
+                // No sensor data available, place at middle of typical range
+                return type === 'temperature' ? 75 : 50;
+            }
+            
+            // Sort data by timestamp
+            const sortedData = sensorData.sort((a, b) => a.x - b.x);
+            
+            // Find the closest data points before and after the event
+            let beforePoint = null;
+            let afterPoint = null;
+            
+            for (let i = 0; i < sortedData.length; i++) {
+                const point = sortedData[i];
+                if (point.y === null || point.y === undefined) continue;
+                
+                if (point.x <= eventX) {
+                    beforePoint = point;
+                } else if (point.x > eventX && !afterPoint) {
+                    afterPoint = point;
+                    break;
                 }
             }
             
-            return markers;
-        }
-
-        // Function to update chart annotations asynchronously
-        async function updateChartAnnotations(chart, startDateMs, endDateMs) {
-            const allMarkers = [];
-            
-            // Add time markers if enabled
-            if (markerSettings.showTimeMarkers) {
-                const timeMarkers = generateTimeMarkers(startDateMs, endDateMs);
-                allMarkers.push(...timeMarkers);
-            }
-            
-            // Add event markers (includes all types based on settings)
-            const eventMarkers = await generateEventMarkers(startDateMs, endDateMs);
-            allMarkers.push(...eventMarkers);
-            
-            if (chart.options.plugins && chart.options.plugins.annotation) {
-                chart.options.plugins.annotation.annotations = allMarkers;
-                chart.update('none');
+            // Interpolate between the two points
+            if (beforePoint && afterPoint) {
+                const timeDiff = afterPoint.x - beforePoint.x;
+                const valueDiff = afterPoint.y - beforePoint.y;
+                const eventTimeDiff = eventX - beforePoint.x;
+                const ratio = eventTimeDiff / timeDiff;
+                return beforePoint.y + (valueDiff * ratio);
+            } else if (beforePoint) {
+                // Only have a point before, use that value
+                return beforePoint.y;
+            } else if (afterPoint) {
+                // Only have a point after, use that value
+                return afterPoint.y;
+            } else {
+                // No valid data points, use middle of typical range
+                return type === 'temperature' ? 75 : 50;
             }
         }
 
@@ -1403,11 +1445,14 @@
                 const wrapper = document.createElement('div');
                 wrapper.className = 'sensor-checkbox-wrapper';
                 
+                // Create a safe ID by replacing special characters
+                const safeId = sensor.address.replace(/[^a-zA-Z0-9]/g, '_');
+                
                 wrapper.innerHTML = `
-                    <input type="checkbox" id="sensor-${sensor.address}" class="sensor-checkbox" 
+                    <input type="checkbox" id="sensor-${safeId}" class="sensor-checkbox" 
                            ${isSelected ? 'checked' : ''} data-sensor-id="${sensor.address}"
                            style="accent-color: ${color};">
-                    <label for="sensor-${sensor.address}" class="sensor-label">
+                    <label for="sensor-${safeId}" class="sensor-label">
                         ${sensor.name || `${sensor.type} ${sensor.address}`}
                     </label>
                 `;
@@ -1705,16 +1750,86 @@
                             position: 'top'
                         },
                         tooltip: {
-                            mode: 'index',
+                            mode: 'point',
                             intersect: false,
-                            backgroundColor: 'rgba(0, 0, 0, 0.7)',
+                            backgroundColor: 'rgba(0, 0, 0, 0.9)',
                             titleColor: '#fff',
                             bodyColor: '#fff',
-                            borderColor: 'rgba(255, 255, 255, 0.2)',
-                            borderWidth: 1
+                            borderColor: 'rgba(255, 255, 255, 0.3)',
+                            borderWidth: 2,
+                            cornerRadius: 8,
+                            padding: 12,
+                            callbacks: {
+                                title: function(context) {
+                                    // Safety checks to prevent null reference errors
+                                    if (!context || !context[0] || !context[0].parsed) {
+                                        return 'No timestamp';
+                                    }
+                                    
+                                    const point = context[0];
+                                    const timestamp = new Date(point.parsed.x);
+                                    return timestamp.toLocaleString();
+                                },
+                                label: function(context) {
+                                    // Safety checks to prevent null reference errors
+                                    if (!context || !context.raw || !context.dataset) {
+                                        return 'No data';
+                                    }
+                                    
+                                    const point = context.raw;
+                                    const dataset = context.dataset;
+                                    
+                                    // Check if this is an event point
+                                    if (point && point.eventType) {
+                                        const lines = [`🔸 ${point.eventData.type}`];
+                                        
+                                        // Add event-specific information
+                                        if (point.eventType === 'trigger') {
+                                            lines.push(`GPIO${point.eventData.gpio} → ${point.eventData.pwm} (${point.eventData.percentage}%)`);
+                                            lines.push(`Trigger: ${point.eventData.triggerType}`);
+                                            if (point.eventData.eventName) {
+                                                lines.push(`Event: ${point.eventData.eventName}`);
+                                            }
+                                        } else if (point.eventType === 'configured') {
+                                            lines.push(`GPIO${point.eventData.gpio} → ${point.eventData.pwm} (${point.eventData.percentage}%)`);
+                                            lines.push(`Priority: ${point.eventData.priority}`);
+                                            lines.push(`Status: ${point.eventData.status}`);
+                                            if (point.eventData.eventName) {
+                                                lines.push(`Event: ${point.eventData.eventName}`);
+                                            }
+                                        } else if (point.eventType === 'threshold') {
+                                            lines.push(`Sensor: ${point.eventData.sensor}`);
+                                            lines.push(`Condition: ${point.eventData.condition}`);
+                                            lines.push(`GPIO${point.eventData.gpio} → ${point.eventData.pwm} (${point.eventData.percentage}%)`);
+                                            lines.push(`Priority: ${point.eventData.priority}`);
+                                            lines.push(`Cooldown: ${point.eventData.cooldown}`);
+                                            lines.push(`Status: ${point.eventData.status}`);
+                                            lines.push(`Last triggered: ${point.eventData.lastTriggered}`);
+                                        } else if (point.eventType === 'error') {
+                                            lines.push(`Message: ${point.eventData.message}`);
+                                            lines.push(`Component: ${point.eventData.component}`);
+                                            if (point.eventData.details) {
+                                                lines.push(`Details: ${point.eventData.details}`);
+                                            }
+                                        }
+                                        
+                                        // Add interpolated value info
+                                        if (point.y !== null && point.y !== undefined) {
+                                            const unit = type === 'temperature' ? '°F' : '%';
+                                            lines.push(`Interpolated ${type}: ${point.y.toFixed(1)}${unit}`);
+                                        }
+                                        
+                                        return lines;
+                                    } else {
+                                        // Regular sensor data point
+                                        const unit = type === 'temperature' ? '°F' : '%';
+                                        return `${dataset.label}: ${point.y.toFixed(1)}${unit}`;
+                                    }
+                                }
+                            }
                         },
                         annotation: {
-                            annotations: []
+                            annotations: [] // Will be populated with time reference lines
                         }
                     }
                 }
@@ -1722,17 +1837,11 @@
             
             const chart = new Chart(ctx, chartConfig);
             
-            // Add annotations after chart creation if plugin is available
-            setTimeout(() => {
-                if (chart.options.plugins && chart.options.plugins.annotation) {
-                    try {
-                        chart.options.plugins.annotation.annotations = generateTimeMarkers(startDateMs, endDateMs);
-                        chart.update('none');
-                    } catch (error) {
-                        console.warn('Failed to add annotations:', error);
-                    }
-                }
-            }, 100);
+            // Add time reference lines after chart creation
+            if (chart.options.plugins && chart.options.plugins.annotation) {
+                chart.options.plugins.annotation.annotations = generateTimeReferenceLines(startDateMs, endDateMs);
+                chart.update('none');
+            }
             
             return chart;
         }
@@ -1743,12 +1852,20 @@
                 console.log('No sensors selected, clearing chart');
                 // Clear chart if no sensors selected
                 if (type === 'temperature' && tempChart) {
-                    tempChart.destroy();
+                    try {
+                        tempChart.destroy();
+                    } catch (error) {
+                        console.warn('Error destroying temperature chart:', error);
+                    }
                     tempChart = null;
                     const container = document.getElementById('tempChart').parentNode;
                     container.innerHTML = '<canvas id="tempChart"></canvas>';
                 } else if (type === 'humidity' && humidityChart) {
-                    humidityChart.destroy();
+                    try {
+                        humidityChart.destroy();
+                    } catch (error) {
+                        console.warn('Error destroying humidity chart:', error);
+                    }
                     humidityChart = null;
                     const container = document.getElementById('humidityChart').parentNode;
                     container.innerHTML = '<canvas id="humidityChart"></canvas>';
@@ -1783,11 +1900,26 @@
                     
                     // If chart doesn't exist, create it
                     if (!chart) {
-                        // Recreate canvas to avoid reuse issues
+                        // Ensure we have a clean canvas element
                         const canvasId = type === 'temperature' ? 'tempChart' : 'humidityChart';
-                        const container = document.getElementById(canvasId).parentNode;
-                        container.innerHTML = `<canvas id="${canvasId}"></canvas>`;
-                        const ctx = document.getElementById(canvasId).getContext('2d');
+                        let canvas = document.getElementById(canvasId);
+                        
+                        // If canvas doesn't exist or is corrupted, recreate it
+                        if (!canvas || !canvas.getContext) {
+                            const container = canvas ? canvas.parentNode : document.querySelector(`#${canvasId}`).parentNode;
+                            container.innerHTML = `<canvas id="${canvasId}"></canvas>`;
+                            canvas = document.getElementById(canvasId);
+                        }
+                        
+                        // Ensure canvas is properly sized
+                        canvas.style.width = '100%';
+                        canvas.style.height = '100%';
+                        
+                        const ctx = canvas.getContext('2d');
+                        if (!ctx) {
+                            console.error(`Failed to get 2D context for ${canvasId}`);
+                            return;
+                        }
                         
                         // Create new chart
                         chart = createChart(ctx, type, timeRange, startDateMs, endDateMs);
@@ -1797,9 +1929,6 @@
                         } else {
                             humidityChart = chart;
                         }
-                        
-                        // Update annotations asynchronously after chart creation
-                        updateChartAnnotations(chart, startDateMs, endDateMs);
                     }
                     
                     // Clear existing datasets
@@ -1817,19 +1946,7 @@
                         if (startDateMs && endDateMs) {
                             chart.options.scales.x.min = startDateMs;
                             chart.options.scales.x.max = endDateMs;
-                            
-                            // Update annotations for new time range
-                            if (chart.options.plugins && chart.options.plugins.annotation) {
-                                chart.options.plugins.annotation.annotations = [
-                                    ...generateTimeMarkers(startDateMs, endDateMs)
-                                    // Event markers will be added asynchronously after chart creation
-                                ];
-                            }
-                            
                             chart.update('none'); // Update without animation for immediate response
-                            
-                            // Update annotations asynchronously after chart update
-                            updateChartAnnotations(chart, startDateMs, endDateMs);
                         }
                         
                         // Display "No data" message
@@ -1878,7 +1995,8 @@
                                 pointHoverRadius: 5, // Consistent smaller hover radius
                                 tension: 0.1,
                                 fill: false, // Don't fill the area, just show colored points
-                                showLine: false // Remove connecting lines
+                                showLine: false, // Remove connecting lines
+                                order: 10 // Put sensor data behind event markers
                             });
                             
                             // Set min/max on x-axis with a small margin
@@ -1979,24 +2097,142 @@
                                 pointRadius: 3, // Consistent smaller radius
                                 pointHoverRadius: 5, // Consistent smaller hover radius
                                 showLine: false, // Remove connecting lines
-                                fill: false
+                                fill: false,
+                                order: 10 // Put sensor data behind event markers
                             });
                         });
                     }
                     
-                    // Update annotations for new time range
-                    if (chart.options.plugins && chart.options.plugins.annotation) {
-                        chart.options.plugins.annotation.annotations = [
-                            ...generateTimeMarkers(startDateMs, endDateMs)
-                            // Event markers will be added asynchronously after chart creation
-                        ];
-                    }
-                    
-                    // Update the chart instantly without animation
-                    chart.update('none'); // Use 'none' for instant updates
-                    
-                    // Update annotations asynchronously after chart update
-                    updateChartAnnotations(chart, startDateMs, endDateMs);
+                    // Fetch and add event data as separate datasets
+                    fetchEventData(startDateMs, endDateMs, type).then(events => {
+                        // Safety check - ensure chart still exists
+                        if (!chart || !chart.data || !chart.data.datasets) {
+                            console.warn(`Chart no longer exists for ${type}, skipping event data`);
+                            return;
+                        }
+                        
+                        if (events.length > 0) {
+                            console.log(`Adding ${events.length} event markers to ${type} chart`);
+                            
+                            // Get all sensor data for interpolation
+                            let allSensorData = [];
+                            chart.data.datasets.forEach(dataset => {
+                                if (!dataset.label.includes('Event')) {
+                                    allSensorData = allSensorData.concat(dataset.data);
+                                }
+                            });
+                            
+                            // Interpolate Y values for events that need it
+                            events.forEach(event => {
+                                if (event.y === null) {
+                                    event.y = interpolateEventValue(event.x, allSensorData, type);
+                                }
+                            });
+                            
+                            // Group events by type for different styling
+                            const eventGroups = {
+                                trigger: events.filter(e => e.eventType === 'trigger'),
+                                configured: events.filter(e => e.eventType === 'configured'),
+                                threshold: events.filter(e => e.eventType === 'threshold'),
+                                error: events.filter(e => e.eventType === 'error')
+                            };
+                            
+                            // Add event datasets with triangle styling for better visibility
+                            if (eventGroups.trigger.length > 0) {
+                                chart.data.datasets.push({
+                                    label: 'Event Triggers',
+                                    data: eventGroups.trigger,
+                                    borderColor: '#000000', // Black outline
+                                    backgroundColor: '#22c55e',
+                                    pointBackgroundColor: '#22c55e',
+                                    pointBorderColor: '#000000', // Black outline
+                                    pointBorderWidth: 2,
+                                    pointRadius: 6, // Increased from 4 to 6
+                                    pointHoverRadius: 8, // Increased from 6 to 8
+                                    pointStyle: 'triangle',
+                                    showLine: false,
+                                    fill: false,
+                                    order: 1 // Show on top
+                                });
+                            }
+                            
+                            if (eventGroups.configured.length > 0) {
+                                chart.data.datasets.push({
+                                    label: 'Configured Events',
+                                    data: eventGroups.configured,
+                                    borderColor: '#000000', // Black outline
+                                    backgroundColor: '#8b5cf6',
+                                    pointBackgroundColor: '#8b5cf6',
+                                    pointBorderColor: '#000000', // Black outline
+                                    pointBorderWidth: 2,
+                                    pointRadius: 6, // Increased from 4 to 6
+                                    pointHoverRadius: 8, // Increased from 6 to 8
+                                    pointStyle: 'triangle',
+                                    showLine: false,
+                                    fill: false,
+                                    order: 1 // Show on top
+                                });
+                            }
+                            
+                            if (eventGroups.threshold.length > 0) {
+                                chart.data.datasets.push({
+                                    label: 'Threshold Events',
+                                    data: eventGroups.threshold,
+                                    borderColor: '#000000', // Black outline
+                                    backgroundColor: '#f97316',
+                                    pointBackgroundColor: '#f97316',
+                                    pointBorderColor: '#000000', // Black outline
+                                    pointBorderWidth: 2,
+                                    pointRadius: 6, // Increased from 4 to 6
+                                    pointHoverRadius: 8, // Increased from 6 to 8
+                                    pointStyle: 'triangle',
+                                    showLine: false,
+                                    fill: false,
+                                    order: 1 // Show on top
+                                });
+                            }
+                            
+                            if (eventGroups.error.length > 0) {
+                                chart.data.datasets.push({
+                                    label: 'Error Logs',
+                                    data: eventGroups.error,
+                                    borderColor: '#000000', // Black outline
+                                    backgroundColor: '#ef4444',
+                                    pointBackgroundColor: '#ef4444',
+                                    pointBorderColor: '#000000', // Black outline
+                                    pointBorderWidth: 2,
+                                    pointRadius: 6, // Increased from 4 to 6
+                                    pointHoverRadius: 8, // Increased from 6 to 8
+                                    pointStyle: 'triangle',
+                                    showLine: false,
+                                    fill: false,
+                                    order: 1 // Show on top
+                                });
+                            }
+                        }
+                        
+                        // Update time reference lines
+                        if (chart && chart.options && chart.options.plugins && chart.options.plugins.annotation) {
+                            chart.options.plugins.annotation.annotations = generateTimeReferenceLines(startDateMs, endDateMs);
+                        }
+                        
+                        // Update the chart with event data
+                        if (chart && chart.update) {
+                            chart.update('none');
+                        }
+                    }).catch(error => {
+                        console.log('Error adding event data:', error);
+                        // Still update the chart even if events fail
+                        
+                        // Update time reference lines even if events fail
+                        if (chart && chart.options && chart.options.plugins && chart.options.plugins.annotation) {
+                            chart.options.plugins.annotation.annotations = generateTimeReferenceLines(startDateMs, endDateMs);
+                        }
+                        
+                        if (chart && chart.update) {
+                            chart.update('none');
+                        }
+                    });
                 })
                 .catch(error => {
                     console.error(`Error fetching ${type} data:`, error);
@@ -2069,32 +2305,14 @@
         function customInit() {
             console.log('Initializing graph page...');
             
-            // Register Chart.js annotations plugin after DOM is loaded
-            setTimeout(() => {
-                if (typeof window.ChartAnnotation !== 'undefined') {
-                    Chart.register(window.ChartAnnotation);
-                    console.log('Chart.js annotations plugin registered successfully');
-                } else {
-                    console.warn('Chart.js annotations plugin not found, checking for alternative names...');
-                    // Try other possible names
-                    const possibleNames = ['ChartAnnotation', 'chartjsPluginAnnotation', 'annotationPlugin'];
-                    let pluginFound = false;
-                    
-                    for (const name of possibleNames) {
-                        if (typeof window[name] !== 'undefined') {
-                            Chart.register(window[name]);
-                            console.log(`Chart.js annotations plugin registered as ${name}`);
-                            pluginFound = true;
-                            break;
-                        }
-                    }
-                    
-                    if (!pluginFound) {
-                        console.warn('Chart.js annotations plugin not found, charts will work without event markers');
-                        console.log('Available window properties:', Object.keys(window).filter(k => k.toLowerCase().includes('chart')));
-                    }
-                }
-            }, 100);
+            // Register Chart.js annotations plugin for time reference lines
+        if (typeof window.ChartAnnotation !== 'undefined') {
+            Chart.register(window.ChartAnnotation);
+            console.log('Chart.js annotations plugin registered for time reference lines');
+        } else if (typeof window['chartjs-plugin-annotation'] !== 'undefined') {
+            Chart.register(window['chartjs-plugin-annotation']);
+            console.log('Chart.js annotations plugin registered via direct access');
+        }
             
             // Set default global options for Chart.js time axis
             Chart.defaults.scales.time.parser = function(value) {
@@ -2210,41 +2428,35 @@
             syncColorInputs('humidMidColor', 'humidMidColorHex');
             syncColorInputs('humidHighColor', 'humidHighColorHex');
             
-            // Set up marker visibility controls
-            document.getElementById('showTimeMarkers').addEventListener('change', function() {
-                markerSettings.showTimeMarkers = this.checked;
-                console.log('Time markers visibility changed:', this.checked);
-                debouncedUpdateCharts();
-            });
-            
+            // Set up event marker visibility controls
             document.getElementById('showEventTriggers').addEventListener('change', function() {
-                markerSettings.showEventTriggers = this.checked;
+                eventSettings.showEventTriggers = this.checked;
                 console.log('Event triggers visibility changed:', this.checked);
                 debouncedUpdateCharts();
             });
             
             document.getElementById('showConfiguredEvents').addEventListener('change', function() {
-                markerSettings.showConfiguredEvents = this.checked;
+                eventSettings.showConfiguredEvents = this.checked;
                 console.log('Configured events visibility changed:', this.checked);
                 debouncedUpdateCharts();
             });
             
-            document.getElementById('showThresholdLines').addEventListener('change', function() {
-                markerSettings.showThresholdLines = this.checked;
-                console.log('Threshold lines visibility changed:', this.checked);
-                updateCharts();
+            document.getElementById('showThresholdEvents').addEventListener('change', function() {
+                eventSettings.showThresholdEvents = this.checked;
+                console.log('Threshold events visibility changed:', this.checked);
+                debouncedUpdateCharts();
             });
             
             document.getElementById('showErrorLogs').addEventListener('change', function() {
-                markerSettings.showErrorLogs = this.checked;
+                eventSettings.showErrorLogs = this.checked;
                 console.log('Error logs visibility changed:', this.checked);
-                updateCharts();
+                debouncedUpdateCharts();
             });
             
-            // Add refresh markers button
-            document.getElementById('refreshMarkersButton').addEventListener('click', () => {
-                console.log('Refresh markers button clicked');
-                updateCharts();
+            // Add refresh events button
+            document.getElementById('refreshEventsButton').addEventListener('click', () => {
+                console.log('Refresh events button clicked');
+                debouncedUpdateCharts();
             });
             
             // Request timezone

@@ -491,7 +491,7 @@ module.exports = function (app, configDb, dataDb) {
     app.get('/api/configured-events', (req, res) => {
         // Get all configured events from the database
         configDb.all(
-            'SELECT * FROM events ORDER BY created_at ASC',
+            'SELECT * FROM events ORDER BY id ASC',
             [],
             (err, rows) => {
                 if (err) {
@@ -513,7 +513,6 @@ module.exports = function (app, configDb, dataDb) {
                     threshold_value: row.threshold_value,
                     cooldown_minutes: row.cooldown_minutes,
                     priority: row.priority,
-                    created_at: row.created_at,
                     last_triggered_at: row.last_triggered_at
                 }));
                 
