@@ -128,6 +128,8 @@ configDb = new sqlite3.Database('./database/ug-config.db', (err) => {
     }
     configDb.serialize(() => {
         configDb.run(`CREATE TABLE IF NOT EXISTS events (id INTEGER PRIMARY KEY AUTOINCREMENT, gpio INTEGER NOT NULL, time TEXT NOT NULL, pwm_value INTEGER NOT NULL, enabled INTEGER DEFAULT 1)`);
+        configDb.run(`CREATE TABLE IF NOT EXISTS safety_state (key TEXT PRIMARY KEY, value INTEGER DEFAULT 0)`);
+        configDb.run(`CREATE TABLE IF NOT EXISTS system_state (key TEXT PRIMARY KEY, value INTEGER DEFAULT 1)`);
         
         configDb.run('INSERT OR IGNORE INTO safety_state (key, value) VALUES (?, 0)', ['emergency_stop']);
         configDb.run('INSERT OR IGNORE INTO safety_state (key, value) VALUES (?, 1)', ['normal_enable']);
@@ -201,8 +203,6 @@ configDb = new sqlite3.Database('./database/ug-config.db', (err) => {
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             last_updated DATETIME DEFAULT CURRENT_TIMESTAMP
         )`);
-        configDb.run(`CREATE TABLE IF NOT EXISTS safety_state (key TEXT PRIMARY KEY, value INTEGER DEFAULT 0)`);
-        configDb.run(`CREATE TABLE IF NOT EXISTS system_state (key TEXT PRIMARY KEY, value INTEGER DEFAULT 1)`);
         configDb.run(`CREATE TABLE IF NOT EXISTS timezone (key TEXT PRIMARY KEY, value TEXT DEFAULT 'America/Los_Angeles')`);
         configDb.run(`CREATE TABLE IF NOT EXISTS sequence_tracker (key TEXT PRIMARY KEY, value INTEGER DEFAULT 0)`);
         configDb.run(`CREATE TABLE IF NOT EXISTS server_sync (server_id TEXT PRIMARY KEY, last_sync_time DATETIME, last_sequence INTEGER DEFAULT 0, last_seen DATETIME)`);
