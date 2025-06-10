@@ -491,7 +491,8 @@
                 return { ...event, localTimeStr, localTimeSeconds };
             });
             
-            // Find active time-based events (the most recent past event or next future event for each GPIO)
+            // Find active time-based events (only the most recent past event for each GPIO)
+            // Future events should not show as "Live" - they only show countdown timers
             const activeTimeEvents = {};
             eventsWithLocalTime.forEach(event => {
                 if (!event.enabled) return;
@@ -499,30 +500,14 @@
                 const gpio = event.gpio;
                 const eventTime = event.localTimeSeconds;
                 
-                // If no active event for this GPIO yet, or this event is a better candidate
-                if (!activeTimeEvents[gpio]) {
-                    activeTimeEvents[gpio] = { time: eventTime, event: event };
-                } else {
-                    const currentActive = activeTimeEvents[gpio];
-                    
-                    // If current time is past both events, choose the most recent one
-                    if (eventTime <= currentTimeSeconds && currentActive.time <= currentTimeSeconds) {
-                        if (eventTime > currentActive.time) {
-                            activeTimeEvents[gpio] = { time: eventTime, event: event };
-                        }
-                    }
-                    // If current time is before both events, choose the earliest one
-                    else if (eventTime > currentTimeSeconds && currentActive.time > currentTimeSeconds) {
-                        if (eventTime < currentActive.time) {
-                            activeTimeEvents[gpio] = { time: eventTime, event: event };
-                        }
-                    }
-                    // If one is past and one is future, choose the past one (it's currently active)
-                    else if (eventTime <= currentTimeSeconds && currentActive.time > currentTimeSeconds) {
+                // Only consider past events (or events happening right now) as "active"
+                if (eventTime <= currentTimeSeconds) {
+                    // This is a past event - check if it's the most recent for this GPIO
+                    if (!activeTimeEvents[gpio] || eventTime > activeTimeEvents[gpio].time) {
                         activeTimeEvents[gpio] = { time: eventTime, event: event };
                     }
-                    // If current active is past and this one is future, keep the current active
                 }
+                // Future events are ignored for "Live" indicator - they only show countdown
             });
             
             // Group events by GPIO to determine which should show "Live"

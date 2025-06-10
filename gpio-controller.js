@@ -382,13 +382,13 @@ class GpioController {
                     }
                 });
                 
-                // Choose the controlling event: prefer most recent past, fallback to next upcoming
+                // Choose the controlling event: only use most recent past event
+                // Future events should not control current GPIO output
                 if (mostRecentPast) {
                     activeEvent = { time: mostRecentPast.timeSeconds, event: mostRecentPast };
                     console.log(`GPIO${gpio} using most recent past event:`, mostRecentPast.time, mostRecentPast.pwm_value);
-                } else if (nextUpcoming) {
-                    activeEvent = { time: nextUpcoming.timeSeconds, event: nextUpcoming };
-                    console.log(`GPIO${gpio} using next upcoming event:`, nextUpcoming.time, nextUpcoming.pwm_value);
+                } else {
+                    console.log(`GPIO${gpio} has no past events, will be set to 0`);
                 }
                 
                 if (activeEvent) {
