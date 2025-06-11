@@ -340,23 +340,27 @@ class GpioController {
                 let activeEvent = null;
                 
                 // Convert events to include time in seconds for easier comparison
-                const eventsWithTime = gpioEvents.map(event => {
+                // We need to consider both today's and yesterday's events
+                const eventsWithTime = [];
+                
+                gpioEvents.forEach(event => {
                     const [hours, minutes, seconds] = event.time.split(':').map(Number);
-                    let eventTime = hours * 3600 + minutes * 60 + seconds;
+                    const baseEventTime = hours * 3600 + minutes * 60 + seconds;
                     
-                    // Handle day boundary: if event time is significantly less than current time,
-                    // it's likely tomorrow's event (e.g., 00:00:00 when current time is 21:00:00)
-                    if (eventTime < currentTime && (currentTime - eventTime) > 12 * 3600) {
-                        eventTime += 24 * 3600; // Add 24 hours to represent next day
-                    }
+                    // Add today's version of the event
+                    eventsWithTime.push({ ...event, timeSeconds: baseEventTime, dayOffset: 0 });
                     
-                    return { ...event, timeSeconds: eventTime };
+                    // Add yesterday's version of the event (subtract 24 hours worth of seconds)
+                    eventsWithTime.push({ ...event, timeSeconds: baseEventTime - 24 * 3600, dayOffset: -1 });
+                    
+                    // Add tomorrow's version of the event (add 24 hours worth of seconds)
+                    eventsWithTime.push({ ...event, timeSeconds: baseEventTime + 24 * 3600, dayOffset: 1 });
                 });
                 
                 console.log(`GPIO${gpio} time analysis:`, {
                     currentTime: currentTime,
                     currentTimeFormatted: `${Math.floor(currentTime/3600)}:${Math.floor((currentTime%3600)/60)}:${currentTime%60}`,
-                    events: eventsWithTime.map(e => ({
+                    events: eventsWithTime.filter(e => e.dayOffset === 0).map(e => ({
                         time: e.time,
                         timeSeconds: e.timeSeconds,
                         pwm: e.pwm_value,
@@ -364,20 +368,14 @@ class GpioController {
                     }))
                 });
                 
-                // Find the most recent past event or the next upcoming event
+                // Find the most recent past event (including yesterday's events)
                 let mostRecentPast = null;
-                let nextUpcoming = null;
                 
                 eventsWithTime.forEach(event => {
                     if (event.timeSeconds <= currentTime) {
-                        // This is a past event
+                        // This is a past event (could be from today or yesterday)
                         if (!mostRecentPast || event.timeSeconds > mostRecentPast.timeSeconds) {
                             mostRecentPast = event;
-                        }
-                    } else {
-                        // This is a future event
-                        if (!nextUpcoming || event.timeSeconds < nextUpcoming.timeSeconds) {
-                            nextUpcoming = event;
                         }
                     }
                 });
@@ -386,7 +384,9 @@ class GpioController {
                 // Future events should not control current GPIO output
                 if (mostRecentPast) {
                     activeEvent = { time: mostRecentPast.timeSeconds, event: mostRecentPast };
-                    console.log(`GPIO${gpio} using most recent past event:`, mostRecentPast.time, mostRecentPast.pwm_value);
+                    const dayLabel = mostRecentPast.dayOffset === -1 ? ' (yesterday)' : 
+                                   mostRecentPast.dayOffset === 1 ? ' (tomorrow)' : '';
+                    console.log(`GPIO${gpio} using most recent past event:`, mostRecentPast.time + dayLabel, mostRecentPast.pwm_value);
                 } else {
                     console.log(`GPIO${gpio} has no past events, will be set to 0`);
                 }
