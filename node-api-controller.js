@@ -552,5 +552,45 @@ module.exports = function (app, configDb, dataDb) {
         res.json([]);
     });
 
+    // Event notes endpoints
+    app.get('/api/event-notes/:id', (req, res) => {
+        const eventId = req.params.id;
+        
+        configDb.get(`SELECT notes FROM event_log WHERE id = ?`, [eventId], (err, row) => {
+            if (err) {
+                console.error('Error fetching event notes:', err);
+                res.status(500).json({ error: 'Failed to fetch notes' });
+                return;
+            }
+            
+            res.json({ notes: row ? row.notes : '' });
+        });
+    });
+    
+    app.post('/api/event-notes/:id', (req, res) => {
+        const eventId = req.params.id;
+        const { notes } = req.body;
+        
+        if (typeof notes !== 'string') {
+            res.status(400).json({ error: 'Notes must be a string' });
+            return;
+        }
+        
+        configDb.run(`UPDATE event_log SET notes = ? WHERE id = ?`, [notes, eventId], function(err) {
+            if (err) {
+                console.error('Error saving event notes:', err);
+                res.status(500).json({ error: 'Failed to save notes' });
+                return;
+            }
+            
+            if (this.changes === 0) {
+                res.status(404).json({ error: 'Event not found' });
+                return;
+            }
+            
+            res.json({ success: true, message: 'Notes saved successfully' });
+        });
+    });
+
     console.log('API Controller: API routes initialized.');
 };

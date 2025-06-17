@@ -774,6 +774,27 @@
         </div>
     </div>
 
+    <!-- Event Notes Modal -->
+    <div id="eventNotesModal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="modalEventTitle">Event Notes</h3>
+                <span class="close" onclick="closeEventNotesModal()">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div id="modalEventDetails" class="event-details"></div>
+                <div class="notes-section">
+                    <label for="eventNotesInput">Add/Edit Notes:</label>
+                    <textarea id="eventNotesInput" placeholder="Enter notes for this event..." rows="4"></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button onclick="closeEventNotesModal()" class="modal-btn cancel">Cancel</button>
+                <button onclick="saveEventNotes()" class="modal-btn save">Save Notes</button>
+            </div>
+        </div>
+    </div>
+
     <script>
         let tempChart = null;
         let humidityChart = null;
@@ -823,6 +844,9 @@
             showThresholdEvents: true,
             showErrorLogs: true
         };
+
+        // Event notes modal variables
+        let currentEventData = null;
 
         // Initialize time navigation
         function initializeTimeNavigation() {
@@ -1180,13 +1204,16 @@
                                     y: null, // Will be interpolated
                                     eventType: 'trigger',
                                     eventData: {
+                                        id: event.id, // Event log ID for notes
+                                        eventLogId: event.id, // Alternative reference
                                         type: 'Event Triggered',
                                         gpio: event.gpio,
                                         pwm: event.pwm_value,
                                         percentage: percentage,
                                         triggerType: event.trigger_type || 'time',
                                         eventName: event.event_name,
-                                        timestamp: event.timestamp
+                                        timestamp: event.timestamp,
+                                        notes: event.notes
                                     }
                                 });
                             }
@@ -1663,6 +1690,21 @@
                         mode: 'nearest',
                         intersect: false
                     },
+                    onClick: function(event, elements) {
+                        if (elements.length > 0) {
+                            const element = elements[0];
+                            const datasetIndex = element.datasetIndex;
+                            const index = element.index;
+                            const chart = this;
+                            const dataset = chart.data.datasets[datasetIndex];
+                            const point = dataset.data[index];
+                            
+                            // Check if this is an event point
+                            if (point && point.eventType && point.eventData) {
+                                showEventNotesModal(point.eventData);
+                            }
+                        }
+                    },
                     elements: {
                         point: {
                             radius: 3, // Smaller default radius
@@ -1821,6 +1863,10 @@
                                             const unit = type === 'temperature' ? '°F' : '%';
                                             lines.push(`Interpolated ${type}: ${point.y.toFixed(1)}${unit}`);
                                         }
+                                        
+                                        // Add click instruction for events
+                                        lines.push('');
+                                        lines.push('💡 Click to add/edit notes');
                                         
                                         return lines;
                                     } else {
@@ -2462,6 +2508,13 @@
                 debouncedUpdateCharts();
             });
             
+            // Close modal when clicking outside of it
+            document.getElementById('eventNotesModal').addEventListener('click', function(event) {
+                if (event.target === this) {
+                    closeEventNotesModal();
+                }
+            });
+            
             // Request timezone
             socket.emit('getTimezone');
             
@@ -2475,6 +2528,153 @@
             updateCharts();
             
             console.log('Graph page initialized');
+        }
+
+        // Event notes modal functions
+        function showEventNotesModal(eventData) {
+            currentEventData = eventData;
+            
+            // Set modal title and details
+            document.getElementById('modalEventTitle').textContent = `${eventData.type} - Notes`;
+            
+            // Build event details HTML
+            let detailsHTML = `<h4>${eventData.type}</h4>`;
+            
+            if (eventData.type === 'Event Triggered') {
+                detailsHTML += `
+                    <p><span class="detail-label">GPIO:</span> ${eventData.gpio}</p>
+                    <p><span class="detail-label">PWM Value:</span> ${eventData.pwm} (${eventData.percentage}%)</p>
+                    <p><span class="detail-label">Trigger Type:</span> ${eventData.triggerType}</p>
+                    <p><span class="detail-label">Timestamp:</span> ${new Date(eventData.timestamp).toLocaleString()}</p>
+                `;
+                if (eventData.eventName) {
+                    detailsHTML += `<p><span class="detail-label">Event Name:</span> ${eventData.eventName}</p>`;
+                }
+            } else if (eventData.type === 'Scheduled Event') {
+                detailsHTML += `
+                    <p><span class="detail-label">GPIO:</span> ${eventData.gpio}</p>
+                    <p><span class="detail-label">PWM Value:</span> ${eventData.pwm} (${eventData.percentage}%)</p>
+                    <p><span class="detail-label">Priority:</span> ${eventData.priority}</p>
+                    <p><span class="detail-label">Status:</span> ${eventData.status}</p>
+                    <p><span class="detail-label">Timestamp:</span> ${new Date(eventData.timestamp).toLocaleString()}</p>
+                `;
+                if (eventData.eventName) {
+                    detailsHTML += `<p><span class="detail-label">Event Name:</span> ${eventData.eventName}</p>`;
+                }
+            } else if (eventData.type === 'Threshold Event') {
+                detailsHTML += `
+                    <p><span class="detail-label">Sensor:</span> ${eventData.sensor}</p>
+                    <p><span class="detail-label">Condition:</span> ${eventData.condition}</p>
+                    <p><span class="detail-label">GPIO:</span> ${eventData.gpio}</p>
+                    <p><span class="detail-label">PWM Value:</span> ${eventData.pwm} (${eventData.percentage}%)</p>
+                    <p><span class="detail-label">Priority:</span> ${eventData.priority}</p>
+                    <p><span class="detail-label">Cooldown:</span> ${eventData.cooldown}</p>
+                    <p><span class="detail-label">Status:</span> ${eventData.status}</p>
+                    <p><span class="detail-label">Last Triggered:</span> ${eventData.lastTriggered}</p>
+                `;
+            } else if (eventData.type && eventData.type.includes('ERROR')) {
+                detailsHTML += `
+                    <p><span class="detail-label">Message:</span> ${eventData.message}</p>
+                    <p><span class="detail-label">Component:</span> ${eventData.component}</p>
+                    <p><span class="detail-label">Timestamp:</span> ${new Date(eventData.timestamp).toLocaleString()}</p>
+                `;
+                if (eventData.details) {
+                    detailsHTML += `<p><span class="detail-label">Details:</span> ${eventData.details}</p>`;
+                }
+            }
+            
+            document.getElementById('modalEventDetails').innerHTML = detailsHTML;
+            
+            // Load existing notes if this is an event trigger (has an ID)
+            if (eventData.eventLogId || eventData.id) {
+                const eventId = eventData.eventLogId || eventData.id;
+                fetch(`/api/event-notes/${eventId}`)
+                    .then(response => response.json())
+                    .then(data => {
+                        document.getElementById('eventNotesInput').value = data.notes || '';
+                    })
+                    .catch(error => {
+                        console.error('Error loading notes:', error);
+                        document.getElementById('eventNotesInput').value = '';
+                    });
+            } else {
+                document.getElementById('eventNotesInput').value = '';
+            }
+            
+            // Show modal
+            document.getElementById('eventNotesModal').style.display = 'flex';
+        }
+        
+        function closeEventNotesModal() {
+            document.getElementById('eventNotesModal').style.display = 'none';
+            currentEventData = null;
+        }
+        
+        function saveEventNotes() {
+            if (!currentEventData) {
+                showNotification('No event selected', 'error');
+                return;
+            }
+            
+            const eventId = currentEventData.eventLogId || currentEventData.id;
+            if (!eventId) {
+                showNotification('Cannot save notes for this event type', 'error');
+                return;
+            }
+            
+            const notes = document.getElementById('eventNotesInput').value;
+            
+            fetch(`/api/event-notes/${eventId}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ notes })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showNotification('Notes saved successfully', 'success');
+                    closeEventNotesModal();
+                    // Refresh charts to show updated notes indicators
+                    debouncedUpdateCharts();
+                } else {
+                    showNotification(data.error || 'Failed to save notes', 'error');
+                }
+            })
+            .catch(error => {
+                console.error('Error saving notes:', error);
+                showNotification('Failed to save notes, please try again', 'error');
+            });
+        }
+        
+        function showNotification(message, type = 'info') {
+            // Create notification element
+            const notification = document.createElement('div');
+            notification.className = `notification ${type}`;
+            notification.textContent = message;
+            notification.style.cssText = `
+                position: fixed;
+                top: 20px;
+                right: 20px;
+                padding: 1rem 1.5rem;
+                border-radius: 0.25rem;
+                color: white;
+                font-weight: bold;
+                z-index: 2000;
+                max-width: 300px;
+                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+                background-color: ${type === 'success' ? '#45a049' : type === 'error' ? '#c0110b' : '#2196f3'};
+            `;
+            
+            document.body.appendChild(notification);
+            
+            // Remove after 3 seconds
+            setTimeout(() => {
+                if (notification.parentNode) {
+                    notification.parentNode.removeChild(notification);
+                }
+            }, 3000);
         }
 
         // Initialize the application
