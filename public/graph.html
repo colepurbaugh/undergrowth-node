@@ -795,6 +795,27 @@
         </div>
     </div>
 
+    <!-- Event Notes Modal -->
+    <div id="eventNotesModal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="modalEventTitle">Event Notes</h3>
+                <span class="close" onclick="closeEventNotesModal()">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div id="modalEventDetails" class="event-details"></div>
+                <div class="notes-section">
+                    <label for="eventNotesInput">Add/Edit Notes:</label>
+                    <textarea id="eventNotesInput" placeholder="Enter notes for this event..." rows="4"></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button onclick="closeEventNotesModal()" class="modal-btn cancel">Cancel</button>
+                <button onclick="saveEventNotes()" class="modal-btn save">Save Notes</button>
+            </div>
+        </div>
+    </div>
+
     <script>
         let tempChart = null;
         let humidityChart = null;
@@ -1247,6 +1268,8 @@
                                             y: null, // Will be interpolated
                                             eventType: 'configured',
                                             eventData: {
+                                                id: event.id, // Add ID for notes
+                                                eventLogId: event.id, // Alternative reference
                                                 type: 'Scheduled Event',
                                                 gpio: event.gpio,
                                                 pwm: event.pwm_value,
@@ -1289,6 +1312,8 @@
                                             y: null, // Will be interpolated like other events
                                             eventType: 'threshold',
                                             eventData: {
+                                                id: event.id, // Add ID for notes
+                                                eventLogId: event.id, // Alternative reference
                                                 type: 'Threshold Event',
                                                 sensor: event.sensor_address,
                                                 condition: `${condition} ${event.threshold_value}${unit}`,
@@ -1321,6 +1346,8 @@
                                     y: null, // Will be interpolated
                                     eventType: 'error',
                                     eventData: {
+                                        id: error.id, // Add ID for notes
+                                        eventLogId: error.id, // Alternative reference
                                         type: `${(error.severity || 'ERROR').toUpperCase()}`,
                                         message: error.message,
                                         component: error.component || 'System',
@@ -1689,6 +1716,21 @@
                     interaction: {
                         mode: 'nearest',
                         intersect: false
+                    },
+                    onClick: function(event, elements) {
+                        if (elements.length > 0) {
+                            const element = elements[0];
+                            const datasetIndex = element.datasetIndex;
+                            const index = element.index;
+                            const chart = this;
+                            const dataset = chart.data.datasets[datasetIndex];
+                            const point = dataset.data[index];
+                            
+                            // Check if this is an event point
+                            if (point && point.eventType && point.eventData) {
+                                showEventNotesModal(point.eventData);
+                            }
+                        }
                     },
                     onClick: function(event, elements) {
                         if (elements.length > 0) {
@@ -2675,6 +2717,70 @@
                     notification.parentNode.removeChild(notification);
                 }
             }, 3000);
+        }
+
+        // Event notes modal functions
+        function showEventNotesModal(eventData) {
+            currentEventData = eventData;
+            document.getElementById('modalEventTitle').textContent = `${eventData.type || 'Event'} - Notes`;
+            
+            let detailsHTML = `<h4>${eventData.type || 'Event'}</h4>`;
+            if (eventData.gpio) detailsHTML += `<p><span class="detail-label">GPIO:</span> ${eventData.gpio}</p>`;
+            if (eventData.timestamp) detailsHTML += `<p><span class="detail-label">Time:</span> ${new Date(eventData.timestamp).toLocaleString()}</p>`;
+            
+            document.getElementById('modalEventDetails').innerHTML = detailsHTML;
+            
+            // Load existing notes if this event has an ID
+            if (eventData.id || eventData.eventLogId) {
+                const eventId = eventData.id || eventData.eventLogId;
+                fetch(`/api/event-notes/${eventId}`)
+                    .then(response => response.json())
+                    .then(data => {
+                        document.getElementById('eventNotesInput').value = data.notes || '';
+                    })
+                    .catch(error => {
+                        document.getElementById('eventNotesInput').value = '';
+                    });
+            } else {
+                document.getElementById('eventNotesInput').value = '';
+            }
+            
+            document.getElementById('eventNotesModal').style.display = 'flex';
+        }
+        
+        function closeEventNotesModal() {
+            document.getElementById('eventNotesModal').style.display = 'none';
+            currentEventData = null;
+        }
+        
+        function saveEventNotes() {
+            if (!currentEventData) return;
+            
+            const eventId = currentEventData.id || currentEventData.eventLogId;
+            if (!eventId) {
+                alert('Cannot save notes for this event type');
+                return;
+            }
+            
+            const notes = document.getElementById('eventNotesInput').value;
+            
+            fetch(`/api/event-notes/${eventId}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ notes })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    alert('Notes saved successfully');
+                    closeEventNotesModal();
+                } else {
+                    alert('Failed to save notes');
+                }
+            })
+            .catch(error => {
+                alert('Failed to save notes');
+            });
         }
 
         // Initialize the application

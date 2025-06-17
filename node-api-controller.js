@@ -592,5 +592,25 @@ module.exports = function (app, configDb, dataDb) {
         });
     });
 
+    // Event notes API endpoints
+    app.get('/api/event-notes/:id', (req, res) => {
+        const eventId = req.params.id;
+        const stmt = db.prepare('SELECT notes FROM event_log WHERE id = ?');
+        const result = stmt.get(eventId);
+        res.json({ notes: result ? result.notes : '' });
+    });
+
+    app.post('/api/event-notes/:id', (req, res) => {
+        const eventId = req.params.id;
+        const { notes } = req.body;
+        try {
+            const stmt = db.prepare('UPDATE event_log SET notes = ? WHERE id = ?');
+            stmt.run(notes, eventId);
+            res.json({ success: true });
+        } catch (error) {
+            res.status(500).json({ error: 'Failed to save notes' });
+        }
+    });
+
     console.log('API Controller: API routes initialized.');
 };
