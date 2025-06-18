@@ -470,7 +470,11 @@ module.exports = function (app, configDb, dataDb) {
         
         // Get event triggers from the event_log table (actual triggers)
         configDb.all(
-            `SELECT el.*, e.sensor_address, e.sensor_type, e.threshold_value, e.threshold_condition 
+            `SELECT el.*, 
+                    e.sensor_address,
+                    e.sensor_type,
+                    e.threshold_value,
+                    e.threshold_condition
              FROM event_log el 
              LEFT JOIN events e ON el.event_id = e.id 
              WHERE el.timestamp >= ? AND el.timestamp <= ? AND el.action = 'triggered' 
@@ -489,7 +493,7 @@ module.exports = function (app, configDb, dataDb) {
                     gpio: row.gpio,
                     pwm_value: row.pwm_value,
                     trigger_type: row.trigger_source || 'threshold',
-
+                    event_name: `Event ${row.event_id || row.id}`, // Generate a default name
                     sensor_address: row.sensor_address,
                     sensor_type: row.sensor_type,
                     threshold_value: row.threshold_value,
@@ -592,25 +596,7 @@ module.exports = function (app, configDb, dataDb) {
         });
     });
 
-    // Event notes API endpoints
-    app.get('/api/event-notes/:id', (req, res) => {
-        const eventId = req.params.id;
-        const stmt = db.prepare('SELECT notes FROM event_log WHERE id = ?');
-        const result = stmt.get(eventId);
-        res.json({ notes: result ? result.notes : '' });
-    });
 
-    app.post('/api/event-notes/:id', (req, res) => {
-        const eventId = req.params.id;
-        const { notes } = req.body;
-        try {
-            const stmt = db.prepare('UPDATE event_log SET notes = ? WHERE id = ?');
-            stmt.run(notes, eventId);
-            res.json({ success: true });
-        } catch (error) {
-            res.status(500).json({ error: 'Failed to save notes' });
-        }
-    });
 
     console.log('API Controller: API routes initialized.');
 };

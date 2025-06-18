@@ -793,28 +793,7 @@
                 <button onclick="saveEventNotes()" class="modal-btn save">Save Notes</button>
             </div>
         </div>
-    </div>
-
-    <!-- Event Notes Modal -->
-    <div id="eventNotesModal" class="modal" style="display: none;">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h3 id="modalEventTitle">Event Notes</h3>
-                <span class="close" onclick="closeEventNotesModal()">&times;</span>
-            </div>
-            <div class="modal-body">
-                <div id="modalEventDetails" class="event-details"></div>
-                <div class="notes-section">
-                    <label for="eventNotesInput">Add/Edit Notes:</label>
-                    <textarea id="eventNotesInput" placeholder="Enter notes for this event..." rows="4"></textarea>
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button onclick="closeEventNotesModal()" class="modal-btn cancel">Cancel</button>
-                <button onclick="saveEventNotes()" class="modal-btn save">Save Notes</button>
-            </div>
         </div>
-    </div>
 
     <script>
         let tempChart = null;
@@ -951,6 +930,7 @@
             updateNavigationButtons();
             updateGoLiveButton();
             updateCharts();
+            setupAutoRefresh(); // Re-enable auto-refresh for live mode
         }
         
         // Update Go Live button state
@@ -978,6 +958,7 @@
             updateNavigationButtons();
             updateGoLiveButton();
             updateCharts();
+            setupAutoRefresh(); // Update auto-refresh based on mode
         }
         
         function adjustEndTime(hours) {
@@ -992,6 +973,7 @@
             updateNavigationButtons();
             updateGoLiveButton();
             updateCharts();
+            setupAutoRefresh(); // Update auto-refresh based on mode
         }
 
         // Chart colors for different sensors (can add more as needed)
@@ -1217,7 +1199,12 @@
                     if (eventResponse.ok) {
                         const eventTriggers = await eventResponse.json();
                         eventTriggers.forEach(event => {
-                            const eventTime = new Date(event.timestamp).getTime();
+                            // Exclude manual triggers with sensor info (those are threshold events)
+                            if (event.trigger_type === 'manual' && event.sensor_type) {
+                                return; // Skip threshold events - they'll be processed in section 3
+                            }
+                            
+                            const eventTime = new Date(event.timestamp + (event.timestamp.includes('T') || event.timestamp.includes('Z') ? '' : ' UTC')).getTime();
                             if (eventTime >= startDateMs && eventTime <= endDateMs) {
                                 const percentage = Math.round((event.pwm_value / 1023) * 100);
                                 events.push({
@@ -1287,45 +1274,51 @@
                     }
                 }
                 
-                // 3. Threshold Events - Orange diamonds (only show events that have been triggered)
+                // 3. Threshold Events - Orange triangles (from event-triggers API)
                 if (eventSettings.showThresholdEvents) {
-                    const configResponse = await fetch('/api/configured-events');
-                    if (configResponse.ok) {
-                        const configuredEvents = await configResponse.json();
-                        configuredEvents.forEach(event => {
-                            if (event.trigger_type && event.trigger_type !== 'time' && event.threshold_value !== undefined && event.last_triggered_at) {
-                                // Only show threshold events that have actually been triggered
-                                const triggerTime = new Date(event.last_triggered_at).getTime();
-                                
-                                // Only show if the trigger time is within our time range
-                                if (triggerTime >= startDateMs && triggerTime <= endDateMs) {
-                                    const percentage = Math.round((event.pwm_value / 1023) * 100);
-                                    const unit = event.sensor_type === 'temperature' ? '°F' : '%';
-                                    const condition = event.threshold_condition === 'greater_than' ? 'above' : 'below';
-                                    const lastTriggered = new Date(event.last_triggered_at).toLocaleString();
-                                    
-                                    // Only add if it matches the chart type
-                                    if ((type === 'temperature' && event.sensor_type === 'temperature') ||
-                                        (type === 'humidity' && event.sensor_type === 'humidity')) {
+                    console.log(`Fetching threshold events for ${type} chart`);
+                    const thresholdResponse = await fetch(`/api/event-triggers?startDate=${startDate}&endDate=${endDate}`);
+                    if (thresholdResponse.ok) {
+                        const thresholdTriggers = await thresholdResponse.json();
+                        console.log(`API returned ${thresholdTriggers.length} triggers for ${type}:`, thresholdTriggers);
+                        thresholdTriggers.forEach(trigger => {
+                            // Show threshold triggers: manual triggers with sensor info
+                            if (trigger.trigger_type === 'manual' && trigger.sensor_type) {
+                                console.log(`Found manual trigger with sensor info:`, trigger);
+                                // Match threshold triggers by sensor_type
+                                const matchesChart = (type === 'temperature' && trigger.sensor_type === 'temperature') ||
+                                                   (type === 'humidity' && trigger.sensor_type === 'humidity');
+                                console.log(`Trigger matches ${type} chart:`, matchesChart);
+                                if (matchesChart) {
+                                    // Handle timezone - assume database timestamps are in UTC if no timezone specified
+                                    const triggerTime = new Date(trigger.timestamp + (trigger.timestamp.includes('T') || trigger.timestamp.includes('Z') ? '' : ' UTC')).getTime();
+                                    console.log(`Threshold event time check: trigger=${trigger.timestamp}, triggerTime=${triggerTime}, startDateMs=${startDateMs}, endDateMs=${endDateMs}, inRange=${triggerTime >= startDateMs && triggerTime <= endDateMs}`);
+                                    if (triggerTime >= startDateMs && triggerTime <= endDateMs) {
+                                        const percentage = Math.round((trigger.pwm_value / 1023) * 100);
+                                        const unit = trigger.sensor_type === 'temperature' ? '°F' : '%';
+                                        const condition = trigger.threshold_condition === 'greater_than' ? 'above' : 'below';
+                                        
+                                        console.log(`Adding threshold event to ${type} chart: ID ${trigger.id}`);
                                         events.push({
-                                            x: triggerTime, // Use actual trigger time instead of midTime
-                                            y: null, // Will be interpolated like other events
+                                            x: triggerTime,
+                                            y: null, // Will be interpolated
                                             eventType: 'threshold',
                                             eventData: {
-                                                id: event.id, // Add ID for notes
-                                                eventLogId: event.id, // Alternative reference
+                                                id: trigger.id,
+                                                eventLogId: trigger.id,
                                                 type: 'Threshold Event',
-                                                sensor: event.sensor_address,
-                                                condition: `${condition} ${event.threshold_value}${unit}`,
-                                                gpio: event.gpio,
-                                                pwm: event.pwm_value,
+                                                sensor: trigger.sensor_address,
+                                                condition: `${condition} ${trigger.threshold_value}${unit}`,
+                                                gpio: trigger.gpio,
+                                                pwm: trigger.pwm_value,
                                                 percentage: percentage,
-                                                priority: event.priority || 1,
-                                                cooldown: `${event.cooldown_minutes || 5} min`,
-                                                status: event.enabled ? 'ENABLED' : 'DISABLED',
-                                                lastTriggered: lastTriggered
+                                                triggerType: trigger.trigger_type,
+                                                timestamp: trigger.timestamp,
+                                                notes: trigger.notes
                                             }
                                         });
+                                    } else {
+                                        console.log(`Threshold event outside time range: ${trigger.timestamp} (${triggerTime}) not in [${startDateMs}, ${endDateMs}]`);
                                     }
                                 }
                             }
@@ -1339,7 +1332,7 @@
                     if (errorResponse.ok) {
                         const errorLogs = await errorResponse.json();
                         errorLogs.forEach(error => {
-                            const errorTime = new Date(error.timestamp).getTime();
+                            const errorTime = new Date(error.timestamp + (error.timestamp.includes('T') || error.timestamp.includes('Z') ? '' : ' UTC')).getTime();
                             if (errorTime >= startDateMs && errorTime <= endDateMs) {
                                 events.push({
                                     x: errorTime,
@@ -1607,6 +1600,16 @@
         
         // Helper function to create chart
         function createChart(ctx, type, timeRange, startDateMs, endDateMs) {
+            // Safety checks
+            if (!ctx) {
+                console.error('createChart: Invalid canvas context');
+                return null;
+            }
+            
+            if (!startDateMs || !endDateMs || startDateMs >= endDateMs) {
+                console.error('createChart: Invalid date range', { startDateMs, endDateMs });
+                return null;
+            }
             // Function to generate clean tick timestamps
             function generateTicks(timeRange, startDateMs, endDateMs) {
                 const ticks = [];
@@ -1926,12 +1929,23 @@
                 }
             };
             
-            const chart = new Chart(ctx, chartConfig);
+            let chart;
+            try {
+                chart = new Chart(ctx, chartConfig);
+            } catch (error) {
+                console.error('Error creating Chart.js instance:', error);
+                return null;
+            }
             
             // Add time reference lines after chart creation
-            if (chart.options.plugins && chart.options.plugins.annotation) {
-                chart.options.plugins.annotation.annotations = generateTimeReferenceLines(startDateMs, endDateMs);
-                chart.update('none');
+            try {
+                if (chart && chart.options && chart.options.plugins && chart.options.plugins.annotation) {
+                    chart.options.plugins.annotation.annotations = generateTimeReferenceLines(startDateMs, endDateMs);
+                    chart.update('none');
+                }
+            } catch (error) {
+                console.error('Error adding time reference lines:', error);
+                // Don't fail chart creation for this
             }
             
             return chart;
@@ -1998,8 +2012,18 @@
                         // If canvas doesn't exist or is corrupted, recreate it
                         if (!canvas || !canvas.getContext) {
                             const container = canvas ? canvas.parentNode : document.querySelector(`#${canvasId}`).parentNode;
+                            if (!container) {
+                                console.error(`Container not found for ${canvasId}`);
+                                return;
+                            }
                             container.innerHTML = `<canvas id="${canvasId}"></canvas>`;
                             canvas = document.getElementById(canvasId);
+                        }
+                        
+                        // Additional safety check
+                        if (!canvas) {
+                            console.error(`Canvas element ${canvasId} could not be created`);
+                            return;
                         }
                         
                         // Ensure canvas is properly sized
@@ -2013,12 +2037,22 @@
                         }
                         
                         // Create new chart
-                        chart = createChart(ctx, type, timeRange, startDateMs, endDateMs);
-                        
-                        if (type === 'temperature') {
-                            tempChart = chart;
-                        } else {
-                            humidityChart = chart;
+                        try {
+                            chart = createChart(ctx, type, timeRange, startDateMs, endDateMs);
+                            
+                            if (!chart) {
+                                console.error(`Failed to create ${type} chart`);
+                                return;
+                            }
+                            
+                            if (type === 'temperature') {
+                                tempChart = chart;
+                            } else {
+                                humidityChart = chart;
+                            }
+                        } catch (error) {
+                            console.error(`Error creating ${type} chart:`, error);
+                            return;
                         }
                     }
                     
@@ -2202,6 +2236,8 @@
                             return;
                         }
                         
+                        console.log(`Fetched ${events.length} events for ${type} chart:`, events);
+                        
                         if (events.length > 0) {
                             console.log(`Adding ${events.length} event markers to ${type} chart`);
                             
@@ -2217,6 +2253,7 @@
                             events.forEach(event => {
                                 if (event.y === null) {
                                     event.y = interpolateEventValue(event.x, allSensorData, type);
+                                    console.log(`Interpolated Y value for event at ${new Date(event.x).toLocaleTimeString()}: ${event.y}`);
                                 }
                             });
                             
@@ -2227,6 +2264,13 @@
                                 threshold: events.filter(e => e.eventType === 'threshold'),
                                 error: events.filter(e => e.eventType === 'error')
                             };
+                            
+                            console.log(`Event groups for ${type} chart:`, {
+                                trigger: eventGroups.trigger.length,
+                                configured: eventGroups.configured.length,
+                                threshold: eventGroups.threshold.length,
+                                error: eventGroups.error.length
+                            });
                             
                             // Add event datasets with triangle styling for better visibility
                             if (eventGroups.trigger.length > 0) {
@@ -2392,6 +2436,28 @@
             }
         }
 
+        // Set up auto-refresh function (global scope)
+        function setupAutoRefresh() {
+            if (autoUpdateInterval) {
+                clearInterval(autoUpdateInterval);
+            }
+            
+            if (isLiveMode) {
+                autoUpdateInterval = setInterval(() => {
+                    console.log('Auto-refresh: updating charts in live mode');
+                    // Update time range for live mode
+                    const now = new Date();
+                    currentEndTime = new Date(now);
+                    currentStartTime = new Date(now.getTime() - (timeRangeHours * 60 * 60 * 1000));
+                    updateTimeDisplay();
+                    updateCharts();
+                }, 10000); // Changed back to 10 seconds as requested
+                console.log('Auto-refresh enabled for live mode (10 second interval)');
+            } else {
+                console.log('Auto-refresh disabled for historical mode');
+            }
+        }
+
         // Custom initialization for this page
         function customInit() {
             console.log('Initializing graph page...');
@@ -2484,32 +2550,8 @@
                 goLive();
             });
             
-            // Set up live data streaming (update every 10 seconds when in live mode)
-            setInterval(() => {
-                if (isLiveMode) {
-                    // Update end time to current time
-                    const now = new Date();
-                    currentEndTime = new Date(now);
-                    // Keep the same time range by updating start time too
-                    currentStartTime = new Date(now.getTime() - (timeRangeHours * 60 * 60 * 1000));
-                    
-                    // Ensure timeRangeHours is properly maintained (should stay the same in live mode)
-                    const calculatedRangeMs = currentEndTime.getTime() - currentStartTime.getTime();
-                    const calculatedRangeHours = calculatedRangeMs / (1000 * 60 * 60);
-                    
-                    console.log('Live mode update:', {
-                        start: currentStartTime.toISOString(),
-                        end: currentEndTime.toISOString(),
-                        rangeHours: timeRangeHours,
-                        calculatedRangeHours: calculatedRangeHours
-                    });
-                    
-                    updateTimeDisplay();
-                    updateNavigationButtons();
-                    updateGoLiveButton();
-                    debouncedUpdateCharts();
-                }
-            }, 10000);
+            // Initialize auto-refresh
+            setupAutoRefresh();
             
             // Set up color input synchronization
             syncColorInputs('tempLowColor', 'tempLowColorHex');
@@ -2575,6 +2617,8 @@
         // Event notes modal functions
         function showEventNotesModal(eventData) {
             currentEventData = eventData;
+            
+
             
             // Set modal title and details
             document.getElementById('modalEventTitle').textContent = `${eventData.type} - Notes`;
@@ -2678,8 +2722,8 @@
                 if (data.success) {
                     showNotification('Notes saved successfully', 'success');
                     closeEventNotesModal();
-                    // Refresh charts to show updated notes indicators
-                    debouncedUpdateCharts();
+                    // Don't refresh charts immediately to prevent events from disappearing
+                    // Charts will refresh when live mode resumes
                 } else {
                     showNotification(data.error || 'Failed to save notes', 'error');
                 }
@@ -2719,69 +2763,14 @@
             }, 3000);
         }
 
-        // Event notes modal functions
-        function showEventNotesModal(eventData) {
-            currentEventData = eventData;
-            document.getElementById('modalEventTitle').textContent = `${eventData.type || 'Event'} - Notes`;
-            
-            let detailsHTML = `<h4>${eventData.type || 'Event'}</h4>`;
-            if (eventData.gpio) detailsHTML += `<p><span class="detail-label">GPIO:</span> ${eventData.gpio}</p>`;
-            if (eventData.timestamp) detailsHTML += `<p><span class="detail-label">Time:</span> ${new Date(eventData.timestamp).toLocaleString()}</p>`;
-            
-            document.getElementById('modalEventDetails').innerHTML = detailsHTML;
-            
-            // Load existing notes if this event has an ID
-            if (eventData.id || eventData.eventLogId) {
-                const eventId = eventData.id || eventData.eventLogId;
-                fetch(`/api/event-notes/${eventId}`)
-                    .then(response => response.json())
-                    .then(data => {
-                        document.getElementById('eventNotesInput').value = data.notes || '';
-                    })
-                    .catch(error => {
-                        document.getElementById('eventNotesInput').value = '';
-                    });
-            } else {
-                document.getElementById('eventNotesInput').value = '';
+
+
+        // Cleanup function for when page is closed
+        window.addEventListener('beforeunload', function() {
+            if (autoUpdateInterval) {
+                clearInterval(autoUpdateInterval);
             }
-            
-            document.getElementById('eventNotesModal').style.display = 'flex';
-        }
-        
-        function closeEventNotesModal() {
-            document.getElementById('eventNotesModal').style.display = 'none';
-            currentEventData = null;
-        }
-        
-        function saveEventNotes() {
-            if (!currentEventData) return;
-            
-            const eventId = currentEventData.id || currentEventData.eventLogId;
-            if (!eventId) {
-                alert('Cannot save notes for this event type');
-                return;
-            }
-            
-            const notes = document.getElementById('eventNotesInput').value;
-            
-            fetch(`/api/event-notes/${eventId}`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ notes })
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    alert('Notes saved successfully');
-                    closeEventNotesModal();
-                } else {
-                    alert('Failed to save notes');
-                }
-            })
-            .catch(error => {
-                alert('Failed to save notes');
-            });
-        }
+        });
 
         // Initialize the application
         initializeApp(socket, customInit);
