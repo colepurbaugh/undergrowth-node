@@ -1,205 +1,87 @@
-# Undergrowth Node Documentation
+# Undergrowth
 
-## Purpose
-This document serves as a comprehensive reference for the Undergrowth Node system. It is created to:
-1. Provide accurate technical documentation of the system's components and functionality
-2. Serve as a reference for maintenance and future development
-3. Document the actual implementation, not assumptions or desired functionality
-4. Help new developers understand the system's architecture and behavior
+## What is Undergrowth?
 
-## Documentation Approach
-This document will be built by:
-1. Examining each file in the system
-2. Documenting actual functionality, not assumptions
-3. Verifying all information with the system's maintainer
-4. Updating as the system evolves
+Undergrowth turns your Raspberry Pi into a smart environmental controller that actually works out of the box. Monitor temperature and humidity, control fans/pumps with precise PWM, and set up automated responses—all through a clean web interface.
 
-## Project Structure
+**Why try it?**
+- **Just works**: One-script installation handles everything from Node.js to hardware setup
+- **Real automation**: Set time schedules OR threshold triggers (temp too high? fans auto-start)
+- **Beautiful graphs**: See your data with color-coded sensor readings and event markers
+- **Network ready**: MQTT support for multi-node setups and remote monitoring
+- **Safety first**: Emergency stops and fail-safes protect your equipment
 
-### Root Directory
+Perfect for greenhouses, grow rooms, lab equipment, or anywhere you need reliable environmental control without the complexity of industrial systems.
+
+## Installation
+
+### What You'll Need
+- Raspberry Pi (Zero W, 3, or 4 recommended)
+- MicroSD card (16GB minimum, 32GB recommended)
+- AHT10 or AHT20 temperature/humidity sensor
+- Jumper wires for sensor connection
+- Optional: Monitor and keyboard for initial setup
+
+### Step 1: Prepare the SD Card
+
+1. **Download Etcher**: Get the SD card flashing tool from [etcher.balena.io](https://etcher.balena.io/#download-etcher)
+
+2. **Download DietPi**: Download the latest DietPi image from [dietpi.com](https://dietpi.com/downloads/images/DietPi_RPi234-ARMv8-Bookworm.img.xz)
+
+3. **Flash the image**: 
+   - Open Etcher
+   - Select the DietPi image file
+   - Select your SD card
+   - Click "Flash!"
+
+### Step 2: Configure WiFi and Automation
+
+1. **Insert the SD card** back into your computer after flashing
+
+2. **Configure WiFi**: Edit the `dietpi-wifi.txt` file on the SD card:
+   ```
+   aWIFI_SSID[0]='YourWiFiName'
+   aWIFI_KEY[0]='YourWiFiPassword'
+   ```
+
+3. **Copy configuration files**: 
+   - Download the config files from `dietpi/v1.2 (stable hybrid)/` folder in this repository
+   - Copy `Automation_Custom_Script.sh`, `config.txt`, and `dietpi.txt` to the root of your SD card
+   - **Important**: Edit the WiFi credentials in `dietpi-wifi.txt` to match your network
+
+4. **Double-check your WiFi settings** - this is critical for the automated installation to work
+
+### Step 3: Boot and Install
+
+1. **Insert SD card** into your Raspberry Pi
+2. **Connect monitor and keyboard** (optional but recommended for first boot)
+3. **Power on** the Pi
+4. **Wait for automatic installation** - this takes 15-20 minutes and includes:
+   - System updates
+   - Node.js installation
+   - Hardware configuration
+   - Undergrowth software download and setup
+   - Automatic reboot
+
+The Pi will automatically reboot when installation is complete.
+
+### Step 4: Wire the AHT10/AHT20 Sensor
+
+Connect your temperature/humidity sensor to the Raspberry Pi GPIO pins:
+
 ```
-undergrowth-node/
-├── aht10.js              # AHT10 sensor interface
-├── docs/                 # Documentation
-│   ├── functions.md      # This file
-│   └── installation.md   # Installation instructions
-├── LICENSE              # License file
-├── node_modules/        # Node.js dependencies
-├── package.json         # Project configuration
-├── package-lock.json    # Dependency lock file
-├── public/              # Web interface files
-│   ├── assets/          # Static assets
-│   │   └── icons/       # Favicon and icons
-│   │       ├── android-chrome-192x192.png
-│   │       ├── android-chrome-512x512.png
-│   │       ├── apple-touch-icon.png
-│   │       ├── favicon-16x16.png
-│   │       ├── favicon-32x32.png
-│   │       ├── favicon.ico
-│   │       ├── site.webmanifest
-│   │       └── ug-node.db
-│   ├── graph.html       # Data visualization interface
-│   ├── index.html       # Main dashboard
-│   ├── pwm.html         # Manual PWM control interface
-│   └── schedule.html    # Event scheduling interface
-├── README.md            # Project overview
-├── server.js            # Main server application
-├── systemInfo.js        # System information module
-├── undergrowth.db       # Configuration database
-└── undergrowth-data.db  # Data logging database
+AHT10/20 Sensor → Raspberry Pi
+─────────────────────────────
+VCC (3.3V)      → Pin 1  (3.3V)
+SDA             → Pin 3  (GPIO 2 - SDA)
+SCL             → Pin 5  (GPIO 3 - SCL)
+GND             → Pin 9  (Ground)
 ```
 
-## server.js Analysis
+### Step 5: Access the Web Interface
 
-### Node Packages
-- express: Web server framework
-- socket.io: Real-time communication
-- http: HTTP server
-- raspi: Raspberry Pi hardware interface
-- raspi-i2c: I2C communication
-- pigpio: GPIO control
-- path: File path utilities
-- sqlite3: Database management
+1. **Find your Pi's IP address** (check your router's connected devices)
+2. **Open a web browser** and navigate to `http://[PI_IP_ADDRESS]`
+3. **Start monitoring!** You should see live temperature and humidity readings
 
-### Socket.IO Events
-
-#### Client to Server
-- getInitialState: Request initial system state
-- pwmSet: Set PWM value for a pin
-- pwmToggle: Toggle PWM pin on/off
-- toggleEvent: Toggle event on/off
-- addEvent: Add new event
-- deleteEvent: Delete existing event
-- setMode: Set system mode (automatic/manual)
-- emergencyStop: Trigger emergency stop
-- clearEmergencyStop: Clear emergency stop
-- getTimezone: Request current timezone
-- setTimezone: Set new timezone
-- getEvents: Request current events
-- toggleNormalEnable: Toggle normal operation
-- toggleMode: Toggle system mode
-- disconnect: Client disconnection
-
-#### Server to Client
-- initialState: Send initial system state
-- pwmStateUpdate: Update PWM states
-- safetyStateUpdate: Update safety states
-- eventsUpdated: Update event list
-- sensorData: Send sensor readings
-- timezoneUpdate: Update timezone
-- modeError: Mode change error
-- modeUpdate: Mode changed
-- pwmError: PWM operation error
-- eventError: Event operation error
-- eventDeleted: Event deleted
-- eventToggled: Event toggled
-- safetyStateChanged: Safety state changed
-
-### Functions
-- initPwmPins: Initialize PWM hardware
-- loadPwmStates: Load PWM states from database
-- initAndRead: Initialize sensors and start reading
-- broadcastSafetyState: Send safety state to clients
-- broadcastPWMState: Send PWM states to clients
-- emergencyStop: Handle emergency stop
-- clearEmergencyStop: Clear emergency stop state
-- togglePWM: Toggle PWM pin state
-- broadcastEvents: Send events to clients
-- isSystemSafe: Check system safety state
-- toggleNormalEnable: Toggle normal operation
-- controlLoop: Main control loop
-
-### Control Loop Flow
-The control loop follows this sequence:
-
-1. **Safety State Check**
-   - Queries the `safety_state` table
-   - Creates an object mapping safety keys to their values
-   - Specifically checks for `emergency_stop` and `normal_enable` states
-
-2. **Mode Check**
-   - Queries the `system_state` table for the current mode
-   - Defaults to manual mode (1) if no mode is set
-
-3. **Safety Override**
-   - If PWM is enabled:
-     - Checks for emergency stop or disabled normal operation
-     - If either condition is true, immediately turns off all PWM outputs
-     - Exits the loop
-
-4. **Automatic Mode (mode = 0)**
-   - Calculates current time in seconds (hours * 3600 + minutes * 60 + seconds)
-   - Retrieves all enabled events from the `events` table
-   - For each GPIO:
-     - Finds the most recent past event or next upcoming event
-     - Converts event PWM value (0-1023) to hardware value (0-255)
-     - Updates the GPIO output
-     - Updates the `auto_pwm_states` table
-   - Turns off any GPIOs without active events
-   - Updates `auto_pwm_states` for inactive GPIOs
-
-5. **Manual Mode (mode = 1)**
-   - Retrieves current manual PWM states from `pwm_states` table
-   - For each GPIO:
-     - If enabled: converts value (0-1023) to hardware value (0-255)
-     - If disabled: sets output to 0
-     - Updates the GPIO output accordingly
-
-6. **Error Handling**
-   - Catches and logs any errors during the process
-   - Continues to next iteration regardless of errors
-
-The loop runs continuously, updating hardware outputs based on the current mode, safety states, and either scheduled events (automatic mode) or manual settings (manual mode).
-
-### Database Structure
-
-#### Configuration Database (undergrowth.db)
-
-1. **events**
-   - `id`: INTEGER PRIMARY KEY AUTOINCREMENT
-   - `gpio`: INTEGER NOT NULL
-   - `time`: TEXT NOT NULL
-   - `pwm_value`: INTEGER NOT NULL
-   - `enabled`: INTEGER DEFAULT 1
-   - Purpose: Stores scheduled events for automatic mode
-
-2. **pwm_states**
-   - `pin`: INTEGER PRIMARY KEY
-   - `value`: INTEGER DEFAULT 0
-   - `enabled`: INTEGER DEFAULT 0
-   - `last_modified`: DATETIME DEFAULT CURRENT_TIMESTAMP
-   - Purpose: Stores manual mode PWM states
-
-3. **auto_pwm_states**
-   - `pin`: INTEGER PRIMARY KEY
-   - `value`: INTEGER DEFAULT 0
-   - `enabled`: INTEGER DEFAULT 0
-   - `last_modified`: DATETIME DEFAULT CURRENT_TIMESTAMP
-   - Purpose: Stores automatic mode PWM states
-
-4. **safety_state**
-   - `key`: TEXT PRIMARY KEY
-   - `value`: INTEGER DEFAULT 0
-   - Purpose: Stores safety-related states (emergency_stop, normal_enable)
-
-5. **system_state**
-   - `key`: TEXT PRIMARY KEY
-   - `value`: INTEGER DEFAULT 1
-   - Purpose: Stores system configuration (mode)
-
-6. **timezone**
-   - `key`: TEXT PRIMARY KEY
-   - `value`: TEXT DEFAULT 'America/Los_Angeles'
-   - Purpose: Stores system timezone setting
-
-#### Data Logging Database (undergrowth-data.db)
-
-1. **sensor_readings**
-   - `id`: INTEGER PRIMARY KEY AUTOINCREMENT
-   - `timestamp`: DATETIME DEFAULT CURRENT_TIMESTAMP
-   - `device_id`: TEXT
-   - `type`: TEXT
-   - `value`: REAL
-   - Purpose: Stores historical sensor data
-
-[Next: Continue examining server.js functions in detail]
+Your Undergrowth system is now ready to use!

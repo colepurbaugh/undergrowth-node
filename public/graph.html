@@ -700,9 +700,6 @@
                         <label for="showErrorLogs" class="sensor-label">Error Logs</label>
                     </div>
                 </div>
-                <div class="sensor-button-container">
-                    <button id="refreshEventsButton" class="sensor-button">Refresh Events</button>
-                </div>
             </div>
         </div>
 
@@ -1193,41 +1190,59 @@
             console.log(`Fetching ${type} event data for time range:`, startDate, 'to', endDate);
             
             try {
-                // 1. Event Triggers (actual executions) - Green circles
-                if (eventSettings.showEventTriggers) {
-                    const eventResponse = await fetch(`/api/event-triggers?startDate=${startDate}&endDate=${endDate}`);
-                    if (eventResponse.ok) {
-                        const eventTriggers = await eventResponse.json();
-                        eventTriggers.forEach(event => {
-                            // Exclude manual triggers with sensor info (those are threshold events)
-                            if (event.trigger_type === 'manual' && event.sensor_type) {
-                                return; // Skip threshold events - they'll be processed in section 3
-                            }
+                                    // 1. Event Triggers (actual executions) - Green circles
+                    if (eventSettings.showEventTriggers) {
+                        const eventResponse = await fetch(`/api/event-triggers?startDate=${startDate}&endDate=${endDate}`);
+                        if (eventResponse.ok) {
+                            const eventTriggers = await eventResponse.json();
                             
-                            const eventTime = new Date(event.timestamp + (event.timestamp.includes('T') || event.timestamp.includes('Z') ? '' : ' UTC')).getTime();
-                            if (eventTime >= startDateMs && eventTime <= endDateMs) {
-                                const percentage = Math.round((event.pwm_value / 1023) * 100);
-                                events.push({
-                                    x: eventTime,
-                                    y: null, // Will be interpolated
-                                    eventType: 'trigger',
-                                    eventData: {
-                                        id: event.id, // Event log ID for notes
-                                        eventLogId: event.id, // Alternative reference
-                                        type: 'Event Triggered',
-                                        gpio: event.gpio,
-                                        pwm: event.pwm_value,
-                                        percentage: percentage,
-                                        triggerType: event.trigger_type || 'time',
-                                        eventName: event.event_name,
-                                        timestamp: event.timestamp,
-                                        notes: event.notes
+                            // Fetch notes for all event triggers
+                            const eventTriggerPromises = eventTriggers.map(async (event) => {
+                                // Exclude manual triggers with sensor info (those are threshold events)
+                                if (event.trigger_type === 'manual' && event.sensor_type) {
+                                    return null; // Skip threshold events - they'll be processed in section 3
+                                }
+                                
+                                const eventTime = new Date(event.timestamp + (event.timestamp.includes('T') || event.timestamp.includes('Z') ? '' : ' UTC')).getTime();
+                                if (eventTime >= startDateMs && eventTime <= endDateMs) {
+                                    // Fetch notes for this event
+                                    let notes = event.notes || '';
+                                    try {
+                                        const notesResponse = await fetch(`/api/event-notes/${event.id}`);
+                                        if (notesResponse.ok) {
+                                            const notesData = await notesResponse.json();
+                                            notes = notesData.notes || '';
+                                        }
+                                    } catch (error) {
+                                        console.log(`Could not fetch notes for event ${event.id}:`, error);
                                     }
-                                });
-                            }
-                        });
+                                    
+                                    const percentage = Math.round((event.pwm_value / 1023) * 100);
+                                    return {
+                                        x: eventTime,
+                                        y: null, // Will be interpolated
+                                        eventType: 'trigger',
+                                        eventData: {
+                                            id: event.id, // Event log ID for notes
+                                            eventLogId: event.id, // Alternative reference
+                                            type: 'Event Triggered',
+                                            gpio: event.gpio,
+                                            pwm: event.pwm_value,
+                                            percentage: percentage,
+                                            triggerType: event.trigger_type || 'time',
+                                            eventName: event.event_name,
+                                            timestamp: event.timestamp,
+                                            notes: notes
+                                        }
+                                    };
+                                }
+                                return null;
+                            });
+                            
+                            const eventTriggerResults = await Promise.all(eventTriggerPromises);
+                            events.push(...eventTriggerResults.filter(event => event !== null));
+                        }
                     }
-                }
                 
                 // 2. Configured Events (scheduled times) - Purple squares
                 if (eventSettings.showConfiguredEvents) {
@@ -1281,7 +1296,8 @@
                     if (thresholdResponse.ok) {
                         const thresholdTriggers = await thresholdResponse.json();
                         console.log(`API returned ${thresholdTriggers.length} triggers for ${type}:`, thresholdTriggers);
-                        thresholdTriggers.forEach(trigger => {
+                        // Process threshold triggers with notes
+                        const thresholdPromises = thresholdTriggers.map(async (trigger) => {
                             // Show threshold triggers: manual triggers with sensor info
                             if (trigger.trigger_type === 'manual' && trigger.sensor_type) {
                                 console.log(`Found manual trigger with sensor info:`, trigger);
@@ -1294,12 +1310,24 @@
                                     const triggerTime = new Date(trigger.timestamp + (trigger.timestamp.includes('T') || trigger.timestamp.includes('Z') ? '' : ' UTC')).getTime();
                                     console.log(`Threshold event time check: trigger=${trigger.timestamp}, triggerTime=${triggerTime}, startDateMs=${startDateMs}, endDateMs=${endDateMs}, inRange=${triggerTime >= startDateMs && triggerTime <= endDateMs}`);
                                     if (triggerTime >= startDateMs && triggerTime <= endDateMs) {
+                                        // Fetch notes for this threshold event
+                                        let notes = trigger.notes || '';
+                                        try {
+                                            const notesResponse = await fetch(`/api/event-notes/${trigger.id}`);
+                                            if (notesResponse.ok) {
+                                                const notesData = await notesResponse.json();
+                                                notes = notesData.notes || '';
+                                            }
+                                        } catch (error) {
+                                            console.log(`Could not fetch notes for threshold event ${trigger.id}:`, error);
+                                        }
+                                        
                                         const percentage = Math.round((trigger.pwm_value / 1023) * 100);
                                         const unit = trigger.sensor_type === 'temperature' ? '°F' : '%';
                                         const condition = trigger.threshold_condition === 'greater_than' ? 'above' : 'below';
                                         
                                         console.log(`Adding threshold event to ${type} chart: ID ${trigger.id}`);
-                                        events.push({
+                                        return {
                                             x: triggerTime,
                                             y: null, // Will be interpolated
                                             eventType: 'threshold',
@@ -1314,15 +1342,19 @@
                                                 percentage: percentage,
                                                 triggerType: trigger.trigger_type,
                                                 timestamp: trigger.timestamp,
-                                                notes: trigger.notes
+                                                notes: notes
                                             }
-                                        });
+                                        };
                                     } else {
                                         console.log(`Threshold event outside time range: ${trigger.timestamp} (${triggerTime}) not in [${startDateMs}, ${endDateMs}]`);
                                     }
                                 }
                             }
+                            return null;
                         });
+                        
+                        const thresholdResults = await Promise.all(thresholdPromises);
+                        events.push(...thresholdResults.filter(event => event !== null));
                     }
                 }
                 
@@ -1901,6 +1933,12 @@
                                             if (point.eventData.details) {
                                                 lines.push(`Details: ${point.eventData.details}`);
                                             }
+                                        }
+                                        
+                                        // Add notes if available
+                                        if (point.eventData.notes && point.eventData.notes.trim()) {
+                                            lines.push('');
+                                            lines.push(`📝 Notes: ${point.eventData.notes}`);
                                         }
                                         
                                         // Add interpolated value info
@@ -2585,12 +2623,7 @@
                 console.log('Error logs visibility changed:', this.checked);
                 debouncedUpdateCharts();
             });
-            
-            // Add refresh events button
-            document.getElementById('refreshEventsButton').addEventListener('click', () => {
-                console.log('Refresh events button clicked');
-                debouncedUpdateCharts();
-            });
+
             
             // Close modal when clicking outside of it
             document.getElementById('eventNotesModal').addEventListener('click', function(event) {
