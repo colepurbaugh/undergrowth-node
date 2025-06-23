@@ -1,7 +1,5 @@
 # Undergrowth
 
-## What is Undergrowth?
-
 Undergrowth turns your Raspberry Pi into a smart environmental controller that actually works out of the box. Monitor temperature and humidity, control fans/pumps with precise PWM, and set up automated responses—all through a clean web interface.
 
 **Why try it?**
