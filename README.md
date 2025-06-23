@@ -11,8 +11,6 @@ Undergrowth turns your Raspberry Pi into a smart environmental controller that a
 
 Perfect for greenhouses, grow rooms, lab equipment, or anywhere you need reliable environmental control without the complexity of industrial systems.
 
-## Screenshots
-
 ### Scheduling Interface
 ![Scheduling Interface](public/assets/screenshots/image-2025-06-06-225754.png)
 
