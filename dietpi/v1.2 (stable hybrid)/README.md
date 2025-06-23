@@ -30,19 +30,20 @@ DietPi v1.2 represents a stable hybrid approach that combines the proven reliabi
 
 ## What You'll Need
 
-- Raspberry Pi (tested on Pi 4, should work on Pi 3B+)
+- Raspberry Pi (tested on Pi 4, Pi Zero 2 W, should work on Pi 3B+ and Pi Zero W)
 - MicroSD card (16GB or larger recommended)
 - Computer with SD card reader
 - WiFi network credentials
-- AHT10/AHT20 temperature/humidity sensors (optional)
+- AHT10/AHT20 temperature/humidity sensors (optional for basic setup)
 
 ## Step 1: Download DietPi
 
 1. Go to [DietPi.com](https://dietpi.com/)
 2. Navigate to the Download section
 3. Download the appropriate image for your Raspberry Pi model:
-   - For Pi 4: `DietPi_RPi-ARMv8-Bookworm.img.xz`
+   - For Pi 4/Pi Zero 2 W: `DietPi_RPi-ARMv8-Bookworm.img.xz`
    - For Pi 3B+: `DietPi_RPi-ARMv7-Bookworm.img.xz`
+   - For Pi Zero W: `DietPi_RPi-ARMv6-Bookworm.img.xz`
 
 ## Step 2: Flash the Image
 
@@ -184,9 +185,9 @@ This is achieved through:
 - **Prevention**: Automation script includes pigpio restart
 
 ### Single Sensor Operation
-- **Issue**: Code expects both sensors (0x38 and 0x39)
-- **Current Behavior**: Errors when only one sensor connected
-- **Future Fix**: Modify sensor initialization for OR logic instead of AND
+- **Issue**: Code expects both sensors (0x38 and 0x39) by default
+- **Current Behavior**: Works with single sensor, may show warnings in logs
+- **Note**: System will function normally with one AHT10/AHT20 sensor connected
 
 ### SSH Connection Refused
 - **Check**: Ensure SSH is enabled in dietpi.txt

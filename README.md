@@ -67,7 +67,7 @@ Hover over any event in the graph to see detailed data and notes, making it easy
    ```
 
 3. **Copy configuration files**: 
-   - Download the config files from `dietpi/v1.2 (stable hybrid)/` folder in this repository
+   - Download the config files from the [dietpi/v1.2 (stable hybrid)](https://github.com/colepurbaugh/undergrowth-node/tree/main/dietpi/v1.2%20(stable%20hybrid)) folder in this repository
    - Copy `Automation_Custom_Script.sh`, `config.txt`, and `dietpi.txt` to the root of your SD card
    - **Important**: Edit the WiFi credentials in `dietpi-wifi.txt` to match your network
 
