@@ -33,6 +33,11 @@ The graph view shows data from multiple sensors with configurable colors. Alerts
 
 Hover over any event in the graph to see detailed data and notes, making it easy to track system behavior over time.
 
+### Hardware Prototype
+![Hardware Prototype](public/assets/screenshots/image-2025-06-22-183414.png)
+
+The custom hardware prototype provides professional-grade environmental control with 4x adjustable PWM outputs (3.3-10V), 5x GPIO expansion ports, and integrated sensors (RTC, AHT20, light sensor). Multiple sensors ensure data redundancy, while the interface provides visual data freshness indicators - values fade from green to brown over time so you can instantly tell if readings are stagnant. The light sensor verifies that your lighting systems are actually functioning, delivering verifiable and provable environmental data.
+
 ## Installation
 
 ### What You'll Need
