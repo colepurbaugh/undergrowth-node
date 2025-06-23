@@ -13,6 +13,28 @@ Undergrowth turns your Raspberry Pi into a smart environmental controller that a
 
 Perfect for greenhouses, grow rooms, lab equipment, or anywhere you need reliable environmental control without the complexity of industrial systems.
 
+## Screenshots
+
+### Scheduling Interface
+![Scheduling Interface](public/assets/screenshots/image-2025-06-06-225754.png)
+
+The scheduling interface allows you to set up automated responses based on time or environmental conditions.
+
+### Emergency Mode
+![Emergency Mode](public/assets/screenshots/image-2025-06-06-225848.png)
+
+When emergency mode is activated, the GUI provides immediate access to critical controls and system status.
+
+### Multi-Sensor Graphing
+![Multi-Sensor Graph](public/assets/screenshots/image-2025-06-07-163954.png)
+
+The graph view shows data from multiple sensors with configurable colors. Alerts and messages are also displayed on the timeline for complete system visibility.
+
+### Detailed Event Data
+![Event Detail](public/assets/screenshots/image-2025-06-07-164051.png)
+
+Hover over any event in the graph to see detailed data and notes, making it easy to track system behavior over time.
+
 ## Installation
 
 ### What You'll Need
