@@ -266,12 +266,11 @@
         socket.on('eventsUpdated', (events) => {
             console.log('Events updated, refreshing display');
             
-            // Only update if the events have actually changed
-            if (JSON.stringify(events) !== JSON.stringify(currentEvents)) {
-                updateEventDisplay(events);
-            } else {
-                console.log('Events unchanged, skipping display update');
-            }
+            // Always update the display to ensure the form is always shown
+            updateEventDisplay(events);
+            
+            // Store current events for future comparisons
+            currentEvents = events || [];
         });
 
         // Event handling functions
@@ -366,7 +365,6 @@
 
         
         function updateEventDisplay(events) {
-            currentEvents = events || []; // Store for real-time updates
             const eventList = document.getElementById('eventList');
             eventList.innerHTML = '';
             
@@ -854,6 +852,9 @@
             
             // Request timezone
             socket.emit('getTimezone');
+            
+            // Initialize event display immediately to show the form
+            updateEventDisplay([]);
             
             // Request events from server
             socket.emit('getEvents');
