@@ -32,6 +32,14 @@
         
 
         
+        <!-- Add Event Form -->
+        <div class="header-row">
+            <h2 class="text-xl font-semibold mb-4 text-[#e8e6e3]">Add Event</h2>
+        </div>
+        <div id="addEventForm">
+            <!-- Add event form will be populated here -->
+        </div>
+
         <!-- Active Events List -->
         <div class="header-row">
             <h2 class="text-xl font-semibold mb-4 text-[#e8e6e3]">Active Events</h2>
@@ -266,7 +274,7 @@
         socket.on('eventsUpdated', (events) => {
             console.log('Events updated, refreshing display');
             
-            // Always update the display to ensure the form is always shown
+            // Update the display
             updateEventDisplay(events);
             
             // Store current events for future comparisons
@@ -364,14 +372,12 @@
 
 
         
-        function updateEventDisplay(events) {
-            const eventList = document.getElementById('eventList');
-            eventList.innerHTML = '';
-            
-            // Add empty reference div at the top
-            const referenceDiv = document.createElement('div');
-            referenceDiv.className = 'event-item';
-            referenceDiv.innerHTML = `
+        // Initialize the add event form (called once)
+        function initializeAddEventForm() {
+            const addEventForm = document.getElementById('addEventForm');
+            const formDiv = document.createElement('div');
+            formDiv.className = 'event-item';
+            formDiv.innerHTML = `
                 <select id="newEventGpio" class="event-gpio" style="background: #604331; color: white; border: none; border-radius: 0.25rem; padding: 0.1rem 0.3rem; width: auto;">
                     <option value="" style="color: white;">GPIO</option>
                     <option value="12" style="color: #ffeb3b;">GPIO12</option>
@@ -425,10 +431,15 @@
                     Add
                 </button>
             `;
-            eventList.appendChild(referenceDiv);
+            addEventForm.appendChild(formDiv);
             
             // Add event handlers for the new event form
             setupNewEventForm();
+        }
+
+        function updateEventDisplay(events) {
+            const eventList = document.getElementById('eventList');
+            eventList.innerHTML = '';
             
             if (!events || events.length === 0) {
                 const noEventsDiv = document.createElement('div');
@@ -853,7 +864,10 @@
             // Request timezone
             socket.emit('getTimezone');
             
-            // Initialize event display immediately to show the form
+            // Initialize the add event form (only called once)
+            initializeAddEventForm();
+            
+            // Initialize event display
             updateEventDisplay([]);
             
             // Request events from server
